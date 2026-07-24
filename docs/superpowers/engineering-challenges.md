@@ -322,6 +322,36 @@ reads. Only a real-Postgres integration test surfaces this — no mock would.
 
 ---
 
+## Challenge 7 — ArchUnit silently skipped Java 25 bytecode
+
+**Phase:** Implementation (P0, Task 15)
+
+### The problem
+
+The tenant-scoping ArchUnit rule failed on the *current* codebase — but not with a
+real violation. The error was ArchUnit's `failOnEmptyShould` safeguard: after
+filtering, **zero `@Entity` classes matched**, even though `DemoRecord` clearly
+qualifies. ArchUnit 1.3.0 (bundled ASM) could not parse Java 25 class files
+(bytecode major version 69) and silently imported nothing, so every rule evaluated
+against an empty set.
+
+### The solution
+
+Upgrade to `archunit-junit5:1.4.1`, which understands Java 25 bytecode. The rule
+then imported the real classes and passed. Verified it actually *bites* by
+temporarily adding a `LeakyRecord extends BaseEntity` (not tenant-scoped) — the build
+went red flagging exactly that class — then deleting it.
+
+### Lesson
+
+A green — or here, misleadingly red-for-the-wrong-reason — architecture test proves
+nothing if the analyzer skipped your classes. On a new JDK, bytecode-parsing tools
+(ArchUnit, ASM, ByteBuddy, coverage agents) are the first to lag; pin versions that
+declare support for the JDK in use. And always confirm an architecture rule fails on
+a known-bad input, so an empty/again-empty import can never masquerade as "passing."
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
