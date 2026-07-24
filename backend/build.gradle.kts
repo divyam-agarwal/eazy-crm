@@ -30,6 +30,9 @@ dependencies {
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
+    // Boot 4 split MockMvc test auto-config (@AutoConfigureMockMvc) into its own module;
+    // spring-boot-starter-test no longer brings it.
+    testImplementation("org.springframework.boot:spring-boot-webmvc-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     // Spring Boot 4.1 BOM does not manage Testcontainers module versions here — pin the BOM.
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))

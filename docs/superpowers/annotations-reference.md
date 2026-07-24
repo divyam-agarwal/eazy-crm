@@ -91,7 +91,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Container` | `org.testcontainers.junit.jupiter` | Marks a container field for the extension to start/stop. | — |
 | `@DynamicPropertySource` | `org.springframework.test.context` | Injects runtime values (container JDBC URL) into the Spring `Environment` before context start. | — |
 | `@Autowired` | `org.springframework.beans.factory.annotation` | Injects a bean into a field/constructor. | — |
-| `@AutoConfigureMockMvc` | `org.springframework.boot.test.autoconfigure.web.servlet` | Wires a `MockMvc` for controller tests without a live server. | *(added in Task 10)* |
+| `@AutoConfigureMockMvc` | `org.springframework.boot.webmvc.test.autoconfigure` (Boot 4 module `spring-boot-webmvc-test`) | Wires a `MockMvc` for controller tests without a live server. | — |
 
 ---
 
