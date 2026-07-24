@@ -8,6 +8,8 @@ Scope stops at the **Order** — no invoicing/stock/ledger (that's Tally's job).
 
 - **Design spec:** `docs/superpowers/specs/2026-07-22-easycrm-design.md`
 - **Engineering challenges log:** `docs/superpowers/engineering-challenges.md`
+- **Annotations reference:** `docs/superpowers/annotations-reference.md`
+- **P0 plan:** `docs/superpowers/plans/2026-07-24-p0-tenant-isolation-foundation.md`
 
 ## Working agreements
 
@@ -28,6 +30,14 @@ Do NOT log routine CRUD, config, or boilerplate. Quality over volume.
 
 At the **end of any implementation session**, do a quick pass: "did we solve
 anything challenge-worthy that isn't yet logged?" If yes, log it before wrapping up.
+
+### Keep the annotations reference current
+
+When a task introduces a Spring/JPA/Hibernate/test annotation not already in
+`docs/superpowers/annotations-reference.md`, add a row for it (origin, purpose,
+meta-annotation composition) in the same change. Several entries are pre-stubbed
+with "(added in Task N)" — replace the stub with confirmed details when that task
+lands.
 
 ### Money is never a `double`
 
