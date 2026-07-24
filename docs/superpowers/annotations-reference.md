@@ -77,8 +77,12 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 |---|---|---|---|
 | `@Component` | `org.springframework.stereotype` | Our `TenantIdentifierResolver` is a scanned bean. | Root stereotype |
 | `@Service` | `org.springframework.stereotype` | Business-logic bean (`JwtService`). | Meta-annotated with `@Component` |
-| `@RestController` | `org.springframework.web.bind.annotation` | REST endpoint class; returns bodies as JSON. | `@Controller` (→ `@Component`) + `@ResponseBody` *(added in Task 12)* |
-| `@RestControllerAdvice` | `org.springframework.web.bind.annotation` | Global exception handling → JSON error bodies. | `@ControllerAdvice` (→ `@Component`) + `@ResponseBody` *(added in Task 12)* |
+| `@RestController` | `org.springframework.web.bind.annotation` | REST endpoint class (`DemoRecordController`); returns bodies as JSON. | `@Controller` (→ `@Component`) + `@ResponseBody` |
+| `@RestControllerAdvice` | `org.springframework.web.bind.annotation` | Global exception handling (`ApiExceptionHandler`) → JSON error bodies. | `@ControllerAdvice` (→ `@Component`) + `@ResponseBody` |
+| `@RequestMapping` | `org.springframework.web.bind.annotation` | Base path for a controller (`/api/v1/demo-records`). | — |
+| `@GetMapping` | `org.springframework.web.bind.annotation` | Maps HTTP GET to a handler method. | Meta-annotated `@RequestMapping(method = GET)` |
+| `@PathVariable` | `org.springframework.web.bind.annotation` | Binds a URI template segment (`{id}`) to a method parameter. | — |
+| `@ExceptionHandler` | `org.springframework.web.bind.annotation` | Marks a method that handles a given exception type. | — |
 
 ## 6. Testing (JUnit 5, Spring Test, Testcontainers)
 
