@@ -206,6 +206,48 @@ they want and always end up with exactly one order."
 
 ---
 
+## Challenge 4 — Spring Boot 4 split auto-config: Flyway silently absent
+
+**Phase:** Implementation (P0, Task 2/3)
+
+### The problem
+
+The Testcontainers harness booted, but `HarnessBootTest` failed with
+`FATAL: password authentication failed for user "easycrm_app"` — even though the
+V1 migration that creates that role was present. Two red herrings made this
+confusing: (1) PostgreSQL's default `scram-sha-256` auth returns "password
+authentication failed" for a **non-existent** role too (it deliberately hides
+whether a role exists, to prevent username enumeration), so the message did *not*
+mean "wrong password"; and (2) the surface error was a Hibernate "Unable to
+determine Dialect" — a downstream symptom of the failed connection.
+
+The real cause: **Flyway never ran.** A full startup log showed *zero* Flyway
+lines, and the app-role HikariPool did `checkFailFast` and failed before any
+migration executed. `flyway-core` was on the classpath (v12.4.0), yet
+`FlywayAutoConfiguration` was absent.
+
+### The solution
+
+**Spring Boot 4.0 split its auto-configurations out of the monolithic
+`spring-boot-autoconfigure` jar into per-integration modules.** Having the
+third-party library (`flyway-core`) on the classpath no longer brings the Spring
+Boot auto-configuration that wires it up — that now lives in a separate module.
+Fix: depend on **`spring-boot-starter-flyway`** (which bundles the
+`spring-boot-flyway` auto-config module + `flyway-core`) instead of `flyway-core`
+directly.
+
+### Lesson
+
+On a new major framework version, "the library is on the classpath" is not the
+same as "the framework auto-configures it." When an integration silently does
+nothing, check whether its auto-config moved modules before debugging the
+integration itself. And read database auth errors literally: `scram` hides role
+existence, so "password authentication failed" often means "no such role." Only a
+real integration test against real PostgreSQL (Testcontainers) surfaces both of
+these — an in-memory H2 test would have hidden the Flyway/role/RLS layer entirely.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
