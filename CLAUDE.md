@@ -13,6 +13,12 @@ Scope stops at the **Order** — no invoicing/stock/ledger (that's Tally's job).
 
 ## Working agreements
 
+### Commits: author as divyam, never mention Claude
+
+Commit with the repo's `divyam <divyam.0444@gmail.com>` identity (plain `git commit`,
+no `-c user.name=...` override). Do NOT add a `Co-Authored-By: Claude ...` trailer or
+mention Claude/AI anywhere in commit messages.
+
 ### ALWAYS log engineering challenges
 
 Whenever we solve a **non-obvious engineering problem** — during design OR
