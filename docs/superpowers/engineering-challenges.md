@@ -283,6 +283,45 @@ chances to hit a transient daemon hiccup.
 
 ---
 
+## Challenge 6 — RLS policy: a custom GUC resets to '' , not NULL
+
+**Phase:** Implementation (P0, Task 11)
+
+### The problem
+
+With RLS enabled and the policy
+`tenant_id = current_setting('app.current_tenant', true)::uuid`, the raw-query test
+failed with `ERROR: invalid input syntax for type uuid: ""`. The assumption was that
+`current_setting('app.current_tenant', true)` returns **NULL** when no tenant is set
+(so `NULL::uuid` = NULL → no rows). But it returned an **empty string**.
+
+Two related surprises:
+- A **custom** GUC (`app.current_tenant`) that has been *referenced* becomes a
+  registered placeholder whose default is `''`, not unset/NULL. So after a
+  transaction-local `set_config(..., true)` reverts, `current_setting(...)` yields
+  `''`, and `''::uuid` throws.
+- The policy also governs **INSERT** (its `USING` doubles as `WITH CHECK` when no
+  explicit `WITH CHECK` is given), so before the transaction manager set the GUC, the
+  insert itself was rejected — the failure was upstream of the count assertion.
+
+### The solution
+
+Wrap the read in `NULLIF`: `NULLIF(current_setting('app.current_tenant', true), '')::uuid`.
+Empty string → NULL → `tenant_id = NULL` → no rows; a real tenant value is a valid
+uuid and matches. The `TenantAwareTransactionManager` sets the GUC via
+`set_config('app.current_tenant', :tid, true)` (bindable, transaction-local) so
+inserts pass `WITH CHECK` and reads see only the tenant's rows.
+
+### Lesson
+
+`current_setting(custom_guc, true)` is not guaranteed to be NULL when "unset" — a
+referenced custom GUC defaults to `''`. Always `NULLIF(..., '')` before casting a GUC
+to a non-text type in an RLS policy. And remember an RLS `USING` clause silently
+becomes the `WITH CHECK` for writes, so a missing tenant blocks inserts, not just
+reads. Only a real-Postgres integration test surfaces this — no mock would.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
