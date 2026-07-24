@@ -4,19 +4,22 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
-@Testcontainers
 public abstract class IntegrationTest {
 
-    @Container
+    // Singleton container: started ONCE for the whole JVM and shared across every
+    // integration test class. Reliable (one startup, not N) and fast. Testcontainers'
+    // ryuk reaper stops it at JVM exit — we never call stop() ourselves.
     static final PostgreSQLContainer<?> POSTGRES =
         new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("easycrm")
             .withUsername("owner")       // owner role: runs Flyway, owns tables
             .withPassword("owner");
+
+    static {
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {

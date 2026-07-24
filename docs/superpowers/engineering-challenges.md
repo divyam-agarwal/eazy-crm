@@ -248,6 +248,41 @@ these — an in-memory H2 test would have hidden the Flyway/role/RLS layer entir
 
 ---
 
+## Challenge 5 — Testcontainers flakiness: container-per-class vs singleton
+
+**Phase:** Implementation (P0, Task 9)
+
+### The problem
+
+Each integration test passed in isolation, but the **full suite** failed with
+`java.net.ConnectException` (connection refused to Postgres). The harness used the
+common `@Testcontainers` + `@Container static` pattern, which starts a **separate
+Postgres container per test class**. Running several integration classes spun up
+several containers; combined with a slow/hanging `docker-credential-desktop` helper
+on macOS Docker Desktop (a 30s auth-lookup timeout), one container wasn't reachable
+when its test ran.
+
+### The solution
+
+Switch to the Testcontainers **singleton-container pattern**: one
+`PostgreSQLContainer` started once in a `static {}` block on the shared
+`IntegrationTest` base class, reused by every subclass, never explicitly stopped
+(ryuk reaps it at JVM exit). Combined with Spring's test **context caching** (same
+`@SpringBootTest` config → one cached `ApplicationContext` across classes), the
+whole suite now runs against a single container and a single Flyway migration pass —
+dropping from N container starts to 1. Result: reliable *and* the suite went from
+~1 minute to ~4 seconds.
+
+### Lesson
+
+`@Container static` scopes the container to the *class*; for a suite it multiplies
+startups and multiplies exposure to any docker-daemon flakiness. When many test
+classes need the same backing service, one shared singleton is more reliable and far
+faster. Faster tests are also more reliable tests — less time in flight means fewer
+chances to hit a transient daemon hiccup.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

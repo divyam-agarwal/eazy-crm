@@ -42,8 +42,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Bean` | `org.springframework.context.annotation` | Method whose return value becomes a container-managed bean. | — (method-level marker; not a stereotype) |
 | `@Component` | `org.springframework.stereotype` | Generic bean; discovered by component scanning. | — (the root stereotype) |
 | `@EnableJpaAuditing` | `org.springframework.data.jpa.repository.config` | Turns on Spring Data auditing so `@CreatedDate`/`@LastModifiedDate` get populated. | Imports `JpaAuditingRegistrar` |
-| `@ConfigurationPropertiesScan` | `org.springframework.boot.context.properties` | Scans for `@ConfigurationProperties` records/classes to bind. | *(added in Task 9)* |
-| `@ConfigurationProperties` | `org.springframework.boot.context.properties` | Binds a group of `easycrm.*` YAML keys to a typed record. | *(added in Task 9)* |
+| `@ConfigurationPropertiesScan` | `org.springframework.boot.context.properties` | On the main class; scans for `@ConfigurationProperties` records/classes to bind. | — |
+| `@ConfigurationProperties` | `org.springframework.boot.context.properties` | Binds a group of `easycrm.*` YAML keys to a typed record (`JwtProperties`). | — |
 
 ## 2. Persistence — JPA (jakarta.persistence)
 
@@ -76,7 +76,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | Annotation | Origin | Purpose | Composed of / inherits |
 |---|---|---|---|
 | `@Component` | `org.springframework.stereotype` | Our `TenantIdentifierResolver` is a scanned bean. | Root stereotype |
-| `@Service` | `org.springframework.stereotype` | Business-logic bean (`JwtService`). | Meta-annotated with `@Component` *(added in Task 9)* |
+| `@Service` | `org.springframework.stereotype` | Business-logic bean (`JwtService`). | Meta-annotated with `@Component` |
 | `@RestController` | `org.springframework.web.bind.annotation` | REST endpoint class; returns bodies as JSON. | `@Controller` (→ `@Component`) + `@ResponseBody` *(added in Task 12)* |
 | `@RestControllerAdvice` | `org.springframework.web.bind.annotation` | Global exception handling → JSON error bodies. | `@ControllerAdvice` (→ `@Component`) + `@ResponseBody` *(added in Task 12)* |
 
