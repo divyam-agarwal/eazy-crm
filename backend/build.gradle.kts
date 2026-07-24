@@ -38,7 +38,8 @@ dependencies {
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
-    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
+    // 1.4.x supports parsing Java 25 bytecode; 1.3.0 silently skips it (imports 0 classes).
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.4.1")
 }
 
 tasks.withType<Test> { useJUnitPlatform() }
