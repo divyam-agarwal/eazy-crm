@@ -469,6 +469,40 @@ commit — force a flush when you want the check to bite in a test.
 
 ---
 
+## Challenge 10 — Spring Boot 4 ships Jackson 3, under a new package
+
+**Phase:** Implementation (P0-auth, Task 14)
+
+### The problem
+
+A controller test that imported `com.fasterxml.jackson.databind.ObjectMapper` /
+`JsonNode` (to pull a field out of a JSON response) failed to compile: *"package
+com.fasterxml.jackson.databind does not exist."* Confusing, because the app clearly
+serializes and deserializes JSON fine at runtime (every endpoint returns JSON; `AuditLog`
+maps a `Map` to `jsonb`). So Jackson is obviously present — just not where the import
+expected.
+
+### The solution
+
+Spring Boot 4 upgrades to **Jackson 3**, which moved its entire base package from
+`com.fasterxml.jackson` to **`tools.jackson`** (the dependency is
+`tools.jackson.core:jackson-databind:3.x`). `com.fasterxml.jackson.*` imports no longer
+resolve. Two ways forward: update imports to `tools.jackson.databind.*` (and note some
+`JsonNode` accessors were renamed in 3.x, e.g. `asText()`), or — as we did — avoid the
+mapper in tests and extract fields with jayway `com.jayway.jsonpath.JsonPath.read(body,
+"$.field")`, which is already on the test classpath (it backs MockMvc's `jsonPath()`).
+
+### Lesson
+
+Same lesson as the Flyway auto-config split (#4), different library: on a new major
+Spring Boot, a dependency being "on the classpath and working at runtime" says nothing
+about which package/coordinates its API now lives under. When an import "does not exist"
+but the feature plainly works, suspect a group/package rename before anything else —
+`./gradlew dependencies` shows the real coordinates (`tools.jackson…`, not
+`com.fasterxml…`). For test JSON assertions, JsonPath sidesteps the mapper API entirely.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
