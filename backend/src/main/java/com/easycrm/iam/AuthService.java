@@ -3,6 +3,7 @@ package com.easycrm.iam;
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.SignupRequest;
+import com.easycrm.iam.web.dto.TokenResponse;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.UnauthorizedException;
 import com.easycrm.platform.security.JwtService;
@@ -109,5 +110,28 @@ public class AuthService {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * Rotate the opaque refresh token (global table, resolves user+tenant), then load the
+     * user under its tenant to mint a fresh access token with the current role.
+     */
+    public TokenResponse refresh(String rawToken) {
+        RefreshTokenService.RotationResult rot = refreshTokens.rotate(rawToken);
+        TenantContext.set(new TenantContext.TenantPrincipal(rot.tenantId(), rot.userId(), "SYSTEM"));
+        try {
+            return tx.execute(status -> {
+                User user = users.findById(rot.userId())
+                    .orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
+                String access = jwt.mint(rot.tenantId(), rot.userId(), user.getRole().name());
+                return new TokenResponse(access, rot.newRawToken());
+            });
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    public void logout(String rawToken) {
+        refreshTokens.revoke(rawToken);
     }
 }
