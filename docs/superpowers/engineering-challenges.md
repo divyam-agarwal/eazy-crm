@@ -206,6 +206,152 @@ they want and always end up with exactly one order."
 
 ---
 
+## Challenge 4 — Spring Boot 4 split auto-config: Flyway silently absent
+
+**Phase:** Implementation (P0, Task 2/3)
+
+### The problem
+
+The Testcontainers harness booted, but `HarnessBootTest` failed with
+`FATAL: password authentication failed for user "easycrm_app"` — even though the
+V1 migration that creates that role was present. Two red herrings made this
+confusing: (1) PostgreSQL's default `scram-sha-256` auth returns "password
+authentication failed" for a **non-existent** role too (it deliberately hides
+whether a role exists, to prevent username enumeration), so the message did *not*
+mean "wrong password"; and (2) the surface error was a Hibernate "Unable to
+determine Dialect" — a downstream symptom of the failed connection.
+
+The real cause: **Flyway never ran.** A full startup log showed *zero* Flyway
+lines, and the app-role HikariPool did `checkFailFast` and failed before any
+migration executed. `flyway-core` was on the classpath (v12.4.0), yet
+`FlywayAutoConfiguration` was absent.
+
+### The solution
+
+**Spring Boot 4.0 split its auto-configurations out of the monolithic
+`spring-boot-autoconfigure` jar into per-integration modules.** Having the
+third-party library (`flyway-core`) on the classpath no longer brings the Spring
+Boot auto-configuration that wires it up — that now lives in a separate module.
+Fix: depend on **`spring-boot-starter-flyway`** (which bundles the
+`spring-boot-flyway` auto-config module + `flyway-core`) instead of `flyway-core`
+directly.
+
+### Lesson
+
+On a new major framework version, "the library is on the classpath" is not the
+same as "the framework auto-configures it." When an integration silently does
+nothing, check whether its auto-config moved modules before debugging the
+integration itself. And read database auth errors literally: `scram` hides role
+existence, so "password authentication failed" often means "no such role." Only a
+real integration test against real PostgreSQL (Testcontainers) surfaces both of
+these — an in-memory H2 test would have hidden the Flyway/role/RLS layer entirely.
+
+---
+
+## Challenge 5 — Testcontainers flakiness: container-per-class vs singleton
+
+**Phase:** Implementation (P0, Task 9)
+
+### The problem
+
+Each integration test passed in isolation, but the **full suite** failed with
+`java.net.ConnectException` (connection refused to Postgres). The harness used the
+common `@Testcontainers` + `@Container static` pattern, which starts a **separate
+Postgres container per test class**. Running several integration classes spun up
+several containers; combined with a slow/hanging `docker-credential-desktop` helper
+on macOS Docker Desktop (a 30s auth-lookup timeout), one container wasn't reachable
+when its test ran.
+
+### The solution
+
+Switch to the Testcontainers **singleton-container pattern**: one
+`PostgreSQLContainer` started once in a `static {}` block on the shared
+`IntegrationTest` base class, reused by every subclass, never explicitly stopped
+(ryuk reaps it at JVM exit). Combined with Spring's test **context caching** (same
+`@SpringBootTest` config → one cached `ApplicationContext` across classes), the
+whole suite now runs against a single container and a single Flyway migration pass —
+dropping from N container starts to 1. Result: reliable *and* the suite went from
+~1 minute to ~4 seconds.
+
+### Lesson
+
+`@Container static` scopes the container to the *class*; for a suite it multiplies
+startups and multiplies exposure to any docker-daemon flakiness. When many test
+classes need the same backing service, one shared singleton is more reliable and far
+faster. Faster tests are also more reliable tests — less time in flight means fewer
+chances to hit a transient daemon hiccup.
+
+---
+
+## Challenge 6 — RLS policy: a custom GUC resets to '' , not NULL
+
+**Phase:** Implementation (P0, Task 11)
+
+### The problem
+
+With RLS enabled and the policy
+`tenant_id = current_setting('app.current_tenant', true)::uuid`, the raw-query test
+failed with `ERROR: invalid input syntax for type uuid: ""`. The assumption was that
+`current_setting('app.current_tenant', true)` returns **NULL** when no tenant is set
+(so `NULL::uuid` = NULL → no rows). But it returned an **empty string**.
+
+Two related surprises:
+- A **custom** GUC (`app.current_tenant`) that has been *referenced* becomes a
+  registered placeholder whose default is `''`, not unset/NULL. So after a
+  transaction-local `set_config(..., true)` reverts, `current_setting(...)` yields
+  `''`, and `''::uuid` throws.
+- The policy also governs **INSERT** (its `USING` doubles as `WITH CHECK` when no
+  explicit `WITH CHECK` is given), so before the transaction manager set the GUC, the
+  insert itself was rejected — the failure was upstream of the count assertion.
+
+### The solution
+
+Wrap the read in `NULLIF`: `NULLIF(current_setting('app.current_tenant', true), '')::uuid`.
+Empty string → NULL → `tenant_id = NULL` → no rows; a real tenant value is a valid
+uuid and matches. The `TenantAwareTransactionManager` sets the GUC via
+`set_config('app.current_tenant', :tid, true)` (bindable, transaction-local) so
+inserts pass `WITH CHECK` and reads see only the tenant's rows.
+
+### Lesson
+
+`current_setting(custom_guc, true)` is not guaranteed to be NULL when "unset" — a
+referenced custom GUC defaults to `''`. Always `NULLIF(..., '')` before casting a GUC
+to a non-text type in an RLS policy. And remember an RLS `USING` clause silently
+becomes the `WITH CHECK` for writes, so a missing tenant blocks inserts, not just
+reads. Only a real-Postgres integration test surfaces this — no mock would.
+
+---
+
+## Challenge 7 — ArchUnit silently skipped Java 25 bytecode
+
+**Phase:** Implementation (P0, Task 15)
+
+### The problem
+
+The tenant-scoping ArchUnit rule failed on the *current* codebase — but not with a
+real violation. The error was ArchUnit's `failOnEmptyShould` safeguard: after
+filtering, **zero `@Entity` classes matched**, even though `DemoRecord` clearly
+qualifies. ArchUnit 1.3.0 (bundled ASM) could not parse Java 25 class files
+(bytecode major version 69) and silently imported nothing, so every rule evaluated
+against an empty set.
+
+### The solution
+
+Upgrade to `archunit-junit5:1.4.1`, which understands Java 25 bytecode. The rule
+then imported the real classes and passed. Verified it actually *bites* by
+temporarily adding a `LeakyRecord extends BaseEntity` (not tenant-scoped) — the build
+went red flagging exactly that class — then deleting it.
+
+### Lesson
+
+A green — or here, misleadingly red-for-the-wrong-reason — architecture test proves
+nothing if the analyzer skipped your classes. On a new JDK, bytecode-parsing tools
+(ArchUnit, ASM, ByteBuddy, coverage agents) are the first to lag; pin versions that
+declare support for the JDK in use. And always confirm an architecture rule fails on
+a known-bad input, so an empty/again-empty import can never masquerade as "passing."
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

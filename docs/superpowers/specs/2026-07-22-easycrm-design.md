@@ -214,6 +214,12 @@ Later, unchanged downstream: `TallyOdbcSource`, `BusyExportSource`. They inherit
 
 Async (`@Async` + `TenantAwareTaskDecorator`), progress polled. Chunked `saveAll` + flush intervals, one transaction per chunk; batch marked `COMMITTED` only when all chunks succeed.
 
+### Storage sizing & retention
+
+Each `import_row` holds **one source row** as JSONB (a few hundred bytes to ~2–3 KB), not the whole file — so single-row size is never a concern, and PostgreSQL's TOAST would transparently compress/out-of-line any large value anyway (rows don't have to fit in the 8 KB page; a TOASTed field can reach ~1 GB). The real cost is **volume**: large imports across many tenants accumulate millions of disposable staging rows, and JSONB repeats its keys per row (mitigated by TOAST compression).
+
+**Staging rows are transient. Retention rule:** once a batch reaches a terminal state (`COMMITTED` / `ROLLED_BACK` / `FAILED`), its `import_row`s and `import_error`s are purged — immediately after a successful commit, and via a scheduled sweep for older terminal batches (e.g. > 7 days). The `import_batch` summary row is kept for audit. This bounds the staging tables regardless of import throughput. (Note: this purge is distinct from rollback — rollback reverts *domain* records tagged by `import_batch_id`; retention cleans up the *staging* rows after the fact.)
+
 ### API
 
 ```

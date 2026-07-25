@@ -1,0 +1,8 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: easycrm
+      POSTGRES_USER: easycrm_owner
+      POSTGRES_PASSWORD: easycrm_owner
+    ports: ["5432:5432"]
