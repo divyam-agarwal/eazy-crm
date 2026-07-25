@@ -59,8 +59,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Column` | `jakarta.persistence` | Column mapping details (name, nullable, length, updatable). | — |
 | `@Version` | `jakarta.persistence` | Optimistic-locking counter; auto-incremented on update, throws on stale write. Also used by Hibernate/Spring Data to detect a *new* entity (version at seed = 0). | — |
 | `@EntityListeners` | `jakarta.persistence` | Registers a callback listener for lifecycle events (we use `AuditingEntityListener`). | — |
-| `@Enumerated` | `jakarta.persistence` | Maps an enum field to a column; we always use `EnumType.STRING` (`Role`, `UserStatus`, `TenantStatus`) so the DB stores the name, not a fragile ordinal. | — |
-| `@UniqueConstraint` | `jakarta.persistence` | Table-level composite unique constraint declared inside `@Table` (`(tenant_id, email)` on `app_user` — email is unique *per tenant*, not globally). | — |
+| `@Enumerated` | `jakarta.persistence` | Maps an enum field to a column; we always use `EnumType.STRING` (`Role`, `UserStatus`, `TenantStatus`, and P1a's `Product.uom`, `Customer.source`) so the DB stores the name, not a fragile ordinal. | — |
+| `@UniqueConstraint` | `jakarta.persistence` | Table-level composite unique constraint declared inside `@Table` (`(tenant_id, email)` on `app_user` — email is unique *per tenant*, not globally; P1a reuses the pattern for `(tenant_id, sku)` on `product` and `(tenant_id, price_list_id, product_id)` on `price_list_item`). | — |
 | `@Transient` | `jakarta.persistence` | Field is **not** persisted (backs `Tenant`'s `isNew` flag for `Persistable`). | — |
 | `@PostPersist` | `jakarta.persistence` | Lifecycle callback run after INSERT; clears `Tenant.isNew` so a re-save updates. | — |
 | `@PostLoad` | `jakarta.persistence` | Lifecycle callback run after a row is loaded; clears `Tenant.isNew` for managed entities. | — |
@@ -90,9 +90,12 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@RestControllerAdvice` | `org.springframework.web.bind.annotation` | Global exception handling (`ApiExceptionHandler`) → JSON error bodies. | `@ControllerAdvice` (→ `@Component`) + `@ResponseBody` |
 | `@RequestMapping` | `org.springframework.web.bind.annotation` | Base path for a controller (`/api/v1/demo-records`). | — |
 | `@GetMapping` | `org.springframework.web.bind.annotation` | Maps HTTP GET to a handler method. | Meta-annotated `@RequestMapping(method = GET)` |
-| `@PostMapping` | `org.springframework.web.bind.annotation` | Maps HTTP POST to a handler (`/auth/signup`, `/login`, `/refresh`, `/logout`). | Meta-annotated `@RequestMapping(method = POST)` |
+| `@PostMapping` | `org.springframework.web.bind.annotation` | Maps HTTP POST to a handler (`/auth/signup`, `/login`, `/refresh`, `/logout`, `ProductController` create/activate/deactivate). | Meta-annotated `@RequestMapping(method = POST)` |
+| `@PutMapping` | `org.springframework.web.bind.annotation` | Maps HTTP PUT to a handler (`ProductController.update`, full-resource replace semantics). | Meta-annotated `@RequestMapping(method = PUT)` |
+| `@DeleteMapping` | `org.springframework.web.bind.annotation` | Maps HTTP DELETE to a handler (`ContactController.delete`, `PriceListItemController.delete`). | Meta-annotated `@RequestMapping(method = DELETE)` |
 | `@RequestBody` | `org.springframework.web.bind.annotation` | Binds/deserializes the JSON request body into a method parameter (the auth DTOs). | — |
 | `@PathVariable` | `org.springframework.web.bind.annotation` | Binds a URI template segment (`{id}`) to a method parameter. | — |
+| `@RequestParam` | `org.springframework.web.bind.annotation` | Binds a query-string parameter; `required = false` makes it optional (`ProductController.list`'s `active` filter — `Boolean` wrapper stays `null` when absent, meaning "no filter"). | — |
 | `@ExceptionHandler` | `org.springframework.web.bind.annotation` | Marks a method that handles a given exception type. | — |
 
 ## 6. Bean Validation & transactions
@@ -101,6 +104,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 |---|---|---|---|
 | `@Valid` | `jakarta.validation` | On a `@RequestBody` parameter, triggers Bean Validation of the DTO; a violation raises `MethodArgumentNotValidException` → mapped to 400. | — |
 | `@NotBlank` | `jakarta.validation.constraints` | String must be non-null and contain non-whitespace (slug, email, password, etc.). | Meta-annotated `@Constraint` |
+| `@NotNull` | `jakarta.validation.constraints` | Field must be non-null (structural presence only, no content check — `ProductCreateRequest.uom/gstRate/baseRate`, where `@NotBlank` doesn't apply because the type isn't `String`). | Meta-annotated `@Constraint` |
 | `@Email` | `jakarta.validation.constraints` | String must look like an email address (`SignupRequest.email`). | Meta-annotated `@Constraint` |
 | `@Size` | `jakarta.validation.constraints` | Length/size bounds (`password` min 8). | Meta-annotated `@Constraint` |
 | `@Pattern` | `jakarta.validation.constraints` | String must match a regex (`slug` charset, 2-digit `stateCode`). | Meta-annotated `@Constraint` |
