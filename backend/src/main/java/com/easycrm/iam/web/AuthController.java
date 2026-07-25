@@ -3,6 +3,7 @@ package com.easycrm.iam.web;
 import com.easycrm.iam.AuthService;
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
+import com.easycrm.iam.web.dto.MeResponse;
 import com.easycrm.iam.web.dto.RefreshRequest;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.iam.web.dto.TokenResponse;
@@ -38,5 +39,10 @@ public class AuthController {
     public ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequest req) {
         auth.logout(req.refreshToken());
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/me")
+    public MeResponse me() {
+        return auth.me();
     }
 }

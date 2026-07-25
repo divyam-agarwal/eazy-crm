@@ -3,6 +3,7 @@ package com.easycrm.iam;
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.SignupRequest;
+import com.easycrm.iam.web.dto.MeResponse;
 import com.easycrm.iam.web.dto.TokenResponse;
 import com.easycrm.iam.email.EmailSender;
 import com.easycrm.platform.error.ConflictException;
@@ -14,6 +15,7 @@ import com.easycrm.tenant.TenantRepository;
 import com.easycrm.tenant.TenantStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
@@ -140,5 +142,21 @@ public class AuthService {
 
     public void logout(String rawToken) {
         refreshTokens.revoke(rawToken);
+    }
+
+    /**
+     * Current principal. The JWT filter has already set TenantContext for this request, so
+     * this @Transactional read runs under the tenant's RLS context (GUC set at doBegin).
+     */
+    @Transactional(readOnly = true)
+    public MeResponse me() {
+        TenantContext.TenantPrincipal p = TenantContext.get()
+            .orElseThrow(() -> new UnauthorizedException("not authenticated"));
+        User user = users.findById(p.userId())
+            .orElseThrow(() -> new UnauthorizedException("not authenticated"));
+        Tenant tenant = tenants.findById(p.tenantId())
+            .orElseThrow(() -> new UnauthorizedException("not authenticated"));
+        return new MeResponse(user.getId(), tenant.getId(), user.getEmail(),
+            user.getRole().name(), tenant.getSlug());
     }
 }
