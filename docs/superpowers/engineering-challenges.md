@@ -352,6 +352,157 @@ a known-bad input, so an empty/again-empty import can never masquerade as "passi
 
 ---
 
+## Challenge 8 — Derived repository queries silently return zero rows under RLS
+
+**Phase:** Implementation (P0-auth, Task 3)
+
+### The problem
+
+`UserRepositoryTest` saved a user under tenant A, then called the derived finder
+`users.findByEmail("owner@acme.test")` — and got back `Optional.empty()`, even though
+the row was there. The confusing part: in the *same* test, `users.findAll()` returned
+the row (size 1) and `saved.getTenantId()` was correct. So the data existed, the
+tenant column was right, and one query saw it while the other didn't.
+
+### Why it's hard
+
+Nothing in the query is wrong. SQL logging showed `findByEmail` generating exactly
+`where tenant_id = ? and email = ?` with both parameters bound correctly (tenant A,
+the right email). It *should* match. The divergence only shows up when you log the
+`set_config('app.current_tenant', ...)` calls: the GUC is set before `save` and before
+`findAll`, but **not** before `findByEmail`.
+
+The cause is a Spring Data + RLS interaction. `save`/`findAll`/`findById` are concrete
+methods on `SimpleJpaRepository`, annotated `@Transactional`, so they open a
+transaction → `TenantAwareTransactionManager.doBegin` runs → the GUC is set. **Derived
+query methods** (`findByEmail`) are *not* wrapped in a transaction by Spring Data by
+default, so `doBegin` never runs, the GUC stays `''`, the RLS policy resolves
+`NULLIF('', '')::uuid → NULL`, and `tenant_id = NULL` matches nothing. It fails *safe*
+(empty, never cross-tenant), which is exactly why it's easy to miss — no error, no leak,
+just a silently empty result.
+
+Production never hits this: `findByEmail`/`findById` are always called from
+`@Transactional` service methods (login/signup) that have already set the tenant context
+before the transaction (see #9), so the GUC is set by the outer transaction. Only an
+isolated repository test that calls the finder with no surrounding transaction exposes it.
+
+### The solution
+
+Annotate the derived finder with `@Transactional(readOnly = true)`
+(`UserRepository.findByEmail`, `AuditLogRepository.countByAction`). It joins the caller's
+transaction when there is one (`PROPAGATION_REQUIRED`) and starts its own — through the
+`@Primary` `TenantAwareTransactionManager`, which sets the GUC — when called standalone.
+This is a deliberate, minimal deviation from the plan's verbatim repository interfaces.
+
+### Lesson
+
+RLS makes a missing tenant GUC look like "no matching rows," not an error — so a
+derived repository finder that runs outside a transaction silently returns empty.
+Spring Data only auto-wraps the CRUD methods it declares, not the query methods it
+derives. On any RLS-backed table, either guarantee every read runs inside a
+tenant-bound transaction, or annotate the finder `@Transactional` so the transaction
+(and thus the GUC) always exists. And always confirm an isolation test bites: here the
+"pass" would have been a false empty if we hadn't cross-checked `findAll` against
+`findByEmail`.
+
+---
+
+## Challenge 9 — Provisioning a tenant-scoped row in the transaction that creates its tenant
+
+**Phase:** Implementation (P0-auth, Task 7 & 10)
+
+### The problem
+
+Signup must be atomic: create the tenant AND insert its first OWNER user in one
+transaction, so a crash can't leave a tenant with no way in. But the owner is a
+tenant-scoped entity — its `tenant_id` is filled by Hibernate `@TenantId` from the
+current tenant, and its insert must pass Postgres RLS `WITH CHECK` (the GUC
+`app.current_tenant` must equal the row's `tenant_id`). At the moment the transaction
+begins, the tenant does not exist yet, so neither the tenant context nor the GUC is set.
+
+The plan's first design was a `TenantBinder` that, mid-transaction, set the tenant
+context and re-issued `set_config('app.current_tenant', ...)` after the tenant row was
+created. It failed: the owner insert was rejected with *"new row violates row-level
+security policy for table app_user"* — `@TenantId` had written the wrong tenant.
+
+### Why it's hard
+
+Hibernate resolves a session's tenant identifier **once, when the session opens**, via
+`CurrentTenantIdentifierResolver`, and never re-reads it (confirmed in the Hibernate
+docs: the current tenant is "specified when opening a session"). In a Spring
+`@Transactional` method the `EntityManager`/session is opened at transaction begin —
+before the tenant exists — so it freezes as the NIL `NO_TENANT`. `TenantBinder` updated
+the `TenantContext` ThreadLocal and the GUC, but the already-open session kept its frozen
+tenant, so `@TenantId` still wrote `NO_TENANT` while the GUC was the real tenant →
+`WITH CHECK` mismatch. Setting the context *after* the session opened is simply too late.
+
+The symptom is easy to misread: `save()` only calls `persist()` and doesn't flush, so the
+INSERT (and the RLS failure) is deferred to commit/flush — until then everything looks
+fine and the in-memory `@TenantId` field is just `null`.
+
+### The solution
+
+Turn it around: set the tenant context **before** the transaction opens, so the session
+resolves the correct tenant at open. That requires the tenant id to be known up front, so
+`Tenant` uses an **application-assigned UUIDv7** id (generated in its constructor via
+`UuidV7`) instead of a Hibernate-generated one. Because a pre-set id makes Spring Data's
+`save()` take the merge/UPDATE path (and `em.persist` reject it as "detached"), `Tenant`
+implements `Persistable<UUID>` with a transient `isNew` flag (cleared on
+`@PostPersist`/`@PostLoad`) so `save()` issues a straight INSERT. Signup then:
+
+1. constructs the `Tenant` (id assigned now), 2. sets `TenantContext` to that id,
+3. runs tenant + owner inserts in one `TransactionTemplate` transaction — whose `doBegin`
+sets the GUC from the context and whose session opens already bound to the tenant.
+
+`@TenantId` fills the real tenant, RLS `WITH CHECK` passes, and both rows commit together.
+`TenantBinder` was deleted.
+
+### Lesson
+
+You cannot re-tenant an open Hibernate session; the tenant is fixed at session-open. When
+a tenant-scoped write must happen in the same transaction that creates the tenant, make
+the tenant id knowable *before* the transaction (application-assigned id) and set the
+context first — don't try to rebind mid-flight. And an application-assigned id needs
+`Persistable.isNew()`, or Spring Data/Hibernate will treat the entity as detached and
+UPDATE (or reject) instead of INSERT. Deferred flush also hides RLS violations until
+commit — force a flush when you want the check to bite in a test.
+
+---
+
+## Challenge 10 — Spring Boot 4 ships Jackson 3, under a new package
+
+**Phase:** Implementation (P0-auth, Task 14)
+
+### The problem
+
+A controller test that imported `com.fasterxml.jackson.databind.ObjectMapper` /
+`JsonNode` (to pull a field out of a JSON response) failed to compile: *"package
+com.fasterxml.jackson.databind does not exist."* Confusing, because the app clearly
+serializes and deserializes JSON fine at runtime (every endpoint returns JSON; `AuditLog`
+maps a `Map` to `jsonb`). So Jackson is obviously present — just not where the import
+expected.
+
+### The solution
+
+Spring Boot 4 upgrades to **Jackson 3**, which moved its entire base package from
+`com.fasterxml.jackson` to **`tools.jackson`** (the dependency is
+`tools.jackson.core:jackson-databind:3.x`). `com.fasterxml.jackson.*` imports no longer
+resolve. Two ways forward: update imports to `tools.jackson.databind.*` (and note some
+`JsonNode` accessors were renamed in 3.x, e.g. `asText()`), or — as we did — avoid the
+mapper in tests and extract fields with jayway `com.jayway.jsonpath.JsonPath.read(body,
+"$.field")`, which is already on the test classpath (it backs MockMvc's `jsonPath()`).
+
+### Lesson
+
+Same lesson as the Flyway auto-config split (#4), different library: on a new major
+Spring Boot, a dependency being "on the classpath and working at runtime" says nothing
+about which package/coordinates its API now lives under. When an import "does not exist"
+but the feature plainly works, suspect a group/package rename before anything else —
+`./gradlew dependencies` shows the real coordinates (`tools.jackson…`, not
+`com.fasterxml…`). For test JSON assertions, JsonPath sidesteps the mapper API entirely.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

@@ -18,6 +18,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     // Spring Boot 4 split auto-config into per-integration modules: flyway-core alone
     // no longer provides FlywayAutoConfiguration. The starter bundles the auto-config module.
     implementation("org.springframework.boot:spring-boot-starter-flyway")
