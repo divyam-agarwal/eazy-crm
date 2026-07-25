@@ -6,6 +6,8 @@ Scope stops at the **Order** — no invoicing/stock/ledger (that's Tally's job).
 
 ## Key docs
 
+- **Handoff (start here if resuming):** `docs/superpowers/HANDOFF.md`
+
 - **Design spec:** `docs/superpowers/specs/2026-07-22-easycrm-design.md`
 - **Engineering challenges log:** `docs/superpowers/engineering-challenges.md`
 - **Annotations reference:** `docs/superpowers/annotations-reference.md`
