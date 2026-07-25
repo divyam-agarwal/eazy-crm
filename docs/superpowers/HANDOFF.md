@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-25 (P1a master data complete, on branch `p1a-master-data`, not yet merged)
+**Last updated:** 2026-07-26 (P1a master data merged to `main`)
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -22,15 +22,15 @@ All under `docs/superpowers/`:
 3. **`plans/2026-07-24-p0-tenant-isolation-foundation.md`** — P0 isolation plan (DONE, merged).
 4. **`plans/2026-07-25-p0-auth-core.md`** — P0-auth plan (**DONE, merged** — see §4 for what changed vs the plan).
 5. **`specs/2026-07-25-p1a-master-data-design.md`** — P1a design spec (product/customer/contact/price-list master data). The source of truth for *what* P1a built.
-6. **`plans/2026-07-25-p1a-master-data.md`** — P1a implementation plan (**DONE**, branch `p1a-master-data` — see §4 for execution-time deviations).
+6. **`plans/2026-07-25-p1a-master-data.md`** — P1a implementation plan (**DONE, merged** — see §4 for execution-time deviations).
 7. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (15 entries). Great context on the stack's quirks.
 8. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 
 ## 3. Current state
 
-- **Branch:** `p1a-master-data`, checked out off `main`. Not yet merged — next step is `superpowers:finishing-a-development-branch`. Repo is local-only (no git remote).
-- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** (both merge commits on `main`).
-- **Complete but not yet merged:** **P1a master data** (product/customer/contact/price-list CRUD) on `p1a-master-data`, 13 planned tasks plus three execution-time additions (Task 7b global 409 handler, Task 13b test-hardening, and a final-review fix — see §4). **86 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from 50 at the P0-auth baseline.
+- **Branch:** `main`. Working tree clean. Repo is local-only (no git remote).
+- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`). **86 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from 50 at the P0-auth baseline.
+- **P1a scope:** product/customer/contact/price-list CRUD — 13 planned tasks plus three execution-time additions (Task 7b global 409 handler, Task 13b test-hardening, and a final-review fix — see §4).
 - **What P1a delivered:** tenant-scoped REST CRUD for `Product`, `Customer` (+ GSTIN checksum validation and GST-state-code derivation via the new `platform.gst.Gstin`/`StateCode` value types), `Contact` (nested under customer), `PriceList`, and `PriceListItem` (override-rate/discount-percent mutually-exclusive pricing). New shared plumbing: `platform.error.ValidationException` → 422 with field errors, `platform.web.PageResponse` (offset-paginated list envelope). Cross-tenant reads return 404 (not 403/200), matching the P0 pattern. Lives under `com.easycrm.catalog` and `com.easycrm.crm`.
 - **What P0-auth delivered:** self-serve auth on top of the isolation foundation — atomic signup (tenant + first OWNER in one transaction), bcrypt login, rotating opaque JWT refresh tokens (SHA-256 at rest), tenant-scoped audit log, public auth endpoints with generic 401s. Lives under `com.easycrm.iam` (+ `platform.persistence.UuidV7`, `platform.error.{Conflict,Unauthorized}Exception`). Working `signup → login → GET /api/v1/auth/me → refresh` loop, all verified against Postgres + RLS.
 - **What P0 (isolation) delivered:** the 4-layer multi-tenant isolation, all provably enforced by tests:
@@ -42,7 +42,7 @@ All under `docs/superpowers/`:
 
 ## 4. THE NEXT TASK
 
-**P1a master data is DONE** (branch `p1a-master-data`, not yet merged — run `superpowers:finishing-a-development-branch` to decide merge/PR). After that, pick the next chunk with the user (see §8): **P1b** (quotation engine — price resolution, money-as-JSON-string wire format, the actual GST quote/order flow) is the natural next step since it reads the master data P1a just built; the **P0-auth follow-up** (invitations + visibility layer + rate limiting) is still open too. Each goes: (spec →) writing-plans → executing-plans → finishing-a-development-branch.
+**P1a master data is DONE and merged** (merge commit `2f9a2f4` on `main`). Pick the next chunk with the user (see §8): **P1b** (quotation engine — price resolution, money-as-JSON-string wire format, the actual GST quote/order flow) is the natural next step since it reads the master data P1a just built; the **P0-auth follow-up** (invitations + visibility layer + rate limiting) is still open too. Each goes: (spec →) writing-plans → executing-plans → finishing-a-development-branch.
 
 ### What P1a changed vs its plan (read before extending master data)
 
