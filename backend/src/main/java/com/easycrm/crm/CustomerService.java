@@ -78,6 +78,7 @@ public class CustomerService {
         if (req.gstin() != null && !req.gstin().isBlank()) {
             Gstin g = Gstin.parse(req.gstin()); // throws 422 on bad checksum
             String derived = g.stateCode();
+            StateCode.requireValid(derived);
             if (req.stateCode() != null && !req.stateCode().isBlank()
                     && !req.stateCode().equals(derived)) {
                 throw new ValidationException("stateCode", "must match the GSTIN state code");

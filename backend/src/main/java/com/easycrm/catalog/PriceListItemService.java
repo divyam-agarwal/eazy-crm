@@ -8,6 +8,7 @@ import com.easycrm.platform.error.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,6 +31,7 @@ public class PriceListItemService {
         requirePriceList(priceListId);
         requireProduct(req.productId());
         validateXor(req);
+        validateRange(req);
         items.findByPriceListIdAndProductId(priceListId, req.productId()).ifPresent(i -> {
             throw new ConflictException("this product is already priced in this list");
         });
@@ -60,6 +62,17 @@ public class PriceListItemService {
         if (hasRate == hasDiscount) { // both set OR both null
             throw new ValidationException("overrideRate",
                 "exactly one of overrideRate or discountPct must be set");
+        }
+    }
+
+    private void validateRange(PriceListItemRequest req) {
+        if (req.overrideRate() != null && req.overrideRate().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException("overrideRate", "override rate must not be negative");
+        }
+        if (req.discountPct() != null
+                && (req.discountPct().compareTo(BigDecimal.ZERO) < 0
+                    || req.discountPct().compareTo(new BigDecimal("100")) > 0)) {
+            throw new ValidationException("discountPct", "discount percent must be between 0 and 100");
         }
     }
 

@@ -74,6 +74,30 @@ class PriceListItemControllerTest extends IntegrationTest {
     }
 
     @Test
+    void negativeOverrideRateReturns422() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        String body = "{\"productId\":\"" + f.productId() + "\",\"overrideRate\":\"-5.00\"}";
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.error.fields.overrideRate").exists());
+    }
+
+    @Test
+    void discountOver100Returns422() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        String body = "{\"productId\":\"" + f.productId() + "\",\"discountPct\":\"150.0\"}";
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.error.fields.discountPct").exists());
+    }
+
+    @Test
     void addItemToUnknownPriceListReturns404() throws Exception {
         Fixture f = seed();
         String auth = "Bearer " + tokens.owner(f.tenant());

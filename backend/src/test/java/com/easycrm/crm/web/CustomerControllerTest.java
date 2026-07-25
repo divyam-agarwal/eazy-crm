@@ -51,6 +51,18 @@ class CustomerControllerTest extends IntegrationTest {
     }
 
     @Test
+    void checksumValidGstinWithInvalidStatePrefixReturns422() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        // 15-char GSTIN: checksum-valid (mod-36), but state prefix "88" is not a valid GST state code.
+        String create = """
+            {"businessName":"Acme","gstin":"88AAPFU0939F1ZN","source":"MANUAL"}""";
+        mvc.perform(post("/api/v1/customers").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(create))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.error.fields.stateCode").exists());
+    }
+
+    @Test
     void missingStateCodeWithoutGstinReturns422() throws Exception {
         String auth = "Bearer " + tokens.owner(UUID.randomUUID());
         String create = """
