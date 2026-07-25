@@ -352,6 +352,61 @@ a known-bad input, so an empty/again-empty import can never masquerade as "passi
 
 ---
 
+## Challenge 8 — Derived repository queries silently return zero rows under RLS
+
+**Phase:** Implementation (P0-auth, Task 3)
+
+### The problem
+
+`UserRepositoryTest` saved a user under tenant A, then called the derived finder
+`users.findByEmail("owner@acme.test")` — and got back `Optional.empty()`, even though
+the row was there. The confusing part: in the *same* test, `users.findAll()` returned
+the row (size 1) and `saved.getTenantId()` was correct. So the data existed, the
+tenant column was right, and one query saw it while the other didn't.
+
+### Why it's hard
+
+Nothing in the query is wrong. SQL logging showed `findByEmail` generating exactly
+`where tenant_id = ? and email = ?` with both parameters bound correctly (tenant A,
+the right email). It *should* match. The divergence only shows up when you log the
+`set_config('app.current_tenant', ...)` calls: the GUC is set before `save` and before
+`findAll`, but **not** before `findByEmail`.
+
+The cause is a Spring Data + RLS interaction. `save`/`findAll`/`findById` are concrete
+methods on `SimpleJpaRepository`, annotated `@Transactional`, so they open a
+transaction → `TenantAwareTransactionManager.doBegin` runs → the GUC is set. **Derived
+query methods** (`findByEmail`) are *not* wrapped in a transaction by Spring Data by
+default, so `doBegin` never runs, the GUC stays `''`, the RLS policy resolves
+`NULLIF('', '')::uuid → NULL`, and `tenant_id = NULL` matches nothing. It fails *safe*
+(empty, never cross-tenant), which is exactly why it's easy to miss — no error, no leak,
+just a silently empty result.
+
+Production never hits this: `findByEmail`/`findById` are always called from
+`@Transactional` service methods (login/signup) that have already bound the tenant via
+`TenantBinder`, so the GUC is set by the outer transaction. Only an isolated repository
+test that calls the finder with no surrounding transaction exposes it.
+
+### The solution
+
+Annotate the derived finder with `@Transactional(readOnly = true)`
+(`UserRepository.findByEmail`, `AuditLogRepository.countByAction`). It joins the caller's
+transaction when there is one (`PROPAGATION_REQUIRED`) and starts its own — through the
+`@Primary` `TenantAwareTransactionManager`, which sets the GUC — when called standalone.
+This is a deliberate, minimal deviation from the plan's verbatim repository interfaces.
+
+### Lesson
+
+RLS makes a missing tenant GUC look like "no matching rows," not an error — so a
+derived repository finder that runs outside a transaction silently returns empty.
+Spring Data only auto-wraps the CRUD methods it declares, not the query methods it
+derives. On any RLS-backed table, either guarantee every read runs inside a
+tenant-bound transaction, or annotate the finder `@Transactional` so the transaction
+(and thus the GUC) always exists. And always confirm an isolation test bites: here the
+"pass" would have been a false empty if we hadn't cross-checked `findAll` against
+`findByEmail`.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
