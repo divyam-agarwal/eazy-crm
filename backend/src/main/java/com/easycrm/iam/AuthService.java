@@ -4,6 +4,7 @@ import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.iam.web.dto.TokenResponse;
+import com.easycrm.iam.email.EmailSender;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.UnauthorizedException;
 import com.easycrm.platform.security.JwtService;
@@ -30,18 +31,20 @@ public class AuthService {
     private final JwtService jwt;
     private final RefreshTokenService refreshTokens;
     private final AuditService audit;
+    private final EmailSender emailSender;
     private final TransactionTemplate tx;
 
     public AuthService(TenantRepository tenants, UserRepository users,
                        PasswordEncoder encoder, JwtService jwt,
                        RefreshTokenService refreshTokens, AuditService audit,
-                       TransactionTemplate tx) {
+                       EmailSender emailSender, TransactionTemplate tx) {
         this.tenants = tenants;
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.refreshTokens = refreshTokens;
         this.audit = audit;
+        this.emailSender = emailSender;
         this.tx = tx;
     }
 
@@ -63,7 +66,7 @@ public class AuthService {
 
         TenantContext.set(new TenantContext.TenantPrincipal(tenant.getId(), null, "SYSTEM"));
         try {
-            return tx.execute(status -> {
+            AuthResponse res = tx.execute(status -> {
                 tenants.save(tenant);
                 User owner = users.save(new User(
                     req.email(), req.phone(), encoder.encode(req.password()),
@@ -75,6 +78,10 @@ public class AuthService {
                 String refresh = refreshTokens.issue(owner.getId(), tenant.getId());
                 return new AuthResponse(access, refresh, tenant.getId(), owner.getId(), Role.OWNER.name());
             });
+            // Sent only after the provisioning transaction commits (no email for a rollback).
+            emailSender.send(req.email(), "Welcome to EasyCRM",
+                "Your workspace " + req.slug() + " is ready.");
+            return res;
         } finally {
             TenantContext.clear();
         }
