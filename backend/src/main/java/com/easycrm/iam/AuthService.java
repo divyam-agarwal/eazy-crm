@@ -107,7 +107,8 @@ public class AuthService {
                 if (user == null || user.getStatus() != UserStatus.ACTIVE
                         || !encoder.matches(req.password(), user.getPasswordHash())) {
                     if (user != null) {
-                        audit.record("LOGIN_FAILED", user.getId(), Map.of("email", req.email()));
+                        // REQUIRES_NEW: this must survive the rollback caused by the throw below.
+                        audit.recordIndependently("LOGIN_FAILED", user.getId(), Map.of("email", req.email()));
                     }
                     throw new UnauthorizedException("invalid credentials");
                 }
