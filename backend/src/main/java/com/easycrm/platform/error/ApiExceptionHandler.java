@@ -1,5 +1,6 @@
 package com.easycrm.platform.error;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -25,6 +26,13 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<Map<String, Object>> conflict(ConflictException ex) {
         return body(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> dataIntegrity(DataIntegrityViolationException ex) {
+        // Backstop for unique/constraint violations that slip past app-level pre-checks
+        // (update() paths, concurrent create() races). Data stays correct; the client gets 409.
+        return body(HttpStatus.CONFLICT, "CONFLICT", "the request conflicts with existing data", null);
     }
 
     @ExceptionHandler(ValidationException.class)
