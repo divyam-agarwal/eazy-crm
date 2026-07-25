@@ -2,6 +2,7 @@ package com.easycrm.platform.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -20,6 +21,9 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/auth/signup", "/api/v1/auth/login",
+                    "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             // Unauthenticated request -> 401 (not authenticated), not Spring's default 403.
