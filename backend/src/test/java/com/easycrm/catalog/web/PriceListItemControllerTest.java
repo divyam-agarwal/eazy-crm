@@ -19,8 +19,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+import com.jayway.jsonpath.JsonPath;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -78,6 +81,55 @@ class PriceListItemControllerTest extends IntegrationTest {
         mvc.perform(post("/api/v1/price-lists/" + UUID.randomUUID() + "/items")
                 .header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void rejectsNeitherRateNorDiscountWith422() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        String body = "{\"productId\":\"" + f.productId() + "\"}";
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.error.fields.overrideRate").exists());
+    }
+
+    @Test
+    void duplicateProductInPriceListReturns409() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        String body = "{\"productId\":\"" + f.productId() + "\",\"overrideRate\":\"95.00\"}";
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated());
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    void deleteItemUnderWrongPriceListReturns404() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        String body = "{\"productId\":\"" + f.productId() + "\",\"overrideRate\":\"95.00\"}";
+        String created = mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        String itemId = JsonPath.read(created, "$.id");
+
+        // A second price list under the SAME tenant; the item does not belong to it.
+        TenantContext.set(new TenantContext.TenantPrincipal(f.tenant(), UUID.randomUUID(), "OWNER"));
+        UUID otherPriceListId = priceLists.saveAndFlush(new PriceList("Retail")).getId();
+        TenantContext.clear();
+
+        mvc.perform(delete("/api/v1/price-lists/" + otherPriceListId + "/items/" + itemId)
+                .header("Authorization", auth))
             .andExpect(status().isNotFound());
     }
 }
