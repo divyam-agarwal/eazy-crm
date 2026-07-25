@@ -503,6 +503,40 @@ but the feature plainly works, suspect a group/package rename before anything el
 
 ---
 
+## Challenge 11 — An audit row must outlive the transaction it audits
+
+**Phase:** Implementation (P0-auth follow-up)
+
+### The problem
+
+Login records a `LOGIN_FAILED` audit event and then throws a generic 401. Both happened
+inside the same transaction — so the throw rolled the transaction back, and the
+`LOGIN_FAILED` row vanished with it. The audit log silently recorded *nothing* for failed
+logins: exactly the events you most want for detecting brute-force or credential-stuffing.
+`LOGIN_SUCCESS` was fine (it commits with the successful login); only the failure path lost
+its audit, because writing evidence and then aborting are fundamentally in tension when
+they share a transaction.
+
+### The solution
+
+Record the failure audit in its **own** transaction: a second `AuditService` method
+annotated `@Transactional(propagation = REQUIRES_NEW)`. Spring suspends the outer login
+transaction, runs the insert in a fresh transaction (whose `doBegin` re-sets the tenant GUC
+from the still-set `TenantContext`, so RLS passes), commits it, then resumes — and the
+subsequent `throw` rolls back only the outer transaction. The `LOGIN_FAILED` row is already
+durably committed. Success-path audits (`SIGNUP`, `LOGIN_SUCCESS`) stay on the default
+`REQUIRES` propagation, so they remain atomic with the operation they describe.
+
+### Lesson
+
+Audit/telemetry writes on a failure path must not share the transaction that fails, or they
+roll back with it — "log then throw" inside one transaction logs nothing. Use `REQUIRES_NEW`
+for records that must persist independently of the outcome, and keep success-path audits on
+`REQUIRES` so they stay atomic. Under RLS, the new transaction still needs the tenant context
+set, since it re-establishes the GUC at its own `doBegin`.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
