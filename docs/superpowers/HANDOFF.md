@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-25 (P0-auth core merged)
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -20,15 +20,16 @@ All under `docs/superpowers/`:
 1. **`../../CLAUDE.md`** (repo root) — working agreements loaded every session. **Non-negotiable rules live here.**
 2. **`specs/2026-07-22-easycrm-design.md`** — the full design spec (architecture, domain model, 4-layer isolation, import module, frontend plan, release plan). The source of truth for *what* to build.
 3. **`plans/2026-07-24-p0-tenant-isolation-foundation.md`** — P0 isolation plan (DONE, merged).
-4. **`plans/2026-07-25-p0-auth-core.md`** — P0-auth plan (**NOT started — this is the next work**).
-5. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (7 entries). Great context on the stack's quirks.
+4. **`plans/2026-07-25-p0-auth-core.md`** — P0-auth plan (**DONE, merged** — see §4 for what changed vs the plan).
+5. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (11 entries). Great context on the stack's quirks.
 6. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 
 ## 3. Current state
 
 - **Branch:** `main`. Working tree clean. Repo is local-only (no git remote).
-- **Merged & done:** the design docs + **P0 tenant-isolation foundation** (merge commit on `main`). 21 tests passing from a clean build.
-- **What P0 delivered:** the 4-layer multi-tenant isolation, all provably enforced by tests:
+- **Merged & done:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** (both merge commits on `main`). **50 tests passing** from a clean build (`cd backend && ./gradlew clean test`).
+- **What P0-auth delivered:** self-serve auth on top of the isolation foundation — atomic signup (tenant + first OWNER in one transaction), bcrypt login, rotating opaque JWT refresh tokens (SHA-256 at rest), tenant-scoped audit log, public auth endpoints with generic 401s. Lives under `com.easycrm.iam` (+ `platform.persistence.UuidV7`, `platform.error.{Conflict,Unauthorized}Exception`). Working `signup → login → GET /api/v1/auth/me → refresh` loop, all verified against Postgres + RLS.
+- **What P0 (isolation) delivered:** the 4-layer multi-tenant isolation, all provably enforced by tests:
   1. **JWT resolution** (`platform/security` — `JwtService`, `JwtAuthenticationFilter`, `SecurityConfig`)
   2. **Hibernate `@TenantId`** (`platform/tenancy` — `TenantIdentifierResolver`, `HibernateTenancyConfig`; `TenantScopedEntity`)
   3. **Postgres RLS** (`TenantAwareTransactionManager` sets `app.current_tenant` per transaction; policies use `NULLIF(current_setting('app.current_tenant', true), '')::uuid`)
@@ -37,12 +38,18 @@ All under `docs/superpowers/`:
 
 ## 4. THE NEXT TASK
 
-**Execute `plans/2026-07-25-p0-auth-core.md`** — 16 TDD tasks adding self-serve auth: signup (atomic tenant + first OWNER provisioning), bcrypt login, rotating JWT refresh tokens, tenant-scoped audit log. Ends with a working `signup → login → call protected API → refresh` loop.
+**P0-auth core is DONE and merged.** Pick the next chunk with the user (see §8). The two candidates are the **P0-auth follow-up** (invitations + visibility layer + rate limiting) or **P1 sales core** (customers, catalog, price lists, quotation engine, import module). Each goes: (spec →) writing-plans → executing-plans → finishing-a-development-branch.
 
-- Use the **superpowers:executing-plans** skill (inline) — this matched the project well for P0-isolation.
-- The plan is self-contained: each task has the failing test, the code, the exact `./gradlew` command, and a commit. Follow it task-by-task.
-- **Deferred to a later plan (do NOT build now):** invitations, record-level visibility layer (SALES_MANAGER/SALES_EXEC), rate limiting, real email provider.
-- **Key design decisions already locked** (don't relitigate): bcrypt (not Argon2), HS256 (not RS256), opaque refresh tokens hashed at rest, `refresh_token` is a *global* table (allowlisted) while `user`/`audit_log` are tenant-scoped, generic 401 (no enumeration). The intricate part is the `TenantBinder` (Task 7): signup inserts the first user in the same transaction that creates its tenant, so the tenant context is rebound mid-transaction.
+### What P0-auth changed vs its plan (read before extending auth)
+
+Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact with the stack and were changed (all logged in `engineering-challenges.md` #8–#11):
+
+- **No `TenantBinder`.** The plan's Task 7 rebound an *open* transaction to a new tenant mid-flight. That can't work: Hibernate resolves a session's tenant **once, at session-open**, and never re-reads it — so `@TenantId` kept writing the wrong tenant and the owner insert failed RLS `WITH CHECK`. **Instead:** `Tenant` carries an **application-assigned UUIDv7 id** (`platform.persistence.UuidV7`, and `Tenant` implements `Persistable` so `save()` inserts), and signup sets the tenant context **before** the `TransactionTemplate` transaction opens. `AuthService.signup/login/refresh` all follow this "set context, then open the tx" shape rather than being `@Transactional` themselves. (#9)
+- **RLS-scoped derived finders are `@Transactional(readOnly = true)`** (`UserRepository.findByEmail`, `AuditLogRepository.countByAction`). Spring Data doesn't wrap derived queries in a transaction by default, so without this the tenant GUC isn't set and RLS returns **zero rows** (fails safe, easy to miss). (#8)
+- **`LOGIN_FAILED` audit uses `AuditService.recordIndependently` (`REQUIRES_NEW`)** so it survives the rollback caused by the 401 throw. Success-path audits stay on default propagation. (#11)
+- **Jackson 3 gotcha:** Boot 4 ships Jackson under `tools.jackson`, not `com.fasterxml.jackson`. Tests extract JSON with jayway `JsonPath` to sidestep the mapper API. (#10)
+
+**Design decisions locked** (don't relitigate): bcrypt (not Argon2), HS256 (not RS256), opaque refresh tokens hashed at rest, `refresh_token` is a *global* allowlisted table while `app_user`/`audit_log` are tenant-scoped, generic 401 (no enumeration).
 
 ## 5. Environment (macOS, already set up)
 
