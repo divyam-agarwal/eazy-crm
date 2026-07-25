@@ -1,8 +1,10 @@
 package com.easycrm.iam;
 
 import com.easycrm.iam.web.dto.AuthResponse;
+import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.platform.error.ConflictException;
+import com.easycrm.platform.error.UnauthorizedException;
 import com.easycrm.platform.security.JwtService;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
@@ -71,6 +73,38 @@ public class AuthService {
                 String access = jwt.mint(tenant.getId(), owner.getId(), Role.OWNER.name());
                 String refresh = refreshTokens.issue(owner.getId(), tenant.getId());
                 return new AuthResponse(access, refresh, tenant.getId(), owner.getId(), Role.OWNER.name());
+            });
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /**
+     * Resolve the tenant by slug, bind the context BEFORE the transaction (so the RLS-scoped
+     * user lookup and audit run under the tenant), verify the bcrypt hash, and issue tokens.
+     * Every failure throws the same generic 401 (no slug/email enumeration).
+     */
+    public AuthResponse login(LoginRequest req) {
+        Tenant tenant = tenants.findBySlug(req.slug())
+            .orElseThrow(() -> new UnauthorizedException("invalid credentials"));
+        if (tenant.getStatus() == TenantStatus.SUSPENDED) {
+            throw new UnauthorizedException("invalid credentials");
+        }
+        TenantContext.set(new TenantContext.TenantPrincipal(tenant.getId(), null, "SYSTEM"));
+        try {
+            return tx.execute(status -> {
+                User user = users.findByEmail(req.email()).orElse(null);
+                if (user == null || user.getStatus() != UserStatus.ACTIVE
+                        || !encoder.matches(req.password(), user.getPasswordHash())) {
+                    if (user != null) {
+                        audit.record("LOGIN_FAILED", user.getId(), Map.of("email", req.email()));
+                    }
+                    throw new UnauthorizedException("invalid credentials");
+                }
+                audit.record("LOGIN_SUCCESS", user.getId(), Map.of());
+                String access = jwt.mint(tenant.getId(), user.getId(), user.getRole().name());
+                String refresh = refreshTokens.issue(user.getId(), tenant.getId());
+                return new AuthResponse(access, refresh, tenant.getId(), user.getId(), user.getRole().name());
             });
         } finally {
             TenantContext.clear();
