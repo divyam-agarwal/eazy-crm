@@ -382,9 +382,9 @@ default, so `doBegin` never runs, the GUC stays `''`, the RLS policy resolves
 just a silently empty result.
 
 Production never hits this: `findByEmail`/`findById` are always called from
-`@Transactional` service methods (login/signup) that have already bound the tenant via
-`TenantBinder`, so the GUC is set by the outer transaction. Only an isolated repository
-test that calls the finder with no surrounding transaction exposes it.
+`@Transactional` service methods (login/signup) that have already set the tenant context
+before the transaction (see #9), so the GUC is set by the outer transaction. Only an
+isolated repository test that calls the finder with no surrounding transaction exposes it.
 
 ### The solution
 
@@ -404,6 +404,68 @@ tenant-bound transaction, or annotate the finder `@Transactional` so the transac
 (and thus the GUC) always exists. And always confirm an isolation test bites: here the
 "pass" would have been a false empty if we hadn't cross-checked `findAll` against
 `findByEmail`.
+
+---
+
+## Challenge 9 — Provisioning a tenant-scoped row in the transaction that creates its tenant
+
+**Phase:** Implementation (P0-auth, Task 7 & 10)
+
+### The problem
+
+Signup must be atomic: create the tenant AND insert its first OWNER user in one
+transaction, so a crash can't leave a tenant with no way in. But the owner is a
+tenant-scoped entity — its `tenant_id` is filled by Hibernate `@TenantId` from the
+current tenant, and its insert must pass Postgres RLS `WITH CHECK` (the GUC
+`app.current_tenant` must equal the row's `tenant_id`). At the moment the transaction
+begins, the tenant does not exist yet, so neither the tenant context nor the GUC is set.
+
+The plan's first design was a `TenantBinder` that, mid-transaction, set the tenant
+context and re-issued `set_config('app.current_tenant', ...)` after the tenant row was
+created. It failed: the owner insert was rejected with *"new row violates row-level
+security policy for table app_user"* — `@TenantId` had written the wrong tenant.
+
+### Why it's hard
+
+Hibernate resolves a session's tenant identifier **once, when the session opens**, via
+`CurrentTenantIdentifierResolver`, and never re-reads it (confirmed in the Hibernate
+docs: the current tenant is "specified when opening a session"). In a Spring
+`@Transactional` method the `EntityManager`/session is opened at transaction begin —
+before the tenant exists — so it freezes as the NIL `NO_TENANT`. `TenantBinder` updated
+the `TenantContext` ThreadLocal and the GUC, but the already-open session kept its frozen
+tenant, so `@TenantId` still wrote `NO_TENANT` while the GUC was the real tenant →
+`WITH CHECK` mismatch. Setting the context *after* the session opened is simply too late.
+
+The symptom is easy to misread: `save()` only calls `persist()` and doesn't flush, so the
+INSERT (and the RLS failure) is deferred to commit/flush — until then everything looks
+fine and the in-memory `@TenantId` field is just `null`.
+
+### The solution
+
+Turn it around: set the tenant context **before** the transaction opens, so the session
+resolves the correct tenant at open. That requires the tenant id to be known up front, so
+`Tenant` uses an **application-assigned UUIDv7** id (generated in its constructor via
+`UuidV7`) instead of a Hibernate-generated one. Because a pre-set id makes Spring Data's
+`save()` take the merge/UPDATE path (and `em.persist` reject it as "detached"), `Tenant`
+implements `Persistable<UUID>` with a transient `isNew` flag (cleared on
+`@PostPersist`/`@PostLoad`) so `save()` issues a straight INSERT. Signup then:
+
+1. constructs the `Tenant` (id assigned now), 2. sets `TenantContext` to that id,
+3. runs tenant + owner inserts in one `TransactionTemplate` transaction — whose `doBegin`
+sets the GUC from the context and whose session opens already bound to the tenant.
+
+`@TenantId` fills the real tenant, RLS `WITH CHECK` passes, and both rows commit together.
+`TenantBinder` was deleted.
+
+### Lesson
+
+You cannot re-tenant an open Hibernate session; the tenant is fixed at session-open. When
+a tenant-scoped write must happen in the same transaction that creates the tenant, make
+the tenant id knowable *before* the transaction (application-assigned id) and set the
+context first — don't try to rebind mid-flight. And an application-assigned id needs
+`Persistable.isNew()`, or Spring Data/Hibernate will treat the entity as detached and
+UPDATE (or reject) instead of INSERT. Deferred flush also hides RLS violations until
+commit — force a flush when you want the check to bite in a test.
 
 ---
 
