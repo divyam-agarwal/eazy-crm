@@ -537,6 +537,40 @@ set, since it re-establishes the GUC at its own `doBegin`.
 
 ---
 
+## Challenge 12 — A primitive `boolean` in a request record silently turns "field omitted" into 400, not a default
+
+**Phase:** Implementation
+
+### The problem
+
+`ContactRequest` is a record deserialized from JSON by Jackson, with an `isPrimary` field
+typed as primitive `boolean`. Jackson (via the parameter-names/record module) constructs
+records by calling the canonical constructor with whatever it parsed — and for a JSON body
+that simply omits `isPrimary` (e.g. `{"name":"Ravi"}`), it tries to pass `null` into a
+`boolean` parameter. That fails fast with `HttpMessageNotReadableException`, which Spring
+maps to a **400**, before the request ever reaches the controller or service. A test meant
+to exercise "unknown customer → 404" instead observed a 400 from JSON binding, masking the
+behavior actually under test — the same bug would bite any real client that omits an
+optional boolean field expecting it to default.
+
+### The solution
+
+Box the field: `Boolean isPrimary` instead of `boolean isPrimary` in `ContactRequest`. A
+missing/null JSON field then binds to `null` cleanly (no primitive-unboxing failure at
+deserialization time), and `ContactService` converts it to a primitive with a null-safe,
+explicit default: `Boolean.TRUE.equals(req.isPrimary())` — `null` or `false` both become
+`false`, `true` stays `true`. The entity's constructor keeps its primitive `boolean primary`
+field; the boxing/defaulting lives entirely at the DTO→entity boundary in the service.
+
+### Lesson
+
+Never use a primitive type for an optional field in a Jackson-deserialized request DTO
+(record or class) — a primitive has no way to represent "absent," so Jackson's binding
+failure (400) preempts your intended default/validation logic. Box optional request fields
+and apply the default explicitly at the point you convert to a domain type.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

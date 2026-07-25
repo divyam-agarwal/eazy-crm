@@ -92,6 +92,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@GetMapping` | `org.springframework.web.bind.annotation` | Maps HTTP GET to a handler method. | Meta-annotated `@RequestMapping(method = GET)` |
 | `@PostMapping` | `org.springframework.web.bind.annotation` | Maps HTTP POST to a handler (`/auth/signup`, `/login`, `/refresh`, `/logout`, `ProductController` create/activate/deactivate). | Meta-annotated `@RequestMapping(method = POST)` |
 | `@PutMapping` | `org.springframework.web.bind.annotation` | Maps HTTP PUT to a handler (`ProductController.update`, full-resource replace semantics). | Meta-annotated `@RequestMapping(method = PUT)` |
+| `@DeleteMapping` | `org.springframework.web.bind.annotation` | Maps HTTP DELETE to a handler (`ContactController.delete`). | Meta-annotated `@RequestMapping(method = DELETE)` |
 | `@RequestBody` | `org.springframework.web.bind.annotation` | Binds/deserializes the JSON request body into a method parameter (the auth DTOs). | — |
 | `@PathVariable` | `org.springframework.web.bind.annotation` | Binds a URI template segment (`{id}`) to a method parameter. | — |
 | `@RequestParam` | `org.springframework.web.bind.annotation` | Binds a query-string parameter; `required = false` makes it optional (`ProductController.list`'s `active` filter — `Boolean` wrapper stays `null` when absent, meaning "no filter"). | — |
