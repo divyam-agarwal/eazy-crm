@@ -27,6 +27,12 @@ public class ApiExceptionHandler {
         return body(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), null);
     }
 
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<Map<String, Object>> validation(ValidationException ex) {
+        Map<String, Object> fields = new HashMap<>(ex.getFields());
+        return body(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "request is invalid", fields);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> invalid(MethodArgumentNotValidException ex) {
         Map<String, Object> fields = new HashMap<>();
