@@ -154,7 +154,7 @@ Pooled-connection detail: a custom `JpaTransactionManager` issues `SET LOCAL app
 
 | Concern | Approach |
 |---------|----------|
-| Auth | Argon2id passwords; 15-min access JWT; rotating refresh tokens (hashed at rest, revocable); rate-limited login (Bucket4j + Redis) |
+| Auth | bcrypt passwords (Spring Security `BCryptPasswordEncoder`); 15-min access JWT; rotating refresh tokens (hashed at rest, revocable); rate-limited login (Bucket4j + Redis) |
 | Authz | Method-level `@PreAuthorize` for role gating, **plus** a record-level visibility layer (see §6) |
 | Files | MinIO/S3, keys `tenant/{tenantId}/…`, access via short-lived pre-signed URLs |
 | DPDP Act | Per-tenant data export (JSON+CSV), hard-delete with 30-day grace, WhatsApp consent record, full audit log |
@@ -334,7 +334,7 @@ One deployable Spring Boot app, internally split into well-bounded modules — n
 com.easycrm
   ├─ platform/                 # cross-cutting, tenant-agnostic
   │   ├─ tenancy/              # TenantContext, resolver, TenantAwareTransactionManager, TaskDecorator
-  │   ├─ security/             # JWT filter, Argon2, @PreAuthorize config, rate limiting
+  │   ├─ security/             # JWT filter, bcrypt, @PreAuthorize config, rate limiting
   │   ├─ audit/                # audit-log aspect + store
   │   ├─ persistence/          # base entity, UUIDv7, auditing, money converters
   │   ├─ error/                # exception hierarchy + @RestControllerAdvice
@@ -439,7 +439,7 @@ Build order (each cheaper than the next; each stands alone): **diagram → four 
 
 ## 8. Open Items for the P0 Implementation Plan
 
-- Concrete choice of Argon2id parameters (memory/iterations/parallelism) and JWT signing (RS256 vs HS256 + key rotation).
+- bcrypt cost factor (default strength 10–12) and JWT signing (RS256 vs HS256 + key rotation).
 - `TenantAwareTransactionManager` implementation details and non-transactional-read configuration.
 - Signup/provisioning flow: tenant seeding with distributor-vertical defaults.
 - `document_sequence` locking strategy under concurrency (verified with a Testcontainers concurrency test).
