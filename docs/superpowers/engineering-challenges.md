@@ -571,6 +571,118 @@ and apply the default explicitly at the point you convert to a domain type.
 
 ---
 
+## Challenge 13 — Validating a GSTIN checksum (Luhn-mod-36)
+
+**Phase:** Implementation (P1a, Task 2/7)
+
+### The problem
+
+A GSTIN's 15th character is a check digit computed over the first 14 in base-36 (the
+GSTN's own algorithm), but a naive validator — "15 characters, right shape per
+character class" — accepts a **transposed or mistyped** character as long as the
+overall pattern still looks like a GSTIN. That's not a cosmetic bug: `customer.gstin`
+is the field the app later **splits** to derive `state_code` (first two characters)
+for the intra-state vs inter-state GST calculation, so a silently-wrong GSTIN
+corrupts a downstream calculation, not just a display field. And the mistake is
+exactly the kind a human keying in a paper form makes — right shape, wrong digit.
+
+### The solution
+
+The `Gstin` value type computes the checksum itself with the GSTN algorithm: iterate
+the first 14 characters right-to-left with an alternating factor of 2 then 1, fold
+each product with `d / 36 + d % 36` (base-36 digit sum), sum the folds, and the check
+character is `(36 − sum % 36) % 36` mapped back through the GSTN's base-36 alphabet.
+`Gstin.parse` rejects anything whose computed check character doesn't match the 15th
+character — an invalid GSTIN never reaches the DB — and `state_code` is derived from
+the now-trusted first two characters. Verified against a known-valid fixture
+(`27AAPFU0939F1ZV`) and the same GSTIN with its checksum character swapped
+(`…ZZ` in place of `…ZV`), which correctly fails.
+
+### Lesson
+
+Encode a domain check-digit algorithm as a **parse-don't-validate** value type once,
+so every caller gets a `Gstin` that is already known-correct rather than a raw string
+that might not be — and reuse it everywhere the identifier appears (P1a customer
+entry now, the planned P1c bulk import later), instead of re-validating ad hoc at
+each entry point. Always pin the fixture pair (one valid, one checksum-broken) in the
+test — a shape-only regex would pass both and never catch the regression.
+
+---
+
+## Challenge 14 — The override-rate / discount-percent XOR, and `BigDecimal` equality
+
+**Phase:** Implementation (P1a, Task 12/13)
+
+### The problem
+
+A `PriceListItem` must carry **exactly one** of an absolute override rate or a
+discount percent — "both set" and "neither set" are both meaningless states, not
+just unusual ones — so the invariant needs enforcing, not just documenting. Separately,
+`Product.gstRate` must be one of India's fixed GST slabs (0, 0.25, 3, 5, 12, 18, 28),
+and checking membership in that allowed set ran into `BigDecimal`'s scale-sensitive
+`equals`: `new BigDecimal("18").equals(new BigDecimal("18.0"))` is **false**, because
+`equals` compares scale as well as value. A rate parsed as `"18.0"` (trailing zero
+from a form or an import file) silently fails to match `"18"` in an allowed-set check
+written with `.equals()` or a `Set.contains()` backed by it — the guard looks correct
+and passes code review, but rejects valid input it was written to accept.
+
+### The solution
+
+Enforce the XOR at two independent layers: a Postgres `CHECK
+(num_nonnulls(override_rate, discount_pct) = 1)` on the table, and an app-level
+`ValidationException` (422) in `PriceListItemService` so the common case gets a
+friendly field-level error instead of a raw constraint-violation 500/409. For rate
+comparison, use `compareTo(...) == 0` (or a set membership check that normalizes
+scale first via `stripTrailingZeros()`/explicit `compareTo` loop) — never `equals`
+or an `equals`-backed `Set.contains()` — for any `BigDecimal` value-equality check.
+
+### Lesson
+
+An invariant worth a DB `CHECK` is also worth an app-level 422: the constraint is the
+backstop that can never be bypassed, the app-level check is the one that gives users
+a usable error instead of a database exception. And treat `BigDecimal.equals` as
+scale-sensitive by default — reach for `compareTo` (or explicit normalization)
+anywhere you're testing "is this the same *number*," since two textually different
+but numerically equal decimals are a routine occurrence wherever rates cross a
+form/import boundary.
+
+---
+
+## Challenge 15 — Defence in depth for uniqueness: friendly 409 vs the race the DB alone would allow
+
+**Phase:** Implementation (P1a, Task 7b + throughout)
+
+### The problem
+
+Several P1a entities have a uniqueness rule that matters to the business (e.g. a
+customer's GSTIN, a SKU) but isn't the primary key. Checking "does this already
+exist?" in the service layer before insert gives a clean, field-attributed 409 for
+the overwhelmingly common case — but by itself it's a **check-then-act race**: two
+concurrent requests can both pass the pre-check before either commits, and both
+insert, leaving a duplicate the app-level check was supposed to prevent. The
+update path has the same gap under any concurrent-edit timing.
+
+### The solution
+
+Two layers, not one: a DB-level unique constraint is the fact that can never be
+violated regardless of timing, and a global `@ExceptionHandler(
+DataIntegrityViolationException.class)` in `ApiExceptionHandler` (added in Task 7b,
+ahead of the original plan) catches the constraint violation on the rare race/update
+case and still returns a 409 rather than letting it surface as a raw 500. The
+app-level pre-check stays as the fast, friendly path; the DB constraint plus handler
+is the backstop that makes the guarantee actually hold under concurrency, at the cost
+of a less specific error message on the rare race.
+
+### Lesson
+
+A service-layer "does it already exist" check is a UX nicety, not a correctness
+guarantee — only a DB constraint is atomic with the insert. Pair the two: check
+first for a good error message, constrain always for correctness, and translate the
+constraint violation centrally (one exception handler) rather than wrapping every
+write site in its own try/catch.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
