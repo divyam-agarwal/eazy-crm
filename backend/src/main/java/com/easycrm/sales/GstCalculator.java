@@ -30,17 +30,18 @@ public final class GstCalculator {
         BigDecimal discountFactor = BigDecimal.ONE.subtract(discount.divide(HUNDRED));
         BigDecimal taxable = round(gross.multiply(discountFactor));
 
-        BigDecimal tax = round(taxable.multiply(in.gstRate()).divide(HUNDRED));
         BigDecimal cgst = BigDecimal.ZERO.setScale(2);
         BigDecimal sgst = BigDecimal.ZERO.setScale(2);
         BigDecimal igst = BigDecimal.ZERO.setScale(2);
         if (interState) {
-            igst = tax;
+            igst = round(taxable.multiply(in.gstRate()).divide(HUNDRED));
         } else {
-            // Split the total tax so cgst + sgst == tax exactly (avoid a stray 0.01 from
-            // rounding half twice): round one half, derive the other as remainder.
-            cgst = round(taxable.multiply(in.gstRate()).divide(TWO).divide(HUNDRED));
-            sgst = tax.subtract(cgst);
+            // CGST and SGST each rounded INDEPENDENTLY to 2 dp — matches Tally's two
+            // half-rate lines (challenge #2). Their sum can legitimately differ by 0.01
+            // from a single-rate calc; that is the correct Tally behavior.
+            BigDecimal half = round(taxable.multiply(in.gstRate()).divide(TWO).divide(HUNDRED));
+            cgst = half;
+            sgst = half;
         }
         BigDecimal lineTotal = taxable.add(cgst).add(sgst).add(igst);
         return new LineResult(taxable, cgst, sgst, igst, lineTotal);

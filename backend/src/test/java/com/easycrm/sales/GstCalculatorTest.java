@@ -74,4 +74,16 @@ class GstCalculatorTest {
         assertThat(t.totalTax()).isEqualByComparingTo("42.00");    // (18+18) + 6
         assertThat(t.grandTotal()).isEqualByComparingTo("292.00");
     }
+
+    @Test
+    void intraStateRoundsEachHalfIndependentlyMatchingTally() {
+        // taxable 1.00 @ 1% → each half = round(1.00*1/2/100) = round(0.005) = 0.01.
+        // Independent rounding yields 0.01 + 0.01 = 0.02 total tax (Tally's two half-rate
+        // lines), NOT the 0.01 a single-rate calc would give.
+        var in = new GstCalculator.LineInput(bd("1"), bd("1.00"), BigDecimal.ZERO, bd("1"));
+        var r = GstCalculator.computeLine(in, false);
+        assertThat(r.cgst()).isEqualByComparingTo("0.01");
+        assertThat(r.sgst()).isEqualByComparingTo("0.01");
+        assertThat(r.lineTotal()).isEqualByComparingTo("1.02");
+    }
 }
