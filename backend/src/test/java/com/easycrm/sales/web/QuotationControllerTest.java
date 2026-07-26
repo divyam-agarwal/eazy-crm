@@ -73,6 +73,20 @@ class QuotationControllerTest extends IntegrationTest {
     }
 
     @Test
+    void rejectsNegativeClientSuppliedRateWith422() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String[] ids = seed(auth, "27");
+        String body = """
+            {"customerId":"%s","items":[{"productId":"%s","qty":"2","rate":"-1"}]}"""
+            .formatted(ids[0], ids[1]);
+
+        mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.error.fields['items[0].rate']").exists());
+    }
+
+    @Test
     void getReturns404ForOtherTenant() throws Exception {
         String authA = "Bearer " + tokens.provisionOwner("27").token();
         String[] ids = seed(authA, "27");

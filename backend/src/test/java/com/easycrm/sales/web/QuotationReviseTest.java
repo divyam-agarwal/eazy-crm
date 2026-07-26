@@ -70,6 +70,24 @@ class QuotationReviseTest extends IntegrationTest {
     }
 
     @Test
+    void reviseThenResendKeepsSameQuoteNo() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String id = createAndSend(auth);
+        String sentBody = mvc.perform(get("/api/v1/quotations/" + id).header("Authorization", auth))
+            .andReturn().getResponse().getContentAsString();
+        String quoteNo = JsonPath.read(sentBody, "$.quoteNo");
+
+        mvc.perform(post("/api/v1/quotations/" + id + "/revise").header("Authorization", auth))
+            .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/quotations/" + id + "/send").header("Authorization", auth))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("SENT"))
+            .andExpect(jsonPath("$.quoteNo").value(quoteNo)) // unchanged across resend
+            .andExpect(jsonPath("$.currentVersion.versionNo").value(2));
+    }
+
+    @Test
     void revisingADraftReturns422() throws Exception {
         String auth = "Bearer " + tokens.provisionOwner("27").token();
         String id = createAndSend(auth);

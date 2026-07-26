@@ -855,6 +855,52 @@ whenever you need to build on top of a frozen artifact without disturbing it.
 
 ---
 
+## Challenge 19 — `send()` on a revised draft silently reassigned `quote_no`
+
+**Phase:** Implementation (P1b, final review)
+
+### The problem
+
+`send(id)` unconditionally called `q.assignQuoteNo(documentNumbers.nextQuoteNo(...))`
+before `q.markSent()`. That's correct the *first* time a draft is sent, but
+`revise()` deliberately sets `Quotation.status` back to `DRAFT` while **keeping**
+the existing `quote_no` (challenge #18) so the trader can edit before re-sending.
+Sending that revised draft again re-entered the same unconditional assignment
+path: it pulled a brand-new gapless number from the counter (challenge #16) and
+overwrote the original one the customer had already seen on the first version —
+silently breaking the "quote_no assigned once, retained across revisions"
+invariant the spec requires, and burning a counter value for nothing on every
+resend.
+
+### Why it's hard
+
+Nothing about `send()`'s code looked wrong in isolation — "assign a number, mark
+sent" reads as the obvious happy path, and every test written against a
+fresh draft (`create → send`) passed. The bug only appears on the *second* send
+of a given quotation's lifecycle (`create → send → revise → send`), a path that's
+easy to leave uncovered because `revise` and `send` were built and tested as
+separate tasks against fresh drafts, not chained into the full round-trip a real
+trader performs.
+
+### The solution
+
+Guard the assignment on absence, not on being in `send()` at all: `if
+(q.getQuoteNo() == null) { q.assignQuoteNo(...); }` before `q.markSent()`. A
+first-ever send has `quote_no == null` and gets one assigned; a resend after
+`revise()` already has a non-null `quote_no` (revise never clears it) and skips
+straight to `markSent()`, leaving the original number untouched.
+
+### Lesson
+
+"Assigned once, retained forever" invariants need to be tested across their full
+state-machine cycle (`draft → sent → draft → sent`, not just `draft → sent`) —
+a single-transition test suite can be 100% green while silently missing the
+one transition (re-entering a state) where the bug actually lives. When a field
+is meant to be write-once, guard the write with "is it already set?", not with
+"which endpoint am I in?".
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

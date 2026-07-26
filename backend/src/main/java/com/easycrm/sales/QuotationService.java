@@ -124,7 +124,9 @@ public class QuotationService {
         }
         QuotationVersion v = versions.findById(q.getCurrentVersionId())
             .orElseThrow(() -> new NotFoundException("quotation version not found"));
-        q.assignQuoteNo(documentNumbers.nextQuoteNo(LocalDate.now()));
+        if (q.getQuoteNo() == null) {
+            q.assignQuoteNo(documentNumbers.nextQuoteNo(LocalDate.now()));
+        }
         q.markSent();
         v.markSent(Instant.now());
         return toResponse(q);
@@ -201,6 +203,9 @@ public class QuotationService {
                     && (ir.discountPct().compareTo(BigDecimal.ZERO) < 0
                         || ir.discountPct().compareTo(new BigDecimal("100")) > 0)) {
                 errors.put("items[" + idx + "].discountPct", "discount must be between 0 and 100");
+            }
+            if (ir.rate() != null && ir.rate().compareTo(BigDecimal.ZERO) < 0) {
+                errors.put("items[" + idx + "].rate", "rate must not be negative");
             }
             idx++;
         }
