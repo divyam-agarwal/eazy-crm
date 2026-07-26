@@ -9,8 +9,11 @@ import com.easycrm.sales.web.dto.ItemRequest;
 import com.easycrm.sales.web.dto.QuotationCreateRequest;
 import com.easycrm.sales.web.dto.QuotationResponse;
 import com.easycrm.sales.web.dto.QuotationVersionResponse;
+import com.easycrm.platform.web.PageResponse;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,6 +63,31 @@ public class QuotationService {
     @Transactional(readOnly = true)
     public QuotationResponse get(UUID id) {
         return toResponse(findQuotation(id));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<QuotationResponse> list(QuotationStatus status, UUID customerId, Pageable pageable) {
+        Page<Quotation> page;
+        if (status != null) page = quotations.findByStatus(status, pageable);
+        else if (customerId != null) page = quotations.findByCustomerId(customerId, pageable);
+        else page = quotations.findAll(pageable);
+        return PageResponse.of(page.map(this::toResponse));
+    }
+
+    @Transactional(readOnly = true)
+    public List<QuotationVersionResponse> getVersions(UUID quotationId) {
+        findQuotation(quotationId); // 404 if not visible
+        return versions.findByQuotationIdOrderByVersionNoAsc(quotationId).stream()
+            .map(v -> QuotationVersionResponse.of(v, items.findByVersionId(v.getId())))
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public QuotationVersionResponse getVersion(UUID quotationId, int versionNo) {
+        findQuotation(quotationId);
+        QuotationVersion v = versions.findByQuotationIdAndVersionNo(quotationId, versionNo)
+            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+        return QuotationVersionResponse.of(v, items.findByVersionId(v.getId()));
     }
 
     // --- shared helpers used by later tasks (edit/send/revise) ---
