@@ -73,4 +73,7 @@ public class QuotationController {
 
     @PostMapping("/{id}/send")
     public QuotationResponse send(@PathVariable UUID id) { return service.send(id); }
+
+    @PostMapping("/{id}/revise")
+    public QuotationResponse revise(@PathVariable UUID id) { return service.revise(id); }
 }

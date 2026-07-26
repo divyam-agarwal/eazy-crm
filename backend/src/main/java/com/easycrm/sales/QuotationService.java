@@ -130,6 +130,31 @@ public class QuotationService {
         return toResponse(q);
     }
 
+    @Transactional
+    public QuotationResponse revise(UUID id) {
+        Quotation q = findQuotation(id);
+        if (q.getStatus() != QuotationStatus.SENT) {
+            throw new ValidationException("status", "only a sent quotation can be revised");
+        }
+        QuotationVersion prev = versions.findById(q.getCurrentVersionId())
+            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+        QuotationVersion next = versions.save(
+            new QuotationVersion(q.getId(), prev.getVersionNo() + 1, prev.getPlaceOfSupply()));
+        next.setHeader(prev.getValidUntil(), prev.getPaymentTerms(),
+                       prev.getDeliveryTerms(), prev.getNotes());
+        // Copy the previous version's frozen items verbatim (already-computed values).
+        for (QuotationItem s : items.findByVersionId(prev.getId())) {
+            items.save(new QuotationItem(next.getId(), s.getProductId(), s.getNameSnapshot(),
+                s.getHsnSnapshot(), s.getUomSnapshot(), s.getQty(), s.getRate(), s.getDiscountPct(),
+                s.getGstRate(), s.getTaxableValue(), s.getCgst(), s.getSgst(), s.getIgst(),
+                s.getLineTotal()));
+        }
+        next.setTotals(prev.getSubTotal(), prev.getTotalTax(), prev.getGrandTotal());
+        q.setCurrentVersionId(next.getId());
+        q.reviseToDraft();
+        return toResponse(q);
+    }
+
     /** The current version must be an editable DRAFT; a SENT (frozen) version is immutable. */
     private QuotationVersion requireDraft(Quotation q) {
         if (q.getStatus() != QuotationStatus.DRAFT) {
