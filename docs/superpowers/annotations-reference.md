@@ -80,6 +80,14 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@CreatedDate` | `org.springframework.data.annotation` | Field auto-set to creation timestamp (needs `@EnableJpaAuditing`). | — |
 | `@LastModifiedDate` | `org.springframework.data.annotation` | Field auto-updated on every save. | — |
 
+## 4a. Spring Data JPA repositories (query & locking)
+
+| Annotation | Origin | Purpose | Composed of / inherits |
+|---|---|---|---|
+| `@Query` | `org.springframework.data.jpa.repository` | Supplies an explicit JPQL query for a repository method, overriding derived-query-by-method-name (`DocumentCounterRepository.findForUpdate`, keyed on `docType`+`fy` — the tenant filter still applies via `@TenantId`, see challenge #8). | — |
+| `@Param` | `org.springframework.data.repository.query` | Binds a method parameter to a named `:param` placeholder in an `@Query` string. | — |
+| `@Lock` | `org.springframework.data.jpa.repository` | Forces a `LockModeType` on the query's execution; `PESSIMISTIC_WRITE` compiles to `SELECT … FOR UPDATE`, serializing concurrent readers of the same row (`DocumentCounterRepository.findForUpdate`, so concurrent quote sends within a tenant/FY get gapless numbers — must run inside the caller's tenant-bound `@Transactional`, or the lock is never acquired inside a real transaction). | — |
+
 ## 5. DI / stereotypes in use
 
 | Annotation | Origin | Purpose | Composed of / inherits |

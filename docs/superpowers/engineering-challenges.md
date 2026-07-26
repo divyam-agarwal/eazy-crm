@@ -683,6 +683,65 @@ write site in its own try/catch.
 
 ---
 
+## Challenge 16 — Gapless document numbering: why not a DB sequence, and how rollback avoids burning a number
+
+**Phase:** Implementation (P1b, Task 3)
+
+### The problem
+
+Quote numbers (`QT/25-26/0001`) must be gapless per tenant per financial year:
+distributors notice a missing number and assume a lost document. Three naive
+approaches all fail:
+
+- A Postgres `SEQUENCE` per doc type is the obvious tool, but it doesn't reset
+  cleanly per financial year (Apr 1) or per tenant without one sequence object
+  per tenant/FY/doc-type combination — an unbounded, hard-to-provision set of
+  DB objects — and a rolled-back transaction still permanently burns the
+  sequence value it fetched (sequences are non-transactional by design), which
+  is exactly the gap we're trying to avoid.
+- Reading the counter with a plain `SELECT` then `UPDATE` (optimistic, no lock)
+  lets two concurrent sends read the same `next_val`, both increment from it,
+  and both format the same quote number — a duplicate, worse than a gap.
+- `@Version`-based optimistic locking avoids the duplicate but turns the second
+  concurrent sender into a retry-or-fail path, which is unnecessary complexity
+  for a row that's contended for microseconds.
+
+### The solution
+
+One row per `(tenant_id, doc_type, fy)` in `document_counter`, read via
+`@Lock(LockModeType.PESSIMISTIC_WRITE)` → `SELECT … FOR UPDATE`. The lock is
+acquired and released by the **caller's** transaction (`nextQuoteNo` is
+`@Transactional` with default `REQUIRED` propagation, so it joins rather than
+opens its own tx). That single property gives both correctness properties for
+free:
+
+- **Gapless under concurrency:** a second sender blocks on the row lock until
+  the first commits or rolls back, so two sends never read the same
+  `next_val` — no retries needed, just a short wait.
+- **Rollback burns nothing:** if the caller's send transaction rolls back
+  (e.g. downstream PDF generation fails), the increment to `next_val` rolls
+  back with it and the lock releases — the *same* number is handed to the next
+  successful send. Tested directly: `rolledBackSendConsumesNoNumber` opens a
+  `TransactionTemplate`, calls `nextQuoteNo`, forces `setRollbackOnly()`, then
+  asserts the very next call reuses suffix `0001`.
+
+The FY label itself (`25-26` for any date Apr-2025–Mar-2026) is computed, not
+stored redundantly anywhere else — `financialYear(LocalDate)` is a pure static
+function so both the counter lookup key and any display logic derive from the
+same rule.
+
+### Lesson
+
+Gapless + concurrent-safe is a row-locking problem, not a sequence-generator
+problem, whenever "no gaps" has to survive a rollback — sequences are
+deliberately non-transactional (that's what makes them fast), which is the
+opposite of what a gapless invariant needs. Let the counter mutation ride
+inside the same transaction as the business action that "spends" the number,
+and pessimistic-lock the read; the transaction boundary does the rollback-safety
+work for free.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
