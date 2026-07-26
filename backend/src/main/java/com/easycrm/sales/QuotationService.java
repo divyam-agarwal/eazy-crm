@@ -164,6 +164,28 @@ public class QuotationService {
             .orElseThrow(() -> new NotFoundException("quotation version not found"));
     }
 
+    @Transactional
+    public QuotationResponse reject(UUID id) {
+        Quotation q = findQuotation(id);
+        requireSent(q, "rejected");
+        q.reject();
+        return toResponse(q);
+    }
+
+    @Transactional
+    public QuotationResponse expire(UUID id) {
+        Quotation q = findQuotation(id);
+        requireSent(q, "expired");
+        q.expire();
+        return toResponse(q);
+    }
+
+    private void requireSent(Quotation q, String verb) {
+        if (q.getStatus() != QuotationStatus.SENT) {
+            throw new ValidationException("status", "only a sent quotation can be " + verb);
+        }
+    }
+
     // --- shared helpers used by later tasks (edit/send/revise) ---
 
     /** Recomputes item lines + version totals from the given item requests. Assumes DRAFT. */

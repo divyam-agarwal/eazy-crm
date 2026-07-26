@@ -76,4 +76,10 @@ public class QuotationController {
 
     @PostMapping("/{id}/revise")
     public QuotationResponse revise(@PathVariable UUID id) { return service.revise(id); }
+
+    @PostMapping("/{id}/reject")
+    public QuotationResponse reject(@PathVariable UUID id) { return service.reject(id); }
+
+    @PostMapping("/{id}/expire")
+    public QuotationResponse expire(@PathVariable UUID id) { return service.expire(id); }
 }
