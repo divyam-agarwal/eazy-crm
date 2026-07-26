@@ -6,7 +6,9 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.sales.web.dto.ItemRequest;
+import com.easycrm.sales.web.dto.ItemsRequest;
 import com.easycrm.sales.web.dto.QuotationCreateRequest;
+import com.easycrm.sales.web.dto.QuotationHeaderRequest;
 import com.easycrm.sales.web.dto.QuotationResponse;
 import com.easycrm.sales.web.dto.QuotationVersionResponse;
 import com.easycrm.platform.web.PageResponse;
@@ -88,6 +90,34 @@ public class QuotationService {
         QuotationVersion v = versions.findByQuotationIdAndVersionNo(quotationId, versionNo)
             .orElseThrow(() -> new NotFoundException("quotation version not found"));
         return QuotationVersionResponse.of(v, items.findByVersionId(v.getId()));
+    }
+
+    @Transactional
+    public QuotationResponse patchHeader(UUID id, QuotationHeaderRequest req) {
+        Quotation q = findQuotation(id);
+        QuotationVersion v = requireDraft(q);
+        v.setHeader(req.validUntil(), req.paymentTerms(), req.deliveryTerms(), req.notes());
+        return toResponse(q);
+    }
+
+    @Transactional
+    public QuotationResponse replaceItems(UUID id, ItemsRequest req) {
+        Quotation q = findQuotation(id);
+        QuotationVersion v = requireDraft(q);
+        items.deleteByVersionId(v.getId());
+        Customer customer = customers.findById(q.getCustomerId())
+            .orElseThrow(() -> new NotFoundException("customer not found"));
+        buildItems(v, q.getCustomerId(), req.items(), isInterState(customer.getStateCode()));
+        return toResponse(q);
+    }
+
+    /** The current version must be an editable DRAFT; a SENT (frozen) version is immutable. */
+    private QuotationVersion requireDraft(Quotation q) {
+        if (q.getStatus() != QuotationStatus.DRAFT) {
+            throw new ValidationException("status", "only a draft quotation can be edited");
+        }
+        return versions.findById(q.getCurrentVersionId())
+            .orElseThrow(() -> new NotFoundException("quotation version not found"));
     }
 
     // --- shared helpers used by later tasks (edit/send/revise) ---
