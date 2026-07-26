@@ -14,65 +14,62 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class QuotationEditTest extends IntegrationTest {
+class QuotationSendTest extends IntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired TestTokens tokens;
 
     @AfterEach void clear() { TenantContext.clear(); }
 
-    private String[] seedIds(String auth) throws Exception {
+    private String createDraft(String auth) throws Exception {
         String cust = """
             {"businessName":"Acme","stateCode":"27","source":"MANUAL"}""";
-        String cBody = mvc.perform(post("/api/v1/customers").header("Authorization", auth)
+        String cId = JsonPath.read(mvc.perform(post("/api/v1/customers").header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content(cust))
-            .andReturn().getResponse().getContentAsString();
+            .andReturn().getResponse().getContentAsString(), "$.id");
         String prod = """
             {"sku":"SKU-%s","name":"W","hsnCode":"84818090","uom":"PCS","gstRate":"18","baseRate":"100.00"}"""
             .formatted(UUID.randomUUID().toString().substring(0, 8));
-        String pBody = mvc.perform(post("/api/v1/products").header("Authorization", auth)
+        String pId = JsonPath.read(mvc.perform(post("/api/v1/products").header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content(prod))
-            .andReturn().getResponse().getContentAsString();
-        return new String[]{JsonPath.read(cBody, "$.id"), JsonPath.read(pBody, "$.id")};
-    }
-
-    private String createDraft(String auth, String[] ids) throws Exception {
+            .andReturn().getResponse().getContentAsString(), "$.id");
         String body = """
-            {"customerId":"%s","items":[{"productId":"%s","qty":"1"}]}"""
-            .formatted(ids[0], ids[1]);
+            {"customerId":"%s","items":[{"productId":"%s","qty":"1"}]}""".formatted(cId, pId);
         return JsonPath.read(mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andReturn().getResponse().getContentAsString(), "$.id");
     }
 
     @Test
-    void replacesItemsAndRecomputesTotals() throws Exception {
+    void sendAssignsGaplessNumberAndFreezes() throws Exception {
         String auth = "Bearer " + tokens.provisionOwner("27").token();
-        String[] ids = seedIds(auth);
-        String id = createDraft(auth, ids);
-        String items = """
-            {"items":[{"productId":"%s","qty":"5"}]}""".formatted(ids[1]);
-        mvc.perform(put("/api/v1/quotations/" + id + "/items").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content(items))
+        String id1 = createDraft(auth);
+        String id2 = createDraft(auth);
+
+        mvc.perform(post("/api/v1/quotations/" + id1 + "/send").header("Authorization", auth))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.currentVersion.subTotal").value("500.00"));
+            .andExpect(jsonPath("$.status").value("SENT"))
+            .andExpect(jsonPath("$.quoteNo").value(matchesPattern("QT/\\d{2}-\\d{2}/0001")))
+            .andExpect(jsonPath("$.currentVersion.status").value("SENT"))
+            .andExpect(jsonPath("$.currentVersion.sentAt").exists());
+
+        mvc.perform(post("/api/v1/quotations/" + id2 + "/send").header("Authorization", auth))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.quoteNo").value(matchesPattern("QT/\\d{2}-\\d{2}/0002")));
     }
 
     @Test
-    void editingItemsOnSentVersionReturns422() throws Exception {
+    void sendingAlreadySentReturns422() throws Exception {
         String auth = "Bearer " + tokens.provisionOwner("27").token();
-        String[] ids = seedIds(auth);
-        String id = createDraft(auth, ids);
+        String id = createDraft(auth);
         mvc.perform(post("/api/v1/quotations/" + id + "/send").header("Authorization", auth))
             .andExpect(status().isOk());
-        String items = """
-            {"items":[{"productId":"%s","qty":"9"}]}""".formatted(ids[1]);
-        mvc.perform(put("/api/v1/quotations/" + id + "/items").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content(items))
+        mvc.perform(post("/api/v1/quotations/" + id + "/send").header("Authorization", auth))
             .andExpect(status().isUnprocessableEntity());
     }
 }

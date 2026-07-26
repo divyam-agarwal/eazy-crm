@@ -70,4 +70,7 @@ public class QuotationController {
                                           @Valid @RequestBody ItemsRequest req) {
         return service.replaceItems(id, req);
     }
+
+    @PostMapping("/{id}/send")
+    public QuotationResponse send(@PathVariable UUID id) { return service.send(id); }
 }

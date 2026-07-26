@@ -20,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,16 +37,19 @@ public class QuotationService {
     private final CustomerRepository customers;
     private final TenantRepository tenants;
     private final PriceResolver priceResolver;
+    private final DocumentNumberService documentNumbers;
 
     public QuotationService(QuotationRepository quotations, QuotationVersionRepository versions,
                             QuotationItemRepository items, CustomerRepository customers,
-                            TenantRepository tenants, PriceResolver priceResolver) {
+                            TenantRepository tenants, PriceResolver priceResolver,
+                            DocumentNumberService documentNumbers) {
         this.quotations = quotations;
         this.versions = versions;
         this.items = items;
         this.customers = customers;
         this.tenants = tenants;
         this.priceResolver = priceResolver;
+        this.documentNumbers = documentNumbers;
     }
 
     @Transactional
@@ -108,6 +113,20 @@ public class QuotationService {
         Customer customer = customers.findById(q.getCustomerId())
             .orElseThrow(() -> new NotFoundException("customer not found"));
         buildItems(v, q.getCustomerId(), req.items(), isInterState(customer.getStateCode()));
+        return toResponse(q);
+    }
+
+    @Transactional
+    public QuotationResponse send(UUID id) {
+        Quotation q = findQuotation(id);
+        if (q.getStatus() != QuotationStatus.DRAFT) {
+            throw new ValidationException("status", "only a draft quotation can be sent");
+        }
+        QuotationVersion v = versions.findById(q.getCurrentVersionId())
+            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+        q.assignQuoteNo(documentNumbers.nextQuoteNo(LocalDate.now()));
+        q.markSent();
+        v.markSent(Instant.now());
         return toResponse(q);
     }
 
