@@ -113,6 +113,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Valid` | `jakarta.validation` | On a `@RequestBody` parameter, triggers Bean Validation of the DTO; a violation raises `MethodArgumentNotValidException` → mapped to 400. | — |
 | `@NotBlank` | `jakarta.validation.constraints` | String must be non-null and contain non-whitespace (slug, email, password, etc.). | Meta-annotated `@Constraint` |
 | `@NotNull` | `jakarta.validation.constraints` | Field must be non-null (structural presence only, no content check — `ProductCreateRequest.uom/gstRate/baseRate`, where `@NotBlank` doesn't apply because the type isn't `String`). | Meta-annotated `@Constraint` |
+| `@NotEmpty` | `jakarta.validation.constraints` | Collection/string must be non-null **and** non-empty (`QuotationCreateRequest.items` — a quotation with zero lines is rejected with 400 before the service layer runs). | Meta-annotated `@Constraint`; composes `@NotNull` + `@Size(min = 1)` semantics |
 | `@Email` | `jakarta.validation.constraints` | String must look like an email address (`SignupRequest.email`). | Meta-annotated `@Constraint` |
 | `@Size` | `jakarta.validation.constraints` | Length/size bounds (`password` min 8). | Meta-annotated `@Constraint` |
 | `@Pattern` | `jakarta.validation.constraints` | String must match a regex (`slug` charset, 2-digit `stateCode`). | Meta-annotated `@Constraint` |
