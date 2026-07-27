@@ -83,4 +83,60 @@ class QuotationAcceptTest extends IntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.poReference").doesNotExist());
     }
+
+    @Test
+    void reAcceptReturnsSameOrderAndCreatesNoSecondOrder() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String qId = createSent(auth);
+
+        String firstOrderId = JsonPath.read(mvc.perform(post("/api/v1/quotations/" + qId + "/accept")
+                .header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(), "$.id");
+
+        String secondOrderId = JsonPath.read(mvc.perform(post("/api/v1/quotations/" + qId + "/accept")
+                .header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(), "$.id");
+
+        // Same order returned. "No second row" is additionally guaranteed by the
+        // UNIQUE(tenant_id, quotation_id) constraint proven in Task 1 — a second insert
+        // would have thrown, not returned a different id.
+        org.assertj.core.api.Assertions.assertThat(secondOrderId).isEqualTo(firstOrderId);
+    }
+
+    @Test
+    void acceptingADraftIsRejected() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        // create a draft but do NOT send it
+        String cust = """
+            {"businessName":"Acme","stateCode":"27","source":"MANUAL"}""";
+        String cId = JsonPath.read(mvc.perform(post("/api/v1/customers").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(cust))
+            .andReturn().getResponse().getContentAsString(), "$.id");
+        String prod = """
+            {"sku":"SKU-%s","name":"W","hsnCode":"84818090","uom":"PCS","gstRate":"18","baseRate":"100.00"}"""
+            .formatted(UUID.randomUUID().toString().substring(0, 8));
+        String pId = JsonPath.read(mvc.perform(post("/api/v1/products").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(prod))
+            .andReturn().getResponse().getContentAsString(), "$.id");
+        String body = """
+            {"customerId":"%s","items":[{"productId":"%s","qty":"1"}]}""".formatted(cId, pId);
+        String qId = JsonPath.read(mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andReturn().getResponse().getContentAsString(), "$.id");
+
+        mvc.perform(post("/api/v1/quotations/" + qId + "/accept").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void acceptingARejectedQuotationIsRejected() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String qId = createSent(auth);
+        mvc.perform(post("/api/v1/quotations/" + qId + "/reject").header("Authorization", auth))
+            .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/quotations/" + qId + "/accept").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isUnprocessableEntity());
+    }
 }
