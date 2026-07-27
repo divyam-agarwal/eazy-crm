@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
@@ -63,5 +64,32 @@ class EnquiryRepositoryTest extends IntegrationTest {
         assertThatCode(() ->
             tx.executeWithoutResult(s -> enquiries.saveAndFlush(active("7776665554"))))
             .doesNotThrowAnyException();
+    }
+
+    @Test
+    void staleUpdateThrowsOptimisticLockingFailure() {
+        UUID tenant = UUID.randomUUID();
+        TenantContext.set(new TenantPrincipal(tenant, UUID.randomUUID(), "OWNER"));
+
+        // Create at version 0.
+        UUID id = tx.execute(s -> enquiries.save(active("9876500000")).getId());
+
+        // A detached copy still at version 0.
+        Enquiry stale = tx.execute(s -> enquiries.findById(id).orElseThrow());
+
+        // Advance the DB row to version 1 in a separate transaction.
+        tx.executeWithoutResult(s -> {
+            Enquiry fresh = enquiries.findById(id).orElseThrow();
+            fresh.advanceTo(EnquiryStage.CONTACTED);
+            enquiries.saveAndFlush(fresh);
+        });
+
+        // Saving the stale (v0) copy over the now-v1 row loses the optimistic-lock race.
+        assertThatThrownBy(() ->
+            tx.executeWithoutResult(s -> {
+                stale.advanceTo(EnquiryStage.QUALIFIED);
+                enquiries.saveAndFlush(stale);
+            }))
+            .isInstanceOf(OptimisticLockingFailureException.class);
     }
 }
