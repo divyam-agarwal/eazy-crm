@@ -3,7 +3,9 @@ package com.easycrm.sales.web;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.QuotationService;
 import com.easycrm.sales.QuotationStatus;
+import com.easycrm.sales.web.dto.AcceptRequest;
 import com.easycrm.sales.web.dto.ItemsRequest;
+import com.easycrm.sales.web.dto.OrderResponse;
 import com.easycrm.sales.web.dto.QuotationCreateRequest;
 import com.easycrm.sales.web.dto.QuotationHeaderRequest;
 import com.easycrm.sales.web.dto.QuotationResponse;
@@ -73,6 +75,11 @@ public class QuotationController {
 
     @PostMapping("/{id}/send")
     public QuotationResponse send(@PathVariable UUID id) { return service.send(id); }
+
+    @PostMapping("/{id}/accept")
+    public OrderResponse accept(@PathVariable UUID id, @RequestBody(required = false) AcceptRequest req) {
+        return service.accept(id, req == null ? new AcceptRequest(null, null) : req);
+    }
 
     @PostMapping("/{id}/revise")
     public QuotationResponse revise(@PathVariable UUID id) { return service.revise(id); }

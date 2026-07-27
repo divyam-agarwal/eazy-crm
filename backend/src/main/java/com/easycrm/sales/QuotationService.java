@@ -5,8 +5,10 @@ import com.easycrm.crm.CustomerRepository;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.tenancy.TenantContext;
+import com.easycrm.sales.web.dto.AcceptRequest;
 import com.easycrm.sales.web.dto.ItemRequest;
 import com.easycrm.sales.web.dto.ItemsRequest;
+import com.easycrm.sales.web.dto.OrderResponse;
 import com.easycrm.sales.web.dto.QuotationCreateRequest;
 import com.easycrm.sales.web.dto.QuotationHeaderRequest;
 import com.easycrm.sales.web.dto.QuotationResponse;
@@ -38,11 +40,12 @@ public class QuotationService {
     private final TenantRepository tenants;
     private final PriceResolver priceResolver;
     private final DocumentNumberService documentNumbers;
+    private final OrderRepository orders;
 
     public QuotationService(QuotationRepository quotations, QuotationVersionRepository versions,
                             QuotationItemRepository items, CustomerRepository customers,
                             TenantRepository tenants, PriceResolver priceResolver,
-                            DocumentNumberService documentNumbers) {
+                            DocumentNumberService documentNumbers, OrderRepository orders) {
         this.quotations = quotations;
         this.versions = versions;
         this.items = items;
@@ -50,6 +53,7 @@ public class QuotationService {
         this.tenants = tenants;
         this.priceResolver = priceResolver;
         this.documentNumbers = documentNumbers;
+        this.orders = orders;
     }
 
     @Transactional
@@ -130,6 +134,27 @@ public class QuotationService {
         q.markSent();
         v.markSent(Instant.now());
         return toResponse(q);
+    }
+
+    @Transactional
+    public OrderResponse accept(UUID id, AcceptRequest req) {
+        Quotation q = findQuotation(id);
+        if (q.getStatus() == QuotationStatus.ACCEPTED) {
+            // Idempotent: return the order already created for this quotation.
+            return OrderResponse.of(orders.findByQuotationId(q.getId())
+                .orElseThrow(() -> new NotFoundException("order not found")));
+        }
+        if (q.getStatus() != QuotationStatus.SENT) {
+            throw new ValidationException("status", "only a sent quotation can be accepted");
+        }
+        QuotationVersion v = versions.findById(q.getCurrentVersionId())
+            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+        Order order = orders.save(new Order(q.getId(), v.getId(), q.getCustomerId(),
+            documentNumbers.nextOrderNo(LocalDate.now()),
+            v.getSubTotal(), v.getTotalTax(), v.getGrandTotal(),
+            req.poReference(), req.poDate()));
+        q.markAccepted();
+        return OrderResponse.of(order);
     }
 
     @Transactional

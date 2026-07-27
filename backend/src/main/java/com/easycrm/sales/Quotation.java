@@ -43,6 +43,7 @@ public class Quotation extends TenantScopedEntity {
     public void setCurrentVersionId(UUID id) { this.currentVersionId = id; }
     public void assignQuoteNo(String no) { this.quoteNo = no; }
     public void markSent() { this.status = QuotationStatus.SENT; }
+    public void markAccepted() { this.status = QuotationStatus.ACCEPTED; }
     public void reviseToDraft() { this.status = QuotationStatus.DRAFT; }
     public void reject() { this.status = QuotationStatus.REJECTED; }
     public void expire() { this.status = QuotationStatus.EXPIRED; }
