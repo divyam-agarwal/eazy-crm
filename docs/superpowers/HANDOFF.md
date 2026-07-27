@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-27 (order/accept slice done on branch `order-accept-slice`, pending merge)
+**Last updated:** 2026-07-27 (enquiry slice done on branch `enquiry-slice`, pending merge; order/accept merged to `main` as `ea11d3f`)
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -26,15 +26,19 @@ All under `docs/superpowers/`:
 7. **`specs/2026-07-26-p1b-quotation-engine-design.md`** — P1b design spec (quotation/version/item aggregate, price resolution, GST calc, lifecycle). The source of truth for *what* P1b built.
 8. **`plans/2026-07-26-p1b-quotation-engine.md`** — P1b implementation plan (**DONE, merged**).
 9. **`specs/2026-07-27-order-accept-design.md`** — order/accept design spec (`Order` aggregate, accept transition, event/audit seam, idempotency). The source of truth for *what* the order/accept slice built.
-10. **`plans/2026-07-27-order-accept.md`** — order/accept implementation plan (**DONE on branch `order-accept-slice`, pending merge** — see §4).
-11. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (22 entries). Great context on the stack's quirks.
-12. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
+10. **`plans/2026-07-27-order-accept.md`** — order/accept implementation plan (**DONE, merged to `main` as `ea11d3f`**).
+11. **`specs/2026-07-27-enquiry-design.md`** — enquiry design spec (`Enquiry` aggregate, 5-stage guarded lifecycle, phone-normalized one-active-per-phone dedupe, filtered list). The source of truth for *what* the enquiry slice built.
+12. **`plans/2026-07-27-enquiry-slice.md`** — enquiry implementation plan (**DONE on branch `enquiry-slice`, pending merge** — see §4).
+13. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (24 entries). Great context on the stack's quirks.
+14. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 
 ## 3. Current state
 
-- **Branch:** `order-accept-slice`, not yet merged to `main`. Working tree clean.
-- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`).
-- **Done, pending merge, on `order-accept-slice`:** the **order + accept** slice (7 tasks) on top of P1b's quotation engine. **132 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from 118 at the P1b/main baseline.
+- **Branch:** `enquiry-slice`, not yet merged to `main`. Working tree clean.
+- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`) + **order + accept** (merge commit `ea11d3f`).
+- **Done, pending merge, on `enquiry-slice`:** the **enquiry** slice (7 tasks) on top of the merged sales module. **153 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from the 132 order/accept baseline.
+- **Enquiry scope:** the wedge's *head* (lead capture) — 7 tasks (phone normalizer, the `Enquiry` aggregate + guarded 5-stage lifecycle, migration/RLS/partial-index dedupe, create endpoint, get + filtered list via a JPA `Specification`, edit/advance/lose transitions, and this challenges/annotations/handoff wrap-up).
+- **What enquiry delivered:** the `Enquiry` aggregate (table `enquiry` — not reserved; tenant-scoped, RLS-covered) carrying nullable `customerId` (walk-ins), raw contact fields (`contactName`, `contactPhone` + derived `normalizedPhone`, `contactEmail`), `source` (own `EnquirySource` enum — same six values as `crm.CustomerSource`, kept separate so `sales` stays decoupled), `requirementText`, `assignedTo`, `stage` (`EnquiryStage`), optional `expectedValue` (money, JSON-string wire), and `lostReason`. **5-stage guarded lifecycle** `NEW → CONTACTED → QUALIFIED → CONVERTED / LOST`: guards live in the entity (mirroring `Quotation`'s transition methods), `advanceTo` allows only a later *active* stage (skips ok, no backward/terminal-target), `lose` requires a reason, `markConverted()` exists but is **reserved for the later conversion slice — no controller reaches it yet** (so in this slice a phone is freed for re-enquiry only via `LOST`). **Dedupe = one active enquiry per phone**, enforced structurally by a Postgres **partial unique index** `UNIQUE(tenant_id, normalized_phone) WHERE stage NOT IN ('CONVERTED','LOST')` plus an app-level active-only pre-check (→409) with the challenge #15 `DataIntegrityViolation`→409 backstop (challenge #23). **List** uses a JPA `Specification` that AND-composes any subset of `?stage=&assignedTo=&source=` — deliberately avoiding the order-list "drops a filter when two are supplied" bug (challenge #24). REST: `POST` (201), `GET /{id}` (cross-tenant 404), `GET` (filtered, offset `PageResponse`, cross-tenant empty), `PATCH /{id}` (active-only edit, re-dedupes on phone change), `POST /{id}/advance`, `POST /{id}/lose`. Lives under `com.easycrm.sales` (+ `.web`, `.web.dto`). Challenges #23–#24; no new annotations (`JpaSpecificationExecutor`/`Specification` noted in the annotations reference as concepts, not annotations).
 - **P1a scope:** product/customer/contact/price-list CRUD — 13 planned tasks plus three execution-time additions (Task 7b global 409 handler, Task 13b test-hardening, and a final-review fix — see §4).
 - **P1b scope:** the quotation engine on top of P1a's master data — 12 planned tasks (money-as-JSON-string wire format, GST calc, gapless document numbering, price resolution, the quotation/version/item aggregate + RLS, create/get/list/versions, edit with the frozen-version guard, send, revise, reject/expire, and its challenges/annotations/handoff wrap-up).
 - **Order/accept scope:** the wedge's final stage on top of P1b — 7 tasks (the `Order` aggregate on physical table `sales_order`, gapless `ORD/FY/NNNN` numbering, the `accept` transition, `QuotationAcceptedEvent` + audit subscriber, order read endpoints, and this challenges/annotations/handoff wrap-up).
@@ -51,15 +55,16 @@ All under `docs/superpowers/`:
 
 ## 4. THE NEXT TASK
 
-**The order + accept slice is DONE on branch `order-accept-slice`, pending merge to `main`.** All 7 tasks landed and reviewed; clean-build total is 132 tests, all green. Next step is for the controller to run a final review and merge/PR the branch (`superpowers:finishing-a-development-branch`), then pick the next chunk with the user (see §8).
+**The enquiry slice is DONE on branch `enquiry-slice`, pending merge to `main`.** All 7 tasks landed and reviewed; clean-build total is 153 tests, all green. Next step is for the controller to run a final review and merge/PR the branch (`superpowers:finishing-a-development-branch`), then pick the next chunk with the user (see §8).
 
-**Deferred out of order/accept scope** (explicit — do not assume any of this exists):
-- **`enquiry` entity** — the wedge's first stage (enquiry → quotation → order) still has no entity; nothing built so far starts before the quotation.
+**Deferred out of enquiry scope** (explicit — do not assume any of this exists):
+- **Enquiry → quotation conversion wiring** — `Enquiry.markConverted()` exists but no endpoint reaches it; nothing flips an enquiry to `CONVERTED` or stamps `quotation.enquiry_id` from an enquiry yet. `quotation.enquiry_id` remains a nullable forward-compat column. This is the natural next thin follow-up.
+- **`activity` / `follow_up` entities** — the spec's Activity section (CALL/WHATSAPP/EMAIL/VISIT/NOTE logs + first-class follow-up reminders) is still unbuilt.
 - **Order status transitions beyond `CONFIRMED`** — `OrderStatus` is a one-member enum today; `DISPATCHED`/`CLOSED`/`CANCELLED` and their transitions don't exist yet.
 - **PDF generation** and the **`wa.me` WhatsApp share link** — no rendering/sharing of a quotation or order exists yet.
 - **Scheduled auto-expiry** — only a manual `expire` action exists on quotations; nothing runs on a schedule to expire quotations past `validUntil` automatically.
-- **Record-level visibility filtering** — still open from P1a (§4 P1a notes); quotations and orders inherit the same gap.
-- **Cursor pagination** — quotation and order list endpoints use the same offset-based `Pageable`/`PageResponse` as P1a; large tenants will need cursor pagination later.
+- **Record-level visibility filtering** — still open from P1a (§4 P1a notes); quotations, orders, and now enquiries inherit the same gap (every user in a tenant reads every enquiry in it).
+- **Cursor pagination** — quotation, order, and enquiry list endpoints use the same offset-based `Pageable`/`PageResponse` as P1a; large tenants will need cursor pagination later.
 
 **Testing note for anyone extending quotation flows:** quotation reads a real `Tenant.state_code` (to compute the intra-/inter-state GST split against the customer's GSTIN-derived state), so a phantom tenant — `TestTokens.owner(UUID.randomUUID())`, which mints a JWT for a tenant id that has no backing row — is **not enough** here, even though it's sufficient for RLS-only tables elsewhere in the codebase. Quotation tests use the new `TestTokens.provisionOwner(stateCode)`, which inserts a real `Tenant` row (with the given GST state code) before minting the token. Reach for `provisionOwner` whenever a test path reads anything off the `Tenant` row itself, not just whenever it needs *a* tenant id.
 
@@ -116,6 +121,6 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string.
 - **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces).
 
-## 8. After order/accept
+## 8. After enquiry
 
-Once `order-accept-slice` is merged, options (confirm with the user): **order status transitions** (`DISPATCHED`/`CLOSED`/`CANCELLED`), the **`enquiry` entity** (the wedge's actual first stage, still missing), PDF + `wa.me` share for a quotation/order, scheduled auto-expiry, or the still-open **P0-auth follow-up** (invitations + visibility layer + rate limiting). All are scoped in the spec. Each new chunk goes: (already-approved spec →) writing-plans → executing-plans → finishing-a-development-branch.
+Once `enquiry-slice` is merged, options (confirm with the user): the **enquiry → quotation conversion** wiring (thin follow-up — flip the enquiry to `CONVERTED` and stamp `quotation.enquiry_id` when a quote is raised from a lead), **order status transitions** (`DISPATCHED`/`CLOSED`/`CANCELLED`), PDF + `wa.me` share for a quotation/order, scheduled auto-expiry, the **`activity`/`follow_up`** entities (the "never lose a follow-up" promise), or the still-open **P0-auth follow-up** (invitations + visibility layer + rate limiting). All are scoped in the spec. Each new chunk goes: (already-approved spec →) writing-plans → executing-plans → finishing-a-development-branch.
