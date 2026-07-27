@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-26 (P1a master data merged to `main`)
+**Last updated:** 2026-07-27 (P1b quotation engine done on branch `p1b-quotation-engine`, pending merge)
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -23,14 +23,19 @@ All under `docs/superpowers/`:
 4. **`plans/2026-07-25-p0-auth-core.md`** — P0-auth plan (**DONE, merged** — see §4 for what changed vs the plan).
 5. **`specs/2026-07-25-p1a-master-data-design.md`** — P1a design spec (product/customer/contact/price-list master data). The source of truth for *what* P1a built.
 6. **`plans/2026-07-25-p1a-master-data.md`** — P1a implementation plan (**DONE, merged** — see §4 for execution-time deviations).
-7. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (15 entries). Great context on the stack's quirks.
-8. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
+7. **`specs/2026-07-26-p1b-quotation-engine-design.md`** — P1b design spec (quotation/version/item aggregate, price resolution, GST calc, lifecycle). The source of truth for *what* P1b built.
+8. **`plans/2026-07-26-p1b-quotation-engine.md`** — P1b implementation plan (**DONE on branch `p1b-quotation-engine`, pending merge** — see §4).
+9. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (18 entries). Great context on the stack's quirks.
+10. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 
 ## 3. Current state
 
-- **Branch:** `main`. Working tree clean. Repo is local-only (no git remote).
-- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`). **86 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from 50 at the P0-auth baseline.
+- **Branch:** `p1b-quotation-engine`, not yet merged to `main`. Working tree clean.
+- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`).
+- **Done, pending merge, on `p1b-quotation-engine`:** the **P1b quotation engine** slice (12 tasks). **118 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from 86 at the P1a/main baseline.
 - **P1a scope:** product/customer/contact/price-list CRUD — 13 planned tasks plus three execution-time additions (Task 7b global 409 handler, Task 13b test-hardening, and a final-review fix — see §4).
+- **P1b scope:** the quotation engine on top of P1a's master data — 12 planned tasks (money-as-JSON-string wire format, GST calc, gapless document numbering, price resolution, the quotation/version/item aggregate + RLS, create/get/list/versions, edit with the frozen-version guard, send, revise, reject/expire, and this challenges/annotations/handoff wrap-up).
+- **What P1b delivered:** the `Quotation`/`QuotationVersion`/`QuotationItem` aggregate (tenant-scoped, RLS-covered); a price resolver (customer + product → effective rate off `PriceList`/`PriceListItem`, falling back to `Product.baseRate`); server-side GST calc (per-line round-then-sum, intra-state CGST+SGST vs inter-state IGST, keyed off `Tenant.state_code` vs the customer's GSTIN-derived state); gapless per-tenant/per-FY document numbering (`document_counter` + `SELECT … FOR UPDATE`, see challenge #16); the global `BigDecimal`-as-JSON-string wire format for money (challenge #17, also retroactively fixing P1a's money fields); and the full lifecycle — create → edit (header patch / full item replace, guarded to DRAFT only) → send (freezes the version, assigns the quote number) → revise (spawns a new DRAFT version copying the frozen items verbatim) → reject/expire (challenge #18). Lives under `com.easycrm.sales` (+ `platform.money.BigDecimalStringModule`).
 - **What P1a delivered:** tenant-scoped REST CRUD for `Product`, `Customer` (+ GSTIN checksum validation and GST-state-code derivation via the new `platform.gst.Gstin`/`StateCode` value types), `Contact` (nested under customer), `PriceList`, and `PriceListItem` (override-rate/discount-percent mutually-exclusive pricing). New shared plumbing: `platform.error.ValidationException` → 422 with field errors, `platform.web.PageResponse` (offset-paginated list envelope). Cross-tenant reads return 404 (not 403/200), matching the P0 pattern. Lives under `com.easycrm.catalog` and `com.easycrm.crm`.
 - **What P0-auth delivered:** self-serve auth on top of the isolation foundation — atomic signup (tenant + first OWNER in one transaction), bcrypt login, rotating opaque JWT refresh tokens (SHA-256 at rest), tenant-scoped audit log, public auth endpoints with generic 401s. Lives under `com.easycrm.iam` (+ `platform.persistence.UuidV7`, `platform.error.{Conflict,Unauthorized}Exception`). Working `signup → login → GET /api/v1/auth/me → refresh` loop, all verified against Postgres + RLS.
 - **What P0 (isolation) delivered:** the 4-layer multi-tenant isolation, all provably enforced by tests:
@@ -42,7 +47,17 @@ All under `docs/superpowers/`:
 
 ## 4. THE NEXT TASK
 
-**P1a master data is DONE and merged** (merge commit `2f9a2f4` on `main`). Pick the next chunk with the user (see §8): **P1b** (quotation engine — price resolution, money-as-JSON-string wire format, the actual GST quote/order flow) is the natural next step since it reads the master data P1a just built; the **P0-auth follow-up** (invitations + visibility layer + rate limiting) is still open too. Each goes: (spec →) writing-plans → executing-plans → finishing-a-development-branch.
+**P1b quotation engine is DONE on branch `p1b-quotation-engine`, pending merge to `main`.** All 12 tasks landed and reviewed; clean-build total is 118 tests, all green. Next step is for the controller to run a final review and merge/PR the branch (`superpowers:finishing-a-development-branch`), then pick the next chunk with the user (see §8).
+
+**Deferred out of P1b scope** (explicit — do not assume any of this exists):
+- **`enquiry` entity** — the wedge's first stage (enquiry → quotation → order) has no entity yet; P1b starts at the quotation.
+- **`order` + accept flow** — no `Order` entity, no accept endpoint, no `ACCEPTED` quotation status, no `QuotationAcceptedEvent`, no idempotency key for the accept action (design for the event + idempotency pattern is sketched in challenge #3, but nothing is implemented against a real order yet).
+- **PDF generation** and the **`wa.me` WhatsApp share link** — no rendering/sharing of a quotation exists yet.
+- **Scheduled auto-expiry** — only a manual `expire` action exists; nothing runs on a schedule to expire quotations past `validUntil` automatically.
+- **Record-level visibility filtering** — still open from P1a (§4 P1a notes); quotations inherit the same gap.
+- **Cursor pagination** — quotation list endpoints use the same offset-based `Pageable`/`PageResponse` as P1a; large tenants will need cursor pagination later.
+
+**Testing note for anyone extending quotation flows:** quotation reads a real `Tenant.state_code` (to compute the intra-/inter-state GST split against the customer's GSTIN-derived state), so a phantom tenant — `TestTokens.owner(UUID.randomUUID())`, which mints a JWT for a tenant id that has no backing row — is **not enough** here, even though it's sufficient for RLS-only tables elsewhere in the codebase. Quotation tests use the new `TestTokens.provisionOwner(stateCode)`, which inserts a real `Tenant` row (with the given GST state code) before minting the token. Reach for `provisionOwner` whenever a test path reads anything off the `Tenant` row itself, not just whenever it needs *a* tenant id.
 
 ### What P1a changed vs its plan (read before extending master data)
 
@@ -94,9 +109,9 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Log engineering challenges:** when a task surfaces a non-obvious problem, append to `engineering-challenges.md` (Problem → why hard → Solution → Lesson) in the same change.
 - **Keep the annotations reference current:** add a row when a new annotation appears.
 - **TDD:** failing test → run-to-confirm-fail → minimal code → run-to-pass → commit. One task per commit.
-- **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a is the first module with `BigDecimal` fields (`Product.gstRate/baseRate`, `PriceListItem.overrideRate/discountPct`) and got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`); the **JSON-string wire format is still outstanding** — see the P1b follow-ups in §4.
+- **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string.
 - **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces).
 
-## 8. After P1a
+## 8. After P1b
 
-Options (confirm with the user): **P1b** (quotation engine on top of the P1a master data — price resolution, GST quote calc, money-as-JSON-string wire format), or the still-open **P0-auth follow-up** (invitations + visibility layer + rate limiting). Both are scoped in the spec. Each new chunk goes: (already-approved spec →) writing-plans → executing-plans → finishing-a-development-branch.
+Once `p1b-quotation-engine` is merged, options (confirm with the user): the **order/accept flow** (the next wedge stage — `Order` entity, accept endpoint, `ACCEPTED` status, `QuotationAcceptedEvent`, idempotency key), PDF + `wa.me` share for a quotation, scheduled auto-expiry, or the still-open **P0-auth follow-up** (invitations + visibility layer + rate limiting). All are scoped in the spec. Each new chunk goes: (already-approved spec →) writing-plans → executing-plans → finishing-a-development-branch.

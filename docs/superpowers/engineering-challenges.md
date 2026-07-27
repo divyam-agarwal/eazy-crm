@@ -683,6 +683,224 @@ write site in its own try/catch.
 
 ---
 
+## Challenge 16 — Gapless document numbering: why not a DB sequence, and how rollback avoids burning a number
+
+**Phase:** Implementation (P1b, Task 3)
+
+### The problem
+
+Quote numbers (`QT/25-26/0001`) must be gapless per tenant per financial year:
+distributors notice a missing number and assume a lost document. Three naive
+approaches all fail:
+
+- A Postgres `SEQUENCE` per doc type is the obvious tool, but it doesn't reset
+  cleanly per financial year (Apr 1) or per tenant without one sequence object
+  per tenant/FY/doc-type combination — an unbounded, hard-to-provision set of
+  DB objects — and a rolled-back transaction still permanently burns the
+  sequence value it fetched (sequences are non-transactional by design), which
+  is exactly the gap we're trying to avoid.
+- Reading the counter with a plain `SELECT` then `UPDATE` (optimistic, no lock)
+  lets two concurrent sends read the same `next_val`, both increment from it,
+  and both format the same quote number — a duplicate, worse than a gap.
+- `@Version`-based optimistic locking avoids the duplicate but turns the second
+  concurrent sender into a retry-or-fail path, which is unnecessary complexity
+  for a row that's contended for microseconds.
+
+### The solution
+
+One row per `(tenant_id, doc_type, fy)` in `document_counter`, read via
+`@Lock(LockModeType.PESSIMISTIC_WRITE)` → `SELECT … FOR UPDATE`. The lock is
+acquired and released by the **caller's** transaction (`nextQuoteNo` is
+`@Transactional` with default `REQUIRED` propagation, so it joins rather than
+opens its own tx). That single property gives both correctness properties for
+free:
+
+- **Gapless under concurrency:** a second sender blocks on the row lock until
+  the first commits or rolls back, so two sends never read the same
+  `next_val` — no retries needed, just a short wait.
+- **Rollback burns nothing:** if the caller's send transaction rolls back
+  (e.g. downstream PDF generation fails), the increment to `next_val` rolls
+  back with it and the lock releases — the *same* number is handed to the next
+  successful send. Tested directly: `rolledBackSendConsumesNoNumber` opens a
+  `TransactionTemplate`, calls `nextQuoteNo`, forces `setRollbackOnly()`, then
+  asserts the very next call reuses suffix `0001`.
+
+The FY label itself (`25-26` for any date Apr-2025–Mar-2026) is computed, not
+stored redundantly anywhere else — `financialYear(LocalDate)` is a pure static
+function so both the counter lookup key and any display logic derive from the
+same rule.
+
+One residual race remains at the very first send for a brand-new
+`(tenant_id, doc_type, fy)` combination: two concurrent "first-ever" sends both
+find no counter row and both attempt to insert one, the loser hits the unique
+constraint and gets a transient 409 via the existing `DataIntegrityViolationException`
+handler (challenge #15), then a client retry finds the row already present and
+proceeds normally — no gap, no duplicate, just a one-time 409 on the coldest path.
+
+### Lesson
+
+Gapless + concurrent-safe is a row-locking problem, not a sequence-generator
+problem, whenever "no gaps" has to survive a rollback — sequences are
+deliberately non-transactional (that's what makes them fast), which is the
+opposite of what a gapless invariant needs. Let the counter mutation ride
+inside the same transaction as the business action that "spends" the number,
+and pessimistic-lock the read; the transaction boundary does the rollback-safety
+work for free.
+
+---
+
+## Challenge 17 — Money on the wire: `BigDecimal` as a JSON string (Jackson 3 / Boot 4)
+
+**Phase:** Implementation (P1b, Task 1)
+
+### The problem
+
+Challenge #2 specifies that money must be serialized as a JSON **string**, never a
+JSON number — a JSON number is re-parsed by JS as an IEEE-754 `double`, which
+re-introduces the exact rounding error `BigDecimal` exists to prevent. P1a shipped
+first and put `BigDecimal` fields (`Product.gstRate/baseRate`,
+`PriceListItem.overrideRate/discountPct`) on the wire as plain JSON numbers,
+because the string-wire-format work was explicitly deferred to P1b (see HANDOFF
+§4). P1b's quotation responses carry many more money fields (`unitRate`, `taxable`,
+`cgst`/`sgst`/`igst`, `lineTotal`, header totals) and cannot repeat that mistake.
+
+### Why it's hard
+
+Spring Boot 4 moved Jackson from 2.x to **Jackson 3**, and Jackson 3 relocated its
+entire base package from `com.fasterxml.jackson.*` to **`tools.jackson.*`** (already
+seen once, for `ObjectMapper`/`JsonNode`, in challenge #10). The serializer
+customization API moved with it: `tools.jackson.databind.ValueSerializer<T>` (not
+`com.fasterxml.jackson.databind.JsonSerializer<T>`), registered via a
+`tools.jackson.databind.module.SimpleModule`, using
+`tools.jackson.databind.SerializationContext` (not `SerializerProvider`) in the
+`serialize` method signature. None of the Jackson-2-era serializer tutorials or
+cached knowledge apply verbatim. And because the fix has to be global (a single
+`ObjectMapper` serves the whole app), it isn't scoped to P1b's new fields — it
+**retroactively changes P1a's already-shipped** `Product`/`PriceListItem` money
+responses from number to string. That's only safe here because no frontend exists
+yet to have coded against the old (wrong) number format; a later module doing the
+same fix after a frontend ships would need a coordinated wire-contract change.
+
+### The solution
+
+A `BigDecimalStringModule` (`platform.money`) registers a
+`ValueSerializer<BigDecimal>` that writes `toPlainString()` — never scientific
+notation, which a raw `BigDecimal.toString()` can produce for very small/large
+scales — and exposes itself as a `tools.jackson.databind.JacksonModule` `@Bean`,
+which Spring Boot's Jackson auto-configuration discovers and registers on the
+shared `ObjectMapper` automatically (no manual `ObjectMapper` wiring needed).
+Deserialization needs no matching custom deserializer: Jackson already coerces a
+JSON string into a `BigDecimal` target field without help, so the module only
+needs to handle the write side.
+
+### Lesson
+
+Serialize money as a string **once, globally, at the framework seam** (a module
+bean), not per-DTO or per-field — that is the only way a fix reliably covers every
+current and future money field, including ones written before the fix existed.
+And when a framework relocates a library's package wholesale (Jackson 2→3 here,
+same as Flyway's auto-config split in #4), don't assume a plan referencing the old
+package names is wrong — search the resolved jars for the new coordinates and
+adjust the API calls to match, the underlying capability is still there.
+
+---
+
+## Challenge 18 — The mutable-DRAFT / frozen-SENT quotation-version invariant
+
+**Phase:** Implementation (P1b, Task 8/9/10)
+
+### The problem
+
+The design spec calls a `quotation_version` an "immutable snapshot," but the same
+spec also requires traders to revise a quotation 3–4 times while drafting before
+they ever send it — two requirements that are in direct tension if read literally.
+"Immutable from the moment it's created" would churn a fresh version row on every
+keystroke-level edit during drafting and fight the actual workflow (build, tweak,
+build, tweak); "always mutable" would let someone edit a version after it's been
+sent, silently rewriting what the customer was actually shown — losing the one
+thing an "immutable snapshot" exists to guarantee.
+
+### Why it's hard
+
+Immutability isn't a property of the *row* — it's a property of the row's
+**lifecycle state**. A `QuotationVersion` needs to behave completely differently
+depending on whether its parent `Quotation` has been sent yet, and that behavior
+has to be enforced everywhere a write could happen (`patchHeader`, `replaceItems`,
+and later `revise`), not just in one obvious place — miss one path and the
+invariant silently breaks under a client that calls a different endpoint.
+
+### The solution
+
+Immutability is a function of `Quotation.status`, not of the version row itself: a
+version is mutable only while its parent quotation is `DRAFT`. Every write path
+(`patchHeader`/`replaceItems`) funnels through a single `requireDraft` guard that
+keys off `Quotation.status` — one choke point, not a check duplicated per method.
+`send` freezes the current version by flipping **both** `Quotation.status` →
+`SENT` and calling `version.markSent(...)` in **one transaction**, so the two
+never disagree about whether the quote has been sent. Revising a `SENT` quotation
+doesn't mutate anything — it spawns a brand-new `DRAFT` version `vN+1` that
+**copies the frozen items verbatim** (no recompute, no re-resolution of prices),
+so the sent snapshot (`vN`) is never touched, and the new draft starts as an exact
+copy the trader can then edit.
+
+### Lesson
+
+When a spec's "immutable" and "editable" requirements collide, the fix is usually
+to make immutability a **function of lifecycle state** rather than a fixed
+property of the object — mutable in one state, frozen in another, with a single
+state transition (`send`) as the one moment that flips it. Funnel every write path
+through one guard keyed off that state (not a check copy-pasted into each
+handler), and prefer **copy-on-revise** over "make the frozen row mutable again"
+whenever you need to build on top of a frozen artifact without disturbing it.
+
+---
+
+## Challenge 19 — `send()` on a revised draft silently reassigned `quote_no`
+
+**Phase:** Implementation (P1b, final review)
+
+### The problem
+
+`send(id)` unconditionally called `q.assignQuoteNo(documentNumbers.nextQuoteNo(...))`
+before `q.markSent()`. That's correct the *first* time a draft is sent, but
+`revise()` deliberately sets `Quotation.status` back to `DRAFT` while **keeping**
+the existing `quote_no` (challenge #18) so the trader can edit before re-sending.
+Sending that revised draft again re-entered the same unconditional assignment
+path: it pulled a brand-new gapless number from the counter (challenge #16) and
+overwrote the original one the customer had already seen on the first version —
+silently breaking the "quote_no assigned once, retained across revisions"
+invariant the spec requires, and burning a counter value for nothing on every
+resend.
+
+### Why it's hard
+
+Nothing about `send()`'s code looked wrong in isolation — "assign a number, mark
+sent" reads as the obvious happy path, and every test written against a
+fresh draft (`create → send`) passed. The bug only appears on the *second* send
+of a given quotation's lifecycle (`create → send → revise → send`), a path that's
+easy to leave uncovered because `revise` and `send` were built and tested as
+separate tasks against fresh drafts, not chained into the full round-trip a real
+trader performs.
+
+### The solution
+
+Guard the assignment on absence, not on being in `send()` at all: `if
+(q.getQuoteNo() == null) { q.assignQuoteNo(...); }` before `q.markSent()`. A
+first-ever send has `quote_no == null` and gets one assigned; a resend after
+`revise()` already has a non-null `quote_no` (revise never clears it) and skips
+straight to `markSent()`, leaving the original number untouched.
+
+### Lesson
+
+"Assigned once, retained forever" invariants need to be tested across their full
+state-machine cycle (`draft → sent → draft → sent`, not just `draft → sent`) —
+a single-transition test suite can be 100% green while silently missing the
+one transition (re-entering a state) where the bug actually lives. When a field
+is meant to be write-once, guard the write with "is it already set?", not with
+"which endpoint am I in?".
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

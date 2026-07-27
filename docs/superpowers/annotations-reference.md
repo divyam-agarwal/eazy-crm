@@ -80,6 +80,14 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@CreatedDate` | `org.springframework.data.annotation` | Field auto-set to creation timestamp (needs `@EnableJpaAuditing`). | — |
 | `@LastModifiedDate` | `org.springframework.data.annotation` | Field auto-updated on every save. | — |
 
+## 4a. Spring Data JPA repositories (query & locking)
+
+| Annotation | Origin | Purpose | Composed of / inherits |
+|---|---|---|---|
+| `@Query` | `org.springframework.data.jpa.repository` | Supplies an explicit JPQL query for a repository method, overriding derived-query-by-method-name (`DocumentCounterRepository.findForUpdate`, keyed on `docType`+`fy` — the tenant filter still applies via `@TenantId`, see challenge #8). | — |
+| `@Param` | `org.springframework.data.repository.query` | Binds a method parameter to a named `:param` placeholder in an `@Query` string. | — |
+| `@Lock` | `org.springframework.data.jpa.repository` | Forces a `LockModeType` on the query's execution; `PESSIMISTIC_WRITE` compiles to `SELECT … FOR UPDATE`, serializing concurrent readers of the same row (`DocumentCounterRepository.findForUpdate`, so concurrent quote sends within a tenant/FY get gapless numbers — must run inside the caller's tenant-bound `@Transactional`, or the lock is never acquired inside a real transaction). | — |
+
 ## 5. DI / stereotypes in use
 
 | Annotation | Origin | Purpose | Composed of / inherits |
@@ -91,7 +99,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@RequestMapping` | `org.springframework.web.bind.annotation` | Base path for a controller (`/api/v1/demo-records`). | — |
 | `@GetMapping` | `org.springframework.web.bind.annotation` | Maps HTTP GET to a handler method. | Meta-annotated `@RequestMapping(method = GET)` |
 | `@PostMapping` | `org.springframework.web.bind.annotation` | Maps HTTP POST to a handler (`/auth/signup`, `/login`, `/refresh`, `/logout`, `ProductController` create/activate/deactivate). | Meta-annotated `@RequestMapping(method = POST)` |
-| `@PutMapping` | `org.springframework.web.bind.annotation` | Maps HTTP PUT to a handler (`ProductController.update`, full-resource replace semantics). | Meta-annotated `@RequestMapping(method = PUT)` |
+| `@PutMapping` | `org.springframework.web.bind.annotation` | Maps HTTP PUT to a handler (`ProductController.update`, full-resource replace semantics; `QuotationController.replaceItems` — full replace of a DRAFT version's line items). | Meta-annotated `@RequestMapping(method = PUT)` |
+| `@PatchMapping` | `org.springframework.web.bind.annotation` | Maps HTTP PATCH to a handler (`QuotationController.patch` — partial header edit, distinct from PUT's full-resource-replace semantics). | Meta-annotated `@RequestMapping(method = PATCH)` |
 | `@DeleteMapping` | `org.springframework.web.bind.annotation` | Maps HTTP DELETE to a handler (`ContactController.delete`, `PriceListItemController.delete`). | Meta-annotated `@RequestMapping(method = DELETE)` |
 | `@RequestBody` | `org.springframework.web.bind.annotation` | Binds/deserializes the JSON request body into a method parameter (the auth DTOs). | — |
 | `@PathVariable` | `org.springframework.web.bind.annotation` | Binds a URI template segment (`{id}`) to a method parameter. | — |
@@ -105,6 +114,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Valid` | `jakarta.validation` | On a `@RequestBody` parameter, triggers Bean Validation of the DTO; a violation raises `MethodArgumentNotValidException` → mapped to 400. | — |
 | `@NotBlank` | `jakarta.validation.constraints` | String must be non-null and contain non-whitespace (slug, email, password, etc.). | Meta-annotated `@Constraint` |
 | `@NotNull` | `jakarta.validation.constraints` | Field must be non-null (structural presence only, no content check — `ProductCreateRequest.uom/gstRate/baseRate`, where `@NotBlank` doesn't apply because the type isn't `String`). | Meta-annotated `@Constraint` |
+| `@NotEmpty` | `jakarta.validation.constraints` | Collection/string must be non-null **and** non-empty (`QuotationCreateRequest.items` — a quotation with zero lines is rejected with 400 before the service layer runs). | Meta-annotated `@Constraint`; composes `@NotNull` + `@Size(min = 1)` semantics |
 | `@Email` | `jakarta.validation.constraints` | String must look like an email address (`SignupRequest.email`). | Meta-annotated `@Constraint` |
 | `@Size` | `jakarta.validation.constraints` | Length/size bounds (`password` min 8). | Meta-annotated `@Constraint` |
 | `@Pattern` | `jakarta.validation.constraints` | String must match a regex (`slug` charset, 2-digit `stateCode`). | Meta-annotated `@Constraint` |
@@ -115,6 +125,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | Annotation | Origin | Purpose | Composed of / inherits |
 |---|---|---|---|
 | `@Test` | `org.junit.jupiter.api` | Marks a test method. | — |
+| `@Disabled` | `org.junit.jupiter.api` | Skips a test with a required reason string (`QuotationEditTest.editingItemsOnSentVersionReturns422`, pending the `/send` endpoint that lands in Task 9). | — |
 | `@AfterEach` | `org.junit.jupiter.api` | Runs after each test (we clear `TenantContext`). | — |
 | `@SpringBootTest` | `org.springframework.boot.test.context` | Boots the full application context for integration tests. | Meta-annotated with `@ExtendWith(SpringExtension.class)` etc. |
 | `@Testcontainers` | `org.testcontainers.junit.jupiter` | JUnit 5 extension that manages container lifecycle. | `@ExtendWith(TestcontainersExtension.class)` |

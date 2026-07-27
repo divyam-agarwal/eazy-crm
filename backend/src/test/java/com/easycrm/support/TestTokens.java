@@ -1,14 +1,42 @@
 package com.easycrm.support;
 
 import com.easycrm.platform.security.JwtService;
+import com.easycrm.platform.tenancy.TenantContext;
+import com.easycrm.tenant.Tenant;
+import com.easycrm.tenant.TenantRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.util.UUID;
 
 @Component
 public class TestTokens {
     @Autowired JwtService jwt;
+    @Autowired TenantRepository tenants;
+    @Autowired TransactionTemplate tx;
+
     public String owner(UUID tenantId) {
         return jwt.mint(tenantId, UUID.randomUUID(), "OWNER");
     }
+
+    /**
+     * Provision a REAL tenant row with the given GST state code and return an OWNER bearer
+     * token bound to it. Quotation flows load the Tenant to read state_code for the
+     * CGST/SGST-vs-IGST split, so a phantom tenant (owner(randomUUID)) is not enough.
+     * Each call creates a distinct tenant.
+     */
+    public ProvisionedOwner provisionOwner(String stateCode) {
+        String slug = "t-" + UUID.randomUUID().toString().substring(0, 8);
+        Tenant tenant = new Tenant(slug, "Test Biz", stateCode);
+        TenantContext.set(new TenantContext.TenantPrincipal(tenant.getId(), null, "SYSTEM"));
+        try {
+            tx.executeWithoutResult(s -> tenants.save(tenant));
+        } finally {
+            TenantContext.clear();
+        }
+        return new ProvisionedOwner(tenant.getId(),
+            jwt.mint(tenant.getId(), UUID.randomUUID(), "OWNER"));
+    }
+
+    public record ProvisionedOwner(UUID tenantId, String token) {}
 }
