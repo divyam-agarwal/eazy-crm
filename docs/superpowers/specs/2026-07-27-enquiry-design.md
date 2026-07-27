@@ -179,6 +179,15 @@ empty. Request bodies validated (Jakarta Validation); money on the wire as JSON 
 `contactEmail`, `source`, `requirementText`, `assignedTo`, `expectedValue`. Not editable: `stage`
 (transitions only), `lostReason` (set by `lose`).
 
+> **PATCH is a full header replace, not a partial merge.** `update` writes *every* editable field
+> from the body, so an omitted nullable field (`assignedTo`, `expectedValue`, `contactEmail`,
+> `requirementText`, `customerId`) is **cleared**, not left unchanged — the client must send the
+> complete header on every edit. This is a deliberate, house-wide convention (`QuotationController`'s
+> `@PatchMapping` behaves identically; `Customer`/`Product`/`PriceList` use `PUT` for the same
+> full-replace semantics). Whether to migrate these to `PUT` — or adopt true null-means-unchanged
+> partial updates — is deferred as a single cross-cutting decision to make when the frontend lands,
+> not resolved per-endpoint here. Flagged by the enquiry slice's whole-branch review.
+
 ### 7.1 List filtering — avoid the order-list bug
 
 The deferred order/accept Minor is that `OrderService.list` **drops** `customerId` when `status` is

@@ -40,6 +40,13 @@ public class EnquiryController {
     @GetMapping("/{id}")
     public EnquiryResponse get(@PathVariable UUID id) { return service.get(id); }
 
+    /**
+     * Full header replace (not a partial merge): every editable field is set from the
+     * body, so an omitted nullable field (assignedTo, expectedValue, contactEmail,
+     * requirementText, customerId) is cleared. Clients MUST send the complete header.
+     * Mirrors QuotationController.patch's full-replace convention; revisit PUT-vs-PATCH
+     * house-wide when the frontend lands. Active-stage only (terminal enquiry -> 422).
+     */
     @PatchMapping("/{id}")
     public EnquiryResponse update(@PathVariable UUID id,
                                   @Valid @RequestBody EnquiryUpdateRequest req) {
