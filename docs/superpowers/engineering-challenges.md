@@ -1053,6 +1053,47 @@ downstream, decoupled subscribers need.
 
 ---
 
+## Challenge 23 — Enforcing "one active enquiry per phone" without an app-level pre-check race
+
+**Phase:** Implementation (enquiry slice, Task 3)
+
+### The problem
+
+The business rule is "a phone number can have at most one *active* (non-terminal)
+enquiry at a time, but a new enquiry is allowed once the prior one is CONVERTED or
+LOST." A plain unique constraint on `(tenant_id, normalized_phone)` is too strong —
+it would permanently block re-enquiry from a returning customer. The Challenge 15
+pattern (app-level pre-check + always-on DB unique constraint as backstop) doesn't
+fit either: the constraint side of that pattern needs to *stop* applying once the
+row transitions to a terminal stage, and an ordinary constraint has no notion of
+row state.
+
+### The solution
+
+A **partial unique index** — `CREATE UNIQUE INDEX ... ON enquiry (tenant_id,
+normalized_phone) WHERE stage NOT IN ('CONVERTED', 'LOST')` — encodes the invariant
+entirely in the index predicate. Postgres only enforces uniqueness among rows that
+satisfy the `WHERE` clause, so a row silently drops out of the constraint's scope
+the moment `stage` is updated to a terminal value (no separate cleanup, no
+soft-delete flag). This still closes the concurrent-insert race the way Challenge
+15 wants — two simultaneous "create enquiry for this phone" requests can't both
+land while the phone has an active row — but the constraint's membership is itself
+state-dependent, verified directly in `EnquiryRepositoryTest` by asserting a second
+`active(phone)` insert throws `DataIntegrityViolationException` while the first is
+still active, then succeeds once the first is moved to LOST (or CONVERTED) and
+flushed.
+
+### Lesson
+
+When a uniqueness rule is conditioned on entity state ("unique while active," not
+"unique forever"), reach for a partial index (`UNIQUE ... WHERE <predicate>`)
+before reaching for a plain unique constraint plus app-level filtering — it keeps
+the invariant atomic with the state transition itself (updating `stage` is what
+frees the slot, in the same row, no second write) instead of relying on a
+service-layer check that's only as strong as its timing.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
