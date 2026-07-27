@@ -4,13 +4,17 @@ import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.EnquiryService;
 import com.easycrm.sales.EnquirySource;
 import com.easycrm.sales.EnquiryStage;
+import com.easycrm.sales.web.dto.AdvanceRequest;
 import com.easycrm.sales.web.dto.EnquiryCreateRequest;
 import com.easycrm.sales.web.dto.EnquiryResponse;
+import com.easycrm.sales.web.dto.EnquiryUpdateRequest;
+import com.easycrm.sales.web.dto.LoseRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,6 +39,24 @@ public class EnquiryController {
 
     @GetMapping("/{id}")
     public EnquiryResponse get(@PathVariable UUID id) { return service.get(id); }
+
+    @PatchMapping("/{id}")
+    public EnquiryResponse update(@PathVariable UUID id,
+                                  @Valid @RequestBody EnquiryUpdateRequest req) {
+        return service.update(id, req);
+    }
+
+    @PostMapping("/{id}/advance")
+    public EnquiryResponse advance(@PathVariable UUID id,
+                                   @Valid @RequestBody AdvanceRequest req) {
+        return service.advance(id, req.stage());
+    }
+
+    @PostMapping("/{id}/lose")
+    public EnquiryResponse lose(@PathVariable UUID id,
+                                @Valid @RequestBody LoseRequest req) {
+        return service.lose(id, req.lostReason());
+    }
 
     @GetMapping
     public PageResponse<EnquiryResponse> list(

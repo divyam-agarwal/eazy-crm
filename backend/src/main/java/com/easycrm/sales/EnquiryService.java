@@ -5,6 +5,7 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.EnquiryCreateRequest;
 import com.easycrm.sales.web.dto.EnquiryResponse;
+import com.easycrm.sales.web.dto.EnquiryUpdateRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,7 +22,7 @@ public class EnquiryService {
     @Transactional
     public EnquiryResponse create(EnquiryCreateRequest req) {
         String normalized = PhoneNormalizer.normalize(req.contactPhone());
-        requireNoActiveDuplicate(normalized);
+        requireNoActiveDuplicateExcept(normalized, null);
         Enquiry saved = enquiries.save(new Enquiry(
             req.customerId(), req.contactName(), req.contactPhone(), normalized,
             req.contactEmail(), req.source(), req.requirementText(),
@@ -31,8 +32,32 @@ public class EnquiryService {
 
     @Transactional(readOnly = true)
     public EnquiryResponse get(UUID id) {
-        return EnquiryResponse.of(enquiries.findById(id)
-            .orElseThrow(() -> new NotFoundException("enquiry not found")));
+        return EnquiryResponse.of(find(id));
+    }
+
+    @Transactional
+    public EnquiryResponse update(UUID id, EnquiryUpdateRequest req) {
+        Enquiry e = find(id);
+        String normalized = PhoneNormalizer.normalize(req.contactPhone());
+        requireNoActiveDuplicateExcept(normalized, id);
+        e.updateHeader(req.customerId(), req.contactName(), req.contactPhone(), normalized,
+            req.contactEmail(), req.source(), req.requirementText(),
+            req.assignedTo(), req.expectedValue());
+        return EnquiryResponse.of(e);
+    }
+
+    @Transactional
+    public EnquiryResponse advance(UUID id, EnquiryStage target) {
+        Enquiry e = find(id);
+        e.advanceTo(target);
+        return EnquiryResponse.of(e);
+    }
+
+    @Transactional
+    public EnquiryResponse lose(UUID id, String reason) {
+        Enquiry e = find(id);
+        e.lose(reason);
+        return EnquiryResponse.of(e);
     }
 
     @Transactional(readOnly = true)
@@ -43,14 +68,25 @@ public class EnquiryService {
                 .map(EnquiryResponse::of));
     }
 
+    private Enquiry find(UUID id) {
+        return enquiries.findById(id)
+            .orElseThrow(() -> new NotFoundException("enquiry not found"));
+    }
+
     /**
      * App-level pre-check for the "one active enquiry per phone" invariant. This is
      * check-then-act; the partial unique index + the global DataIntegrityViolation->409
      * handler (challenge #15) is the concurrency backstop.
+     *
+     * <p>{@code selfId} excludes the enquiry currently being edited from the match, so an
+     * edit that doesn't change the phone (or that changes it while remaining unique) isn't
+     * blocked by itself. On create, {@code selfId} is {@code null}, which never equals any
+     * UUID, so every active match still blocks.
      */
-    private void requireNoActiveDuplicate(String normalizedPhone) {
+    private void requireNoActiveDuplicateExcept(String normalizedPhone, UUID selfId) {
         enquiries.findByNormalizedPhone(normalizedPhone).stream()
             .filter(e -> e.getStage().isActive())
+            .filter(e -> !e.getId().equals(selfId))
             .findAny()
             .ifPresent(e -> {
                 throw new ConflictException(
