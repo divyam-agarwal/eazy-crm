@@ -129,4 +129,82 @@ class QuotationConversionTest extends IntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isUnprocessableEntity());
     }
+
+    @Test
+    void aSecondQuoteFromTheSameEnquiryReturns422() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String[] ids = seed(auth, "27");
+        String enquiryId = seedEnquiry(auth, "9876543210");
+        String body = """
+            {"customerId":"%s","enquiryId":"%s","items":[{"productId":"%s","qty":"1"}]}"""
+            .formatted(ids[0], enquiryId, ids[1]);
+
+        // First quote converts the enquiry.
+        mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated());
+
+        // Second quote from the now-CONVERTED (terminal) enquiry -> 422.
+        mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void reEnquiringOnTheSamePhoneAfterConversionSucceeds() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String[] ids = seed(auth, "27");
+        String enquiryId = seedEnquiry(auth, "9876543210");
+        String body = """
+            {"customerId":"%s","enquiryId":"%s","items":[{"productId":"%s","qty":"1"}]}"""
+            .formatted(ids[0], enquiryId, ids[1]);
+
+        // Convert the lead.
+        mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated());
+
+        // While the first was active a duplicate would 409; now it is CONVERTED it leaves the
+        // partial unique index, so a fresh enquiry on the same phone is allowed.
+        mvc.perform(post("/api/v1/enquiries").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                    {"contactName":"Ravi","contactPhone":"9876543210","source":"PHONE"}"""))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    void failedQuoteBuildRollsBackTheConversion() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String[] ids = seed(auth, "27");
+        String enquiryId = seedEnquiry(auth, "9876543210");
+
+        // qty 0 passes bean validation (@NotNull only) but fails in buildItems -> 422,
+        // AFTER markConverted() flipped the managed enquiry in the same transaction.
+        String body = """
+            {"customerId":"%s","enquiryId":"%s","items":[{"productId":"%s","qty":"0"}]}"""
+            .formatted(ids[0], enquiryId, ids[1]);
+        mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isUnprocessableEntity());
+
+        // The transaction rolled back, so the enquiry is still active (NEW), not CONVERTED.
+        mvc.perform(get("/api/v1/enquiries/" + enquiryId).header("Authorization", auth))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.stage").value("NEW"));
+    }
+
+    @Test
+    void creatingWithoutAnEnquiryIdStillWorks() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String[] ids = seed(auth, "27");
+        String body = """
+            {"customerId":"%s","items":[{"productId":"%s","qty":"1"}]}"""
+            .formatted(ids[0], ids[1]);
+
+        mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.status").value("DRAFT"))
+            .andExpect(jsonPath("$.enquiryId").doesNotExist());
+    }
 }
