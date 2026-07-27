@@ -1094,6 +1094,63 @@ service-layer check that's only as strong as its timing.
 
 ---
 
+## Challenge 24 — Combining optional list filters without silently dropping one
+
+**Phase:** Implementation (enquiry slice, Task 5)
+
+### The problem
+
+`EnquiryController`'s list endpoint takes three independent optional filters
+(`stage`, `assignedTo`, `source`) that must AND-compose in any combination — zero,
+one, two, or all three supplied at once. `OrderService.list` (an earlier slice)
+handles its two optional filters with an `if (status != null) ... else if
+(customerId != null) ... else findAll(...)` chain. That reads fine for either
+filter alone, but it's structurally wrong the moment *both* are supplied: the
+`if` branch wins and the `else if` branch — and its filter — is never reached, so
+a request for `status=X&customerId=Y` silently returns all of X's orders,
+ignoring `customerId`, with no error to signal the filter was dropped. The bug
+only shows up when a caller combines filters, which is easy to omit from tests
+that check each filter in isolation.
+
+### The solution
+
+Build the query as a single JPA `Specification<Enquiry>` that accumulates one
+`Predicate` per non-null filter into a list, then combines them with a single
+`cb.and(predicates.toArray(new Predicate[0]))`:
+
+```java
+return (root, query, cb) -> {
+    List<Predicate> ps = new ArrayList<>();
+    if (stage != null)      ps.add(cb.equal(root.get("stage"), stage));
+    if (assignedTo != null) ps.add(cb.equal(root.get("assignedTo"), assignedTo));
+    if (source != null)     ps.add(cb.equal(root.get("source"), source));
+    return cb.and(ps.toArray(new Predicate[0])); // empty -> always-true conjunction
+};
+```
+
+Every present filter contributes its own predicate to the same conjunction, so
+there is no branch where adding a second filter displaces the first — the
+"which filters are combined" logic no longer needs to enumerate every subset.
+`cb.and()` on an empty array yields an always-true conjunction, so the
+zero-filter case (list everything, tenant-scoped by RLS) falls out for free.
+`EnquiryListTest.twoFiltersCombineCorrectly` is a regression guard: it creates
+three enquiries so that any single-filter match would return more than one row,
+and asserts `source=PHONE&assignedTo=A` returns exactly the one row that
+satisfies both.
+
+### Lesson
+
+An `if / else if` chain over independent optional filters is a trap: it silently
+caps the query at *one* active filter no matter how many the caller supplies,
+and the bug is invisible in tests that only ever set one filter at a time. When
+filters must AND-compose in any combination, build a list of predicates (one
+per non-null filter, unconditionally combinable) and reduce it with a single
+`cb.and(...)` — the combination logic falls out structurally instead of needing
+a branch per subset. Test at least the two-filter case explicitly; it's the
+smallest input that catches this class of bug.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
