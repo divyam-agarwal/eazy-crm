@@ -16,6 +16,7 @@ import com.easycrm.sales.web.dto.QuotationVersionResponse;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -41,11 +42,13 @@ public class QuotationService {
     private final PriceResolver priceResolver;
     private final DocumentNumberService documentNumbers;
     private final OrderRepository orders;
+    private final ApplicationEventPublisher events;
 
     public QuotationService(QuotationRepository quotations, QuotationVersionRepository versions,
                             QuotationItemRepository items, CustomerRepository customers,
                             TenantRepository tenants, PriceResolver priceResolver,
-                            DocumentNumberService documentNumbers, OrderRepository orders) {
+                            DocumentNumberService documentNumbers, OrderRepository orders,
+                            ApplicationEventPublisher events) {
         this.quotations = quotations;
         this.versions = versions;
         this.items = items;
@@ -54,6 +57,7 @@ public class QuotationService {
         this.priceResolver = priceResolver;
         this.documentNumbers = documentNumbers;
         this.orders = orders;
+        this.events = events;
     }
 
     @Transactional
@@ -154,6 +158,10 @@ public class QuotationService {
             v.getSubTotal(), v.getTotalTax(), v.getGrandTotal(),
             req.poReference(), req.poDate()));
         q.markAccepted();
+        UUID actorUserId = TenantContext.get()
+            .map(TenantContext.TenantPrincipal::userId).orElse(null);
+        events.publishEvent(new QuotationAcceptedEvent(q.getId(), order.getId(), v.getId(),
+            order.getGrandTotal(), order.getOrderNo(), actorUserId));
         return OrderResponse.of(order);
     }
 

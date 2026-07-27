@@ -94,6 +94,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 |---|---|---|---|
 | `@Component` | `org.springframework.stereotype` | Our `TenantIdentifierResolver` is a scanned bean. | Root stereotype |
 | `@Service` | `org.springframework.stereotype` | Business-logic bean (`JwtService`). | Meta-annotated with `@Component` |
+| `@EventListener` | `org.springframework.context.event` | Marks a method as a subscriber to `ApplicationEventPublisher.publishEvent(...)`; runs **synchronously, on the caller's thread, inside the caller's transaction** by default (no `@Async`/`@TransactionalEventListener`) — `OrderAcceptedAuditListener.on(QuotationAcceptedEvent)` writes the `QUOTATION_ACCEPTED` audit row so it commits/rolls back atomically with the order (challenge #3). | — |
 | `@RestController` | `org.springframework.web.bind.annotation` | REST endpoint class (`DemoRecordController`); returns bodies as JSON. | `@Controller` (→ `@Component`) + `@ResponseBody` |
 | `@RestControllerAdvice` | `org.springframework.web.bind.annotation` | Global exception handling (`ApiExceptionHandler`) → JSON error bodies. | `@ControllerAdvice` (→ `@Component`) + `@ResponseBody` |
 | `@RequestMapping` | `org.springframework.web.bind.annotation` | Base path for a controller (`/api/v1/demo-records`). | — |
