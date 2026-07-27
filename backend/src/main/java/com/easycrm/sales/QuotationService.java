@@ -42,13 +42,14 @@ public class QuotationService {
     private final PriceResolver priceResolver;
     private final DocumentNumberService documentNumbers;
     private final OrderRepository orders;
+    private final EnquiryRepository enquiries;
     private final ApplicationEventPublisher events;
 
     public QuotationService(QuotationRepository quotations, QuotationVersionRepository versions,
                             QuotationItemRepository items, CustomerRepository customers,
                             TenantRepository tenants, PriceResolver priceResolver,
                             DocumentNumberService documentNumbers, OrderRepository orders,
-                            ApplicationEventPublisher events) {
+                            EnquiryRepository enquiries, ApplicationEventPublisher events) {
         this.quotations = quotations;
         this.versions = versions;
         this.items = items;
@@ -57,6 +58,7 @@ public class QuotationService {
         this.priceResolver = priceResolver;
         this.documentNumbers = documentNumbers;
         this.orders = orders;
+        this.enquiries = enquiries;
         this.events = events;
     }
 
@@ -65,6 +67,12 @@ public class QuotationService {
         Customer customer = customers.findById(req.customerId())
             .orElseThrow(() -> new NotFoundException("customer not found"));
         boolean interState = isInterState(customer.getStateCode());
+
+        if (req.enquiryId() != null) {
+            Enquiry enquiry = enquiries.findById(req.enquiryId())
+                .orElseThrow(() -> new NotFoundException("enquiry not found"));
+            enquiry.markConverted(); // 422 if the enquiry is already terminal
+        }
 
         Quotation quotation = quotations.save(new Quotation(req.customerId(), req.enquiryId()));
         QuotationVersion version = versions.save(
