@@ -66,6 +66,22 @@ class DocumentNumberServiceTest extends IntegrationTest {
     }
 
     @Test
+    void orderNumbersAreGaplessAndIndependentOfQuoteNumbers() {
+        UUID tenant = UUID.randomUUID();
+        asTenant(tenant);
+        LocalDate d = LocalDate.of(2026, 7, 27); // FY 26-27
+        TransactionTemplate tx = new TransactionTemplate(txManager);
+
+        // A quote counter in the same tenant/FY must not affect order numbering.
+        tx.executeWithoutResult(s -> service.nextQuoteNo(d));
+
+        String o1 = tx.execute(s -> service.nextOrderNo(d));
+        String o2 = tx.execute(s -> service.nextOrderNo(d));
+        assertThat(o1).isEqualTo("ORD/26-27/0001");
+        assertThat(o2).isEqualTo("ORD/26-27/0002");
+    }
+
+    @Test
     void concurrentSendsGetDistinctConsecutiveNumbers() throws Exception {
         UUID tenant = UUID.randomUUID();
         asTenant(tenant);

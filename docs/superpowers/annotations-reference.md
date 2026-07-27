@@ -94,6 +94,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 |---|---|---|---|
 | `@Component` | `org.springframework.stereotype` | Our `TenantIdentifierResolver` is a scanned bean. | Root stereotype |
 | `@Service` | `org.springframework.stereotype` | Business-logic bean (`JwtService`). | Meta-annotated with `@Component` |
+| `@EventListener` | `org.springframework.context.event` | Marks a method as a subscriber to `ApplicationEventPublisher.publishEvent(...)`; runs **synchronously, on the caller's thread, inside the caller's transaction** by default (no `@Async`/`@TransactionalEventListener`) — `OrderAcceptedAuditListener.on(QuotationAcceptedEvent)` writes the `QUOTATION_ACCEPTED` audit row so it commits/rolls back atomically with the order (challenge #3). | — |
 | `@RestController` | `org.springframework.web.bind.annotation` | REST endpoint class (`DemoRecordController`); returns bodies as JSON. | `@Controller` (→ `@Component`) + `@ResponseBody` |
 | `@RestControllerAdvice` | `org.springframework.web.bind.annotation` | Global exception handling (`ApiExceptionHandler`) → JSON error bodies. | `@ControllerAdvice` (→ `@Component`) + `@ResponseBody` |
 | `@RequestMapping` | `org.springframework.web.bind.annotation` | Base path for a controller (`/api/v1/demo-records`). | — |
@@ -102,7 +103,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@PutMapping` | `org.springframework.web.bind.annotation` | Maps HTTP PUT to a handler (`ProductController.update`, full-resource replace semantics; `QuotationController.replaceItems` — full replace of a DRAFT version's line items). | Meta-annotated `@RequestMapping(method = PUT)` |
 | `@PatchMapping` | `org.springframework.web.bind.annotation` | Maps HTTP PATCH to a handler (`QuotationController.patch` — partial header edit, distinct from PUT's full-resource-replace semantics). | Meta-annotated `@RequestMapping(method = PATCH)` |
 | `@DeleteMapping` | `org.springframework.web.bind.annotation` | Maps HTTP DELETE to a handler (`ContactController.delete`, `PriceListItemController.delete`). | Meta-annotated `@RequestMapping(method = DELETE)` |
-| `@RequestBody` | `org.springframework.web.bind.annotation` | Binds/deserializes the JSON request body into a method parameter (the auth DTOs). | — |
+| `@RequestBody` | `org.springframework.web.bind.annotation` | Binds/deserializes the JSON request body into a method parameter (the auth DTOs). `required = false` makes the body itself optional, not just its fields — `QuotationController.accept`'s `AcceptRequest req` may be `null` when the client sends no body (accept has no mandatory fields, only optional `poReference`/`poDate`), and the controller substitutes an empty `AcceptRequest(null, null)` before calling the service. | — |
 | `@PathVariable` | `org.springframework.web.bind.annotation` | Binds a URI template segment (`{id}`) to a method parameter. | — |
 | `@RequestParam` | `org.springframework.web.bind.annotation` | Binds a query-string parameter; `required = false` makes it optional (`ProductController.list`'s `active` filter — `Boolean` wrapper stays `null` when absent, meaning "no filter"). | — |
 | `@ExceptionHandler` | `org.springframework.web.bind.annotation` | Marks a method that handles a given exception type. | — |
