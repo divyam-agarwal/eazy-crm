@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-27 (P1b quotation engine done on branch `p1b-quotation-engine`, pending merge)
+**Last updated:** 2026-07-27 (order/accept slice done on branch `order-accept-slice`, pending merge)
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -24,17 +24,21 @@ All under `docs/superpowers/`:
 5. **`specs/2026-07-25-p1a-master-data-design.md`** — P1a design spec (product/customer/contact/price-list master data). The source of truth for *what* P1a built.
 6. **`plans/2026-07-25-p1a-master-data.md`** — P1a implementation plan (**DONE, merged** — see §4 for execution-time deviations).
 7. **`specs/2026-07-26-p1b-quotation-engine-design.md`** — P1b design spec (quotation/version/item aggregate, price resolution, GST calc, lifecycle). The source of truth for *what* P1b built.
-8. **`plans/2026-07-26-p1b-quotation-engine.md`** — P1b implementation plan (**DONE on branch `p1b-quotation-engine`, pending merge** — see §4).
-9. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (18 entries). Great context on the stack's quirks.
-10. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
+8. **`plans/2026-07-26-p1b-quotation-engine.md`** — P1b implementation plan (**DONE, merged**).
+9. **`specs/2026-07-27-order-accept-design.md`** — order/accept design spec (`Order` aggregate, accept transition, event/audit seam, idempotency). The source of truth for *what* the order/accept slice built.
+10. **`plans/2026-07-27-order-accept.md`** — order/accept implementation plan (**DONE on branch `order-accept-slice`, pending merge** — see §4).
+11. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (22 entries). Great context on the stack's quirks.
+12. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 
 ## 3. Current state
 
-- **Branch:** `p1b-quotation-engine`, not yet merged to `main`. Working tree clean.
-- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`).
-- **Done, pending merge, on `p1b-quotation-engine`:** the **P1b quotation engine** slice (12 tasks). **118 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from 86 at the P1a/main baseline.
+- **Branch:** `order-accept-slice`, not yet merged to `main`. Working tree clean.
+- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`).
+- **Done, pending merge, on `order-accept-slice`:** the **order + accept** slice (7 tasks) on top of P1b's quotation engine. **132 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from 118 at the P1b/main baseline.
 - **P1a scope:** product/customer/contact/price-list CRUD — 13 planned tasks plus three execution-time additions (Task 7b global 409 handler, Task 13b test-hardening, and a final-review fix — see §4).
-- **P1b scope:** the quotation engine on top of P1a's master data — 12 planned tasks (money-as-JSON-string wire format, GST calc, gapless document numbering, price resolution, the quotation/version/item aggregate + RLS, create/get/list/versions, edit with the frozen-version guard, send, revise, reject/expire, and this challenges/annotations/handoff wrap-up).
+- **P1b scope:** the quotation engine on top of P1a's master data — 12 planned tasks (money-as-JSON-string wire format, GST calc, gapless document numbering, price resolution, the quotation/version/item aggregate + RLS, create/get/list/versions, edit with the frozen-version guard, send, revise, reject/expire, and its challenges/annotations/handoff wrap-up).
+- **Order/accept scope:** the wedge's final stage on top of P1b — 7 tasks (the `Order` aggregate on physical table `sales_order`, gapless `ORD/FY/NNNN` numbering, the `accept` transition, `QuotationAcceptedEvent` + audit subscriber, order read endpoints, and this challenges/annotations/handoff wrap-up).
+- **What order/accept delivered:** the `Order` aggregate — tenant-scoped, RLS-covered, physical table **`sales_order`** because `order` is a reserved SQL word (class stays `Order`, challenge #20) — carrying `orderNo`, `quotationId`/`quotationVersionId`, `customerId`, optional `poReference`/`poDate`, `subTotal`/`totalTax`/`grandTotal`, and `status` (currently only **`CONFIRMED`**; `DISPATCHED`/`CLOSED`/`CANCELLED` are deferred). Gapless per-tenant/per-FY order numbering (`ORD/FY/NNNN`) reuses `DocumentNumberService`/`document_counter` under a distinct `"ORDER"` counter key (challenge #16's pattern, second doc type). `QuotationService.accept(id, AcceptRequest)`: validates the quotation is `SENT`, creates the `Order` inline (so the HTTP response carries it immediately), flips the quotation to `ACCEPTED`, then publishes `QuotationAcceptedEvent` for decoupled subscribers — a deliberate deviation from the parent spec's "the order handler subscribes" wording, keeping the event as a side-effect seam rather than a return channel while preserving same-transaction atomicity (challenge #22). `OrderAcceptedAuditListener` (`@EventListener`, synchronous, same-transaction) writes the `QUOTATION_ACCEPTED` audit row. Idempotency is **natural/state-based**, not a client idempotency key: a re-accept of an already-`ACCEPTED` quotation returns the existing order (`OrderRepository.findByQuotationId`), backed by `UNIQUE(tenant_id, quotation_id)` on `sales_order` plus the quotation's inherited `@Version` optimistic lock for the raced case (challenge #21). Read endpoints: `GET /api/v1/orders/{id}` and `GET /api/v1/orders` (status/customerId filters, offset-paginated `PageResponse`, cross-tenant → 404). Lives under `com.easycrm.sales` (+ `.web`, `.web.dto`).
 - **What P1b delivered:** the `Quotation`/`QuotationVersion`/`QuotationItem` aggregate (tenant-scoped, RLS-covered); a price resolver (customer + product → effective rate off `PriceList`/`PriceListItem`, falling back to `Product.baseRate`); server-side GST calc (per-line round-then-sum, intra-state CGST+SGST vs inter-state IGST, keyed off `Tenant.state_code` vs the customer's GSTIN-derived state); gapless per-tenant/per-FY document numbering (`document_counter` + `SELECT … FOR UPDATE`, see challenge #16); the global `BigDecimal`-as-JSON-string wire format for money (challenge #17, also retroactively fixing P1a's money fields); and the full lifecycle — create → edit (header patch / full item replace, guarded to DRAFT only) → send (freezes the version, assigns the quote number) → revise (spawns a new DRAFT version copying the frozen items verbatim) → reject/expire (challenge #18). Lives under `com.easycrm.sales` (+ `platform.money.BigDecimalStringModule`).
 - **What P1a delivered:** tenant-scoped REST CRUD for `Product`, `Customer` (+ GSTIN checksum validation and GST-state-code derivation via the new `platform.gst.Gstin`/`StateCode` value types), `Contact` (nested under customer), `PriceList`, and `PriceListItem` (override-rate/discount-percent mutually-exclusive pricing). New shared plumbing: `platform.error.ValidationException` → 422 with field errors, `platform.web.PageResponse` (offset-paginated list envelope). Cross-tenant reads return 404 (not 403/200), matching the P0 pattern. Lives under `com.easycrm.catalog` and `com.easycrm.crm`.
 - **What P0-auth delivered:** self-serve auth on top of the isolation foundation — atomic signup (tenant + first OWNER in one transaction), bcrypt login, rotating opaque JWT refresh tokens (SHA-256 at rest), tenant-scoped audit log, public auth endpoints with generic 401s. Lives under `com.easycrm.iam` (+ `platform.persistence.UuidV7`, `platform.error.{Conflict,Unauthorized}Exception`). Working `signup → login → GET /api/v1/auth/me → refresh` loop, all verified against Postgres + RLS.
@@ -47,15 +51,15 @@ All under `docs/superpowers/`:
 
 ## 4. THE NEXT TASK
 
-**P1b quotation engine is DONE on branch `p1b-quotation-engine`, pending merge to `main`.** All 12 tasks landed and reviewed; clean-build total is 118 tests, all green. Next step is for the controller to run a final review and merge/PR the branch (`superpowers:finishing-a-development-branch`), then pick the next chunk with the user (see §8).
+**The order + accept slice is DONE on branch `order-accept-slice`, pending merge to `main`.** All 7 tasks landed and reviewed; clean-build total is 132 tests, all green. Next step is for the controller to run a final review and merge/PR the branch (`superpowers:finishing-a-development-branch`), then pick the next chunk with the user (see §8).
 
-**Deferred out of P1b scope** (explicit — do not assume any of this exists):
-- **`enquiry` entity** — the wedge's first stage (enquiry → quotation → order) has no entity yet; P1b starts at the quotation.
-- **`order` + accept flow** — no `Order` entity, no accept endpoint, no `ACCEPTED` quotation status, no `QuotationAcceptedEvent`, no idempotency key for the accept action (design for the event + idempotency pattern is sketched in challenge #3, but nothing is implemented against a real order yet).
-- **PDF generation** and the **`wa.me` WhatsApp share link** — no rendering/sharing of a quotation exists yet.
-- **Scheduled auto-expiry** — only a manual `expire` action exists; nothing runs on a schedule to expire quotations past `validUntil` automatically.
-- **Record-level visibility filtering** — still open from P1a (§4 P1a notes); quotations inherit the same gap.
-- **Cursor pagination** — quotation list endpoints use the same offset-based `Pageable`/`PageResponse` as P1a; large tenants will need cursor pagination later.
+**Deferred out of order/accept scope** (explicit — do not assume any of this exists):
+- **`enquiry` entity** — the wedge's first stage (enquiry → quotation → order) still has no entity; nothing built so far starts before the quotation.
+- **Order status transitions beyond `CONFIRMED`** — `OrderStatus` is a one-member enum today; `DISPATCHED`/`CLOSED`/`CANCELLED` and their transitions don't exist yet.
+- **PDF generation** and the **`wa.me` WhatsApp share link** — no rendering/sharing of a quotation or order exists yet.
+- **Scheduled auto-expiry** — only a manual `expire` action exists on quotations; nothing runs on a schedule to expire quotations past `validUntil` automatically.
+- **Record-level visibility filtering** — still open from P1a (§4 P1a notes); quotations and orders inherit the same gap.
+- **Cursor pagination** — quotation and order list endpoints use the same offset-based `Pageable`/`PageResponse` as P1a; large tenants will need cursor pagination later.
 
 **Testing note for anyone extending quotation flows:** quotation reads a real `Tenant.state_code` (to compute the intra-/inter-state GST split against the customer's GSTIN-derived state), so a phantom tenant — `TestTokens.owner(UUID.randomUUID())`, which mints a JWT for a tenant id that has no backing row — is **not enough** here, even though it's sufficient for RLS-only tables elsewhere in the codebase. Quotation tests use the new `TestTokens.provisionOwner(stateCode)`, which inserts a real `Tenant` row (with the given GST state code) before minting the token. Reach for `provisionOwner` whenever a test path reads anything off the `Tenant` row itself, not just whenever it needs *a* tenant id.
 
@@ -112,6 +116,6 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string.
 - **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces).
 
-## 8. After P1b
+## 8. After order/accept
 
-Once `p1b-quotation-engine` is merged, options (confirm with the user): the **order/accept flow** (the next wedge stage — `Order` entity, accept endpoint, `ACCEPTED` status, `QuotationAcceptedEvent`, idempotency key), PDF + `wa.me` share for a quotation, scheduled auto-expiry, or the still-open **P0-auth follow-up** (invitations + visibility layer + rate limiting). All are scoped in the spec. Each new chunk goes: (already-approved spec →) writing-plans → executing-plans → finishing-a-development-branch.
+Once `order-accept-slice` is merged, options (confirm with the user): **order status transitions** (`DISPATCHED`/`CLOSED`/`CANCELLED`), the **`enquiry` entity** (the wedge's actual first stage, still missing), PDF + `wa.me` share for a quotation/order, scheduled auto-expiry, or the still-open **P0-auth follow-up** (invitations + visibility layer + rate limiting). All are scoped in the spec. Each new chunk goes: (already-approved spec →) writing-plans → executing-plans → finishing-a-development-branch.

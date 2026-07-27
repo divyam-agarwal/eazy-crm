@@ -901,6 +901,158 @@ is meant to be write-once, guard the write with "is it already set?", not with
 
 ---
 
+## Challenge 20 — `order` is a reserved SQL word
+
+**Phase:** Implementation (order/accept slice, Task 1)
+
+### The problem
+
+The natural table name for the new `Order` aggregate is `order` — but `ORDER` is a
+reserved keyword in the SQL standard (it's half of `ORDER BY`). An unquoted `CREATE
+TABLE order (...)` fails to parse, and even if every DDL statement were fixed with
+double-quoting (`"order"`), that quoting would have to be repeated correctly
+everywhere the identifier appears again: the Flyway migration, the RLS policy SQL,
+any hand-written native query, and psql sessions during debugging. Miss one quote
+and you get a confusing syntax error instead of an obviously-named bug.
+
+### The solution
+
+Name the **physical table** `sales_order` and keep the **Java class** `Order`:
+`@Entity @Table(name = "sales_order")`. The domain vocabulary (`Order`,
+`OrderRepository`, `OrderResponse`, `OrderStatus`) stays exactly what the design
+spec and code review expect — only the SQL identifier changes, and it changes once,
+at the JPA mapping boundary. Every migration (`V18__sales_order.sql`,
+`V19__rls_sales_order.sql`), RLS policy, and native query downstream reads
+`sales_order` and needs no quoting anywhere.
+
+### Lesson
+
+When a domain noun collides with a SQL/HQL reserved word, don't fight the collision
+with quoting discipline that has to be repeated correctly forever — rename the
+*physical* identifier once at the ORM mapping (`@Table(name = ...)`) and let the
+*domain* name (class, repository, DTOs, docs) stay what the business actually calls
+it. The two names are allowed to diverge; only the mapping needs to know about the
+divergence.
+
+---
+
+## Challenge 21 — Natural (state-based) idempotency for accept
+
+**Phase:** Implementation (order/accept slice, Task 3/4)
+
+### The problem
+
+Challenge #3 sketched idempotency for "accept a quotation" as a client-generated
+idempotency key stored in its own table: the client mints a key per attempt, the
+server records `key → order id`, and a retry with the same key returns the existing
+order instead of creating a twin. That's the right shape for an action with no
+other identity to hang the check on. But it's also more machinery than this
+particular action needs — an extra table, an extra column on every write, and a
+new failure mode (what if the client reuses a key for a *different* logical
+action?) — and building it here would be paying for generality nothing in this
+slice requires.
+
+### Why it's hard
+
+The trap is applying the general pattern by default just because it's already
+designed and logged. The right question isn't "what's the standard idempotency
+pattern?" but "does this specific action already have a natural, unique identity to
+key off?" — and for accept, it does: **a quotation can only ever produce one
+order.** That's a domain invariant, not an incidental fact, so it's available as
+the idempotency key for free.
+
+### The solution
+
+Make "exactly one order per quotation" a structural guarantee instead of a
+procedural one, the same way tenant isolation is (CLAUDE.md: "structural, not
+procedural"). Two layers:
+
+1. **`UNIQUE(tenant_id, quotation_id)`** on `sales_order` (see challenge #20) — the
+   database physically cannot hold two orders for the same quotation, regardless of
+   timing.
+2. **The quotation's own `@Version`** (optimistic lock, inherited from
+   `BaseEntity`) plus a **status check at the top of `accept()`**:
+   `QuotationService.accept` first checks `q.getStatus() == ACCEPTED` and, if so,
+   returns the *existing* order (`orders.findByQuotationId(...)`) without touching
+   anything — the fast, common-case idempotent path. Only a quotation still in
+   `SENT` proceeds to create a new `Order` and call `q.markAccepted()`.
+
+A raced double-tap (two requests both read `SENT` before either commits) is caught
+by the two backstops together: the loser's `q.markAccepted()` update fails the
+optimistic-lock check (`@Version` mismatch) if the winner already committed, or —
+if both somehow reach the insert — the `UNIQUE(tenant_id, quotation_id)` constraint
+rejects the second `Order` row outright (translated to 409 by the existing
+`DataIntegrityViolationException` handler, challenge #15). Either way exactly one
+order survives.
+
+### Lesson
+
+Challenge #3's own lesson — "choose the weakest tool that's actually sufficient" —
+applies one level up from where it was first used: before reaching for a generic
+idempotency-key mechanism, check whether the action already has a domain identity
+that makes duplication structurally impossible. Here the quotation id **is** the
+idempotency key; a dedicated key table would have been solving a problem the
+domain model already solves. Reserve the client-key pattern for actions that
+genuinely lack a natural one-to-one identity to key off.
+
+---
+
+## Challenge 22 — `QuotationAcceptedEvent` as a side-effect seam, not a return channel
+
+**Phase:** Implementation (order/accept slice, Task 3/5)
+
+### The problem
+
+The parent design spec describes accept as "the order handler subscribes" to a
+quotation-accepted event — implying the event is what *produces* the order:
+publish first, an `@EventListener` creates the `Order` in response. Read literally,
+that means `QuotationService.accept()` would publish an event and have nothing
+concrete to put in the HTTP response until some listener, running after
+`publishEvent()` returns, has done the actual creation — which only works if the
+listener runs synchronously in the same call stack and the publishing method then
+reaches back into whatever the listener produced.
+
+### Why it's hard
+
+Using an event as a de facto return channel inverts the natural data flow and
+quietly re-couples the "decoupled" publisher to a specific subscriber's side
+effect: the accept endpoint's response (`OrderResponse` with the new order's id,
+number, totals) is exactly the thing the event was supposed to not need to know
+about. It also fights Spring's own default (`ApplicationEventPublisher` listeners
+run synchronously, same-transaction — challenge #3) into doing something it isn't
+shaped for: producing a value the caller depends on, rather than reacting to
+something that already happened.
+
+### The solution
+
+Deliberately deviate from the spec's wording. `QuotationService.accept()` creates
+and saves the `Order` **inline**, in the same command that validates the
+quotation's state and flips it to `ACCEPTED` — so the HTTP response has the real
+order immediately, with no dependency on listener execution. It **then** publishes
+`QuotationAcceptedEvent(quotationId, orderId, quotationVersionId, grandTotal,
+orderNo, actorUserId)` carrying everything a subscriber could need, purely for
+decoupled *side effects*: `OrderAcceptedAuditListener` writes the `QUOTATION_ACCEPTED`
+audit row today, and the same seam is where activity-log and WhatsApp-notify
+listeners attach later without `QuotationService` ever knowing they exist. Because
+publish happens after the order is saved but still inside `accept()`'s
+`@Transactional` boundary, Spring's default synchronous/same-transaction listener
+behavior (challenge #3) still gives every subscriber atomicity with the order —
+the deviation only changes *who creates the order*, not the transactional
+guarantee the spec's event was protecting.
+
+### Lesson
+
+An event is the right tool for "notify other things this happened" (open/closed:
+new listeners attach without touching the publisher) but the wrong tool for
+"produce the value my caller needs right now" — that coupling should stay a direct
+call. When a spec's wording implies the event *is* the mechanism that produces the
+primary result, treat that as shorthand for "this transition has a side-effect
+seam," not as a literal instruction to route the return value through pub/sub —
+keep the command's own return path direct, and let the event carry only what
+downstream, decoupled subscribers need.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
