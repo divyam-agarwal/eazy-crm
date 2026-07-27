@@ -272,7 +272,7 @@ git commit -m "feat(sales): add UNIQUE(tenant_id, enquiry_id) backstop on quotat
 - [ ] **Step 1: Run the whole suite from clean**
 
 Run: `cd backend && ./gradlew clean test`
-Expected: PASS — 162 prior + 3 new = **165 tests**, all green. Confirm the count from the JUnit XML (`build/test-results/test/*.xml`). In particular confirm no existing quotation test regressed against the new UNIQUE constraint (none should — no existing test inserts two quotations with the same non-null `enquiry_id` in one tenant).
+Expected: PASS — 162 prior + 4 new = **166 tests**, all green. Confirm the count from the JUnit XML (`build/test-results/test/*.xml`). In particular confirm no existing quotation test regressed against the new UNIQUE constraint (none should — no existing test inserts two quotations with the same non-null `enquiry_id` in one tenant).
 
 - [ ] **Step 2: Update challenge #25 (the 500 gap is now closed)**
 
@@ -284,7 +284,7 @@ Judge against the CLAUDE.md bar. This one plausibly clears it: the non-obvious i
 
 - [ ] **Step 4: Update the handoff**
 
-In `docs/superpowers/HANDOFF.md`: move the two items ("Optimistic-lock → 409 (codebase-wide)" and "Structural backstop for one-quote-per-enquiry") **out** of the §4 deferred list, marking them done on this slice; bump the §3 test count (162 → 165) and the "current state" / latest-slice lines; add the sales-hardening spec + plan to the §2 read-order list. Keep edits factual.
+In `docs/superpowers/HANDOFF.md`: move the two items ("Optimistic-lock → 409 (codebase-wide)" and "Structural backstop for one-quote-per-enquiry") **out** of the §4 deferred list, marking them done on this slice; bump the §3 test count (162 → 166) and the "current state" / latest-slice lines; add the sales-hardening spec + plan to the §2 read-order list. Keep edits factual.
 
 - [ ] **Step 5: Commit the docs**
 
@@ -301,7 +301,7 @@ git commit -m "docs(sales): log optimistic-lock 409 hardening + update handoff"
 - §4.1 handler → Task 1 Steps 3. §4.2 handler unit test → Task 1 Steps 1–4; §4.2 repo stale-write test → Task 1 Steps 5–6.
 - §5.1 migration → Task 2 Step 3. §5.2 entity `@Table` → Task 2 Step 4. §5.4 tests (same-enquiry blocked + NULLs coexist) → Task 2 Steps 1, 5.
 - §5.3 (guard bypass surfaces as 409 via the existing challenge #15 handler) → covered by construction (no new mapping); the DataIntegrityViolation→409 handler already exists and is unit-tested elsewhere.
-- §6 count 162 → 165 → Task 3 Step 1.
+- §6 count 162 → 166 → Task 3 Step 1.
 - §7 docs (update #25, evaluate #26, HANDOFF, no annotation change) → Task 3 Steps 2–4.
 
 **Placeholder scan:** none — exact code, paths, commands, expected output in every step.

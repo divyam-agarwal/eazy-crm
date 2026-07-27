@@ -144,8 +144,8 @@ Repo-level (`QuotationRepositoryTest` or a focused new test, `IntegrationTest`, 
 ## 6. Testing summary
 
 All deterministic, real Postgres + RLS via Testcontainers; `TestTokens.provisionOwner(...)` where a
-tenant row is needed. Net new: **3 tests** (handler unit, stale-write repo, quote-uniqueness repo)
-→ suite 162 → **165**.
+tenant row is needed. Net new: **4 tests** (handler unit, stale-write repo, quote-uniqueness repo,
+enquiry-less-quotes-coexist repo) → suite 162 → **166**.
 
 ## 7. Documentation obligations (same change, per CLAUDE.md)
 
