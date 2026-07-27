@@ -141,6 +141,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 
 - `@Override` — a **Java** annotation (`java.lang`), compiler check only. Not DI.
 - Records (`record TenantPrincipal(...)`) — a Java language feature, not an annotation.
+- `JpaSpecificationExecutor<T>` / `Specification<T>` (`org.springframework.data.jpa.repository` / `.domain`) — **interfaces, not annotations**. A repository that also extends `JpaSpecificationExecutor<T>` gains `findAll(Specification, Pageable)`; a `Specification` is a lambda `(root, query, cb) -> Predicate` used to build dynamic criteria queries. Introduced in the enquiry slice (`EnquiryRepository`, `EnquirySpecifications`) to AND-compose optional list filters without an `if/else` chain (challenge #24). No annotation involved — listed here so the pattern is discoverable.
 
 ---
 
