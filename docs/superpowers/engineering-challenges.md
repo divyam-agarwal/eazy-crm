@@ -1151,6 +1151,60 @@ smallest input that catches this class of bug.
 
 ---
 
+## Challenge 25 — Conversion rides the quote-create transaction, so a failed quote un-converts the lead
+
+**Phase:** Implementation (enquiry→quotation conversion slice, Task 1)
+
+### The problem
+
+Raising a quotation "from a lead" has to do two writes at once: flip the source
+`Enquiry` to `CONVERTED` and stamp its id onto the new `Quotation`. The obvious
+shape — the one the deferred "convert endpoint" wording invited — is a dedicated
+`POST /enquiries/{id}/convert` that marks the enquiry converted and *then* kicks
+off quotation creation, or worse, two separate calls from the client. Either way
+the flip and the quote build land in **different transactions**. That is subtly
+wrong: quote creation can still fail its own validation *after* the enquiry is
+already flipped (a bad line item, a price-resolution miss), leaving a `CONVERTED`
+(terminal, un-editable, un-loseable) lead with no quotation behind it — and,
+because `CONVERTED` also drops out of the one-active-per-phone partial index
+(challenge #23), the lead is simultaneously "done" and gone from the active
+pipeline, recoverable only by re-enquiring. The naive split silently trades a
+transient validation error for a permanent bad state.
+
+### The solution
+
+Don't add an endpoint or a second transaction at all. `QuotationCreateRequest`
+already carried a nullable `enquiryId`; conversion becomes a few lines *inside*
+`QuotationService.create()`'s existing `@Transactional` method — load the enquiry
+(`EnquiryRepository.findById`, tenant-scoped by RLS → 404 if not visible), call
+`enquiry.markConverted()` (the entity's own terminal guard throws
+`ValidationException` → 422 if it's already CONVERTED/LOST), then build the
+quotation as before. The enquiry is a managed entity, so the flip flushes on
+commit — and because the flip and the whole quote build share **one** transaction,
+any downstream failure (`buildItems` rejecting `qty=0`, etc.) rolls the flip back
+with everything else: the lead stays exactly as active as it was. This is proven
+directly by `QuotationConversionTest.failedQuoteBuildRollsBackTheConversion`,
+which fires a create with a valid active `enquiryId` and an invalid item, expects
+422, then re-reads the enquiry and asserts it is still `NEW`. Two more guarantees
+fall out for free from the same placement: one enquiry converts once (a second
+create against the now-terminal enquiry hits `markConverted`'s guard → 422), and
+concurrent double-convert is caught by the enquiry's inherited `@Version`
+optimistic lock.
+
+### Lesson
+
+When one user action must perform two coupled writes and the second can still
+fail validation, resist giving each its own endpoint/transaction — put both in a
+single transactional command so a late failure can't leave the first write
+committed on its own. Here the fix was also the *smaller* change: the create path
+already accepted the foreign key, so "wiring the conversion" meant loading and
+flipping one entity inside the transaction that was already there, not building a
+new convert surface. A terminal state that's expensive to reverse (frees a
+uniqueness slot, blocks further edits) raises the stakes: never let it commit
+ahead of the work that justifies it.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
