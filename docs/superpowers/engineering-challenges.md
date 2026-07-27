@@ -1189,7 +1189,13 @@ which fires a create with a valid active `enquiryId` and an invalid item, expect
 fall out for free from the same placement: one enquiry converts once (a second
 create against the now-terminal enquiry hits `markConverted`'s guard → 422), and
 concurrent double-convert is caught by the enquiry's inherited `@Version`
-optimistic lock.
+optimistic lock — exactly one create commits, so data integrity holds. (The
+race-*loser* currently surfaces as HTTP 500, not a clean 409:
+`ObjectOptimisticLockingFailureException` extends `ConcurrencyFailureException`,
+not `DataIntegrityViolationException`, so it misses the challenge #15 →409
+backstop. That's a standing, codebase-wide gap — the order-accept race relies on
+the same `@Version` and would surface identically — deferred to a dedicated
+optimistic-lock→409 hardening slice, not this one.)
 
 ### Lesson
 
