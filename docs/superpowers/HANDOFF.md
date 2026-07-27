@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-27 (enquiry→quotation conversion done on branch `enquiry-conversion`, pending merge; enquiry slice merged to `main` as `a68035d`; order/accept merged as `ea11d3f`)
+**Last updated:** 2026-07-27 (enquiry→quotation conversion merged to `main` as `06e6014`; enquiry slice merged as `a68035d`; order/accept merged as `ea11d3f`)
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -30,15 +30,15 @@ All under `docs/superpowers/`:
 11. **`specs/2026-07-27-enquiry-design.md`** — enquiry design spec (`Enquiry` aggregate, 5-stage guarded lifecycle, phone-normalized one-active-per-phone dedupe, filtered list). The source of truth for *what* the enquiry slice built.
 12. **`plans/2026-07-27-enquiry-slice.md`** — enquiry implementation plan (**DONE, merged to `main` as `a68035d`**).
 13. **`specs/2026-07-27-enquiry-conversion-design.md`** — enquiry→quotation conversion design spec (convert-at-quotation-create; flip enquiry to `CONVERTED` + stamp `quotation.enquiry_id`, atomically). Source of truth for *what* the conversion slice built.
-14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE on branch `enquiry-conversion`, pending merge** — see §4).
+14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (25 entries). Great context on the stack's quirks.
 16. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 
 ## 3. Current state
 
-- **Branch:** `enquiry-conversion` (off `main` @ `a68035d`) — enquiry→quotation conversion done, pending final review + merge. `main` itself is clean (enquiry slice merged).
-- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`) + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`).
-- **Latest (on branch, pending merge): enquiry→quotation conversion** — 2 code/test tasks + docs. **162 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from the 154 enquiry baseline (+8 `QuotationConversionTest`).
+- **Branch:** `main`, working tree clean (enquiry→quotation conversion merged; feature branch deleted).
+- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`) + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`) + **enquiry→quotation conversion** (merge commit `06e6014`).
+- **Latest merged: enquiry→quotation conversion** — 2 code/test tasks + docs. **162 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from the 154 enquiry baseline (+8 `QuotationConversionTest`).
 - **What conversion delivered:** wired the enquiry→quotation link that the enquiry slice deliberately left dangling. `QuotationService.create()` now, when the create body carries an `enquiryId`, loads the enquiry (RLS-scoped → 404 if not visible), calls `Enquiry.markConverted()` (→ 422 if already terminal), and stamps `quotation.enquiry_id` — all inside `create()`'s existing `@Transactional`, so conversion + quote-build are **atomic** (a failed quote build rolls the `CONVERTED` flip back; the lead stays active). No new endpoint/DTO/migration/annotation — the whole slice is one ~5-line block plus 8 tests. Emergent guarantees (all tested): one enquiry → one quotation (second create → 422 via the terminal guard); conversion frees the dedupe phone (CONVERTED leaves the challenge #23 partial index, so re-enquiry on the same phone succeeds — second path besides LOST); concurrent double-convert caught by the enquiry `@Version`. Trigger is at *create* (a drafted quote converts the lead), an accepted tradeoff: an abandoned DRAFT permanently marks the lead CONVERTED (spec §6). Challenge #25 logged.
 - **Enquiry slice** (prior): 7 tasks + a post-review re-enquiry test + PATCH-contract docs, merged as `a68035d` (154 tests).
 - **Enquiry scope:** the wedge's *head* (lead capture) — 7 tasks (phone normalizer, the `Enquiry` aggregate + guarded 5-stage lifecycle, migration/RLS/partial-index dedupe, create endpoint, get + filtered list via a JPA `Specification`, edit/advance/lose transitions, and this challenges/annotations/handoff wrap-up).
@@ -59,10 +59,10 @@ All under `docs/superpowers/`:
 
 ## 4. THE NEXT TASK
 
-**The enquiry slice is DONE and merged to `main` (`a68035d`).** All 7 tasks landed and reviewed, plus a post-final-review re-enquiry HTTP test and PATCH-contract docs; clean-build total is 154 tests, all green. Next step is to pick the next chunk with the user (see §8).
+**The enquiry→quotation conversion slice is DONE and merged to `main` (`06e6014`).** 3 tasks landed and reviewed (feature + guarantee tests + docs); the whole-branch review returned READY TO MERGE with no Critical/Important findings (two Minors consciously deferred — see the deferred list below). Clean-build total is **162 tests**, all green. Next step is to pick the next chunk with the user (see §8).
 
 **Deferred out of enquiry scope** (explicit — do not assume any of this exists):
-- ~~**Enquiry → quotation conversion wiring**~~ — **DONE** (this slice, branch `enquiry-conversion`). `QuotationService.create()` flips the enquiry to `CONVERTED` and stamps `quotation.enquiry_id` when a quote is raised with an `enquiryId`. Note: still convert-*at-create* only; no standalone `/enquiries/{id}/convert` endpoint, and one enquiry maps to at most one quotation (a second create against a converted enquiry → 422).
+- ~~**Enquiry → quotation conversion wiring**~~ — **DONE, merged** (`06e6014`). `QuotationService.create()` flips the enquiry to `CONVERTED` and stamps `quotation.enquiry_id` when a quote is raised with an `enquiryId`. Note: still convert-*at-create* only; no standalone `/enquiries/{id}/convert` endpoint, and one enquiry maps to at most one quotation (a second create against a converted enquiry → 422).
 - **`activity` / `follow_up` entities** — the spec's Activity section (CALL/WHATSAPP/EMAIL/VISIT/NOTE logs + first-class follow-up reminders) is still unbuilt.
 - **Order status transitions beyond `CONFIRMED`** — `OrderStatus` is a one-member enum today; `DISPATCHED`/`CLOSED`/`CANCELLED` and their transitions don't exist yet.
 - **PDF generation** and the **`wa.me` WhatsApp share link** — no rendering/sharing of a quotation or order exists yet.
