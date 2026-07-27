@@ -6,12 +6,15 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class QuotationRepositoryTest extends IntegrationTest {
     @Autowired QuotationRepository quotations;
@@ -59,5 +62,31 @@ class QuotationRepositoryTest extends IntegrationTest {
             Number count = (Number) em.createNativeQuery("select count(*) from quotation").getSingleResult();
             assertThat(count.longValue()).isZero();
         });
+    }
+
+    @Test
+    void uniqueConstraintBlocksSecondQuotationForSameEnquiry() {
+        UUID tenant = UUID.randomUUID();
+        asTenant(tenant);
+        UUID enquiryId = UUID.randomUUID();
+        new TransactionTemplate(txManager).executeWithoutResult(s ->
+            quotations.save(new Quotation(UUID.randomUUID(), enquiryId)));
+
+        assertThatThrownBy(() ->
+            new TransactionTemplate(txManager).executeWithoutResult(s ->
+                quotations.saveAndFlush(new Quotation(UUID.randomUUID(), enquiryId))))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void enquiryLessQuotationsCoexist() {
+        UUID tenant = UUID.randomUUID();
+        asTenant(tenant);
+        assertThatCode(() -> {
+            new TransactionTemplate(txManager).executeWithoutResult(s ->
+                quotations.save(new Quotation(UUID.randomUUID(), null)));
+            new TransactionTemplate(txManager).executeWithoutResult(s ->
+                quotations.saveAndFlush(new Quotation(UUID.randomUUID(), null)));
+        }).doesNotThrowAnyException();
     }
 }

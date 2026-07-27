@@ -3,6 +3,8 @@ package com.easycrm.platform.error;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import java.util.UUID;
 
 import java.util.Map;
 
@@ -23,5 +25,16 @@ class ApiExceptionHandlerTest {
         assertEquals("VALIDATION_FAILED", error.get("code"));
         Map<String, Object> fields = (Map<String, Object>) error.get("fields");
         assertEquals("GSTIN checksum is invalid", fields.get("gstin"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void optimisticLockMapsTo409() {
+        ResponseEntity<Map<String, Object>> resp =
+            handler.optimisticLock(new ObjectOptimisticLockingFailureException(Object.class, UUID.randomUUID()));
+
+        assertEquals(HttpStatus.CONFLICT, resp.getStatusCode());
+        Map<String, Object> error = (Map<String, Object>) resp.getBody().get("error");
+        assertEquals("CONFLICT", error.get("code"));
     }
 }

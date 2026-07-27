@@ -1192,10 +1192,10 @@ concurrent double-convert is caught by the enquiry's inherited `@Version`
 optimistic lock — exactly one create commits, so data integrity holds. (The
 race-*loser* currently surfaces as HTTP 500, not a clean 409:
 `ObjectOptimisticLockingFailureException` extends `ConcurrencyFailureException`,
-not `DataIntegrityViolationException`, so it misses the challenge #15 →409
-backstop. That's a standing, codebase-wide gap — the order-accept race relies on
-the same `@Version` and would surface identically — deferred to a dedicated
-optimistic-lock→409 hardening slice, not this one.)
+not `DataIntegrityViolationException`, so it missed the challenge #15 →409
+backstop. That was a standing, codebase-wide gap — the order-accept race relied on
+the same `@Version` and would surface identically — **now closed** by a global
+`OptimisticLockingFailureException`→409 handler, see challenge #26.)
 
 ### Lesson
 
@@ -1208,6 +1208,72 @@ flipping one entity inside the transaction that was already there, not building 
 new convert surface. A terminal state that's expensive to reverse (frees a
 uniqueness slot, blocks further edits) raises the stakes: never let it commit
 ahead of the work that justifies it.
+
+---
+
+## Challenge 26 — Optimistic-lock is a *sibling* of, not covered by, the data-integrity 409 backstop
+
+**Phase:** Implementation (sales hardening slice)
+
+### The problem
+
+Challenge #15 established a global `@ExceptionHandler(DataIntegrityViolationException)`
+→ 409 as the backstop for "a DB constraint rejected this write" (a unique-index
+violation that slipped past an app-level pre-check, e.g. a concurrent create
+race). It's natural to assume that handler covers *all* "the database said no
+because of concurrency" failures. It does not. A lost-update race on a `@Version`
+row — two transactions read version N, both write, the second's `UPDATE …
+WHERE version = N` matches zero rows — is **not** a constraint violation. Spring
+Data translates it to `ObjectOptimisticLockingFailureException`, which lives in a
+*different* branch of the `DataAccessException` tree: it extends
+`OptimisticLockingFailureException` → `ConcurrencyFailureException` →
+`TransientDataAccessException`, whereas `DataIntegrityViolationException` extends
+`NonTransientDataAccessException`. Disjoint subtrees. So the existing 409 handler
+never matches it, and the race-loser falls through to a raw **500** — even though
+data integrity is perfectly intact (exactly one writer won). This surfaced as a
+real gap in *two* places at once: quotation `accept` (challenge #21) and
+convert-at-create (challenge #25) both rely on `@Version` for their idempotency /
+double-submit safety, and both would 500 the loser.
+
+### The solution
+
+Two complementary changes, one procedural and one structural:
+
+1. **A second, sibling 409 handler.** Add
+   `@ExceptionHandler(OptimisticLockingFailureException.class)` (Spring's *base*
+   `org.springframework.dao` type, so it also catches the concrete `orm`
+   `ObjectOptimisticLockingFailureException`) returning 409 with a generic
+   "concurrent update; please retry" message — mirroring the data-integrity
+   handler but on the transient/concurrency subtree it doesn't reach. Because the
+   two exception hierarchies are disjoint, Spring's most-specific-match dispatch
+   never has to choose between them; they simply cover different failures.
+2. **A structural uniqueness backstop where an invariant was only procedural.**
+   "One quotation per enquiry" was enforced only by the entity terminal guard
+   (`markConverted()` → `CONVERTED`, then `requireActive()` blocks a second) plus
+   `@Version`. Added `UNIQUE(tenant_id, enquiry_id)` on `quotation` (Postgres NULLs
+   are distinct, so enquiry-less quotes are unaffected) so the invariant is
+   structural, matching challenge #23's philosophy. A raced or guard-bypassed
+   second insert now hits the constraint and routes through the *challenge #15*
+   handler → 409. So the two handlers together mean every "you lost a
+   write race" path — whether it surfaces as a stale-version `UPDATE` or a
+   unique-constraint `INSERT` — returns 409, never 500.
+
+Both are proven deterministically without threads: a single-threaded stale-write
+test (load v0, bump the DB to v1 in a second transaction, save the stale copy →
+`OptimisticLockingFailureException`) and a repo-level duplicate-insert test
+(same `(tenant, enquiry_id)` → `DataIntegrityViolationException`).
+
+### Lesson
+
+"Return 409 not 500 on a write conflict" is not one handler — it's coverage of
+*two* disjoint `DataAccessException` subtrees, and adding a `@Version` field
+silently creates the second one. When you introduce optimistic locking, add (or
+confirm) the `OptimisticLockingFailureException`→409 mapping in the same change,
+or the very races the lock exists to make safe will 500 their losers. And prefer
+belt-and-braces where an invariant matters: a `@Version` lock closes the race
+window, but a matching DB unique constraint makes the invariant hold even if the
+lock or an app-level guard is ever bypassed — and, conveniently, funnels that
+failure into the 409 you already map.
 
 ---
 

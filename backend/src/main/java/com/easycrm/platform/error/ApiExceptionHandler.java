@@ -1,6 +1,7 @@
 package com.easycrm.platform.error;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -33,6 +34,16 @@ public class ApiExceptionHandler {
         // Backstop for unique/constraint violations that slip past app-level pre-checks
         // (update() paths, concurrent create() races). Data stays correct; the client gets 409.
         return body(HttpStatus.CONFLICT, "CONFLICT", "the request conflicts with existing data", null);
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, Object>> optimisticLock(OptimisticLockingFailureException ex) {
+        // A concurrent @Version write lost the race. Data integrity is intact (exactly one writer
+        // wins); the loser gets 409 instead of a raw 500. Sibling of the DataIntegrityViolation
+        // backstop above — ObjectOptimisticLockingFailureException does NOT extend
+        // DataIntegrityViolationException, so it needs its own handler.
+        return body(HttpStatus.CONFLICT, "CONFLICT",
+            "the request could not be completed due to a concurrent update; please retry", null);
     }
 
     @ExceptionHandler(ValidationException.class)

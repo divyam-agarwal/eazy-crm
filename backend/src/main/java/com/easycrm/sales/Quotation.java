@@ -12,8 +12,12 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "quotation",
-       uniqueConstraints = @UniqueConstraint(name = "uq_quotation_tenant_no",
-                                             columnNames = {"tenant_id", "quote_no"}))
+       uniqueConstraints = {
+           @UniqueConstraint(name = "uq_quotation_tenant_no",
+                             columnNames = {"tenant_id", "quote_no"}),
+           @UniqueConstraint(name = "uq_quotation_tenant_enquiry",
+                             columnNames = {"tenant_id", "enquiry_id"})
+       })
 public class Quotation extends TenantScopedEntity {
 
     @Column(name = "quote_no", length = 32)
