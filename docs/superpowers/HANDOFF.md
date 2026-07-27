@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-27 (enquiry slice done on branch `enquiry-slice`, pending merge; order/accept merged to `main` as `ea11d3f`)
+**Last updated:** 2026-07-27 (enquiry slice merged to `main` as `a68035d`; order/accept merged as `ea11d3f`)
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -34,9 +34,9 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Branch:** `enquiry-slice`, not yet merged to `main`. Working tree clean.
-- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`) + **order + accept** (merge commit `ea11d3f`).
-- **Done, pending merge, on `enquiry-slice`:** the **enquiry** slice (7 tasks) on top of the merged sales module. **153 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from the 132 order/accept baseline.
+- **Branch:** `main`, working tree clean (enquiry slice merged; feature branch deleted).
+- **Merged & done on `main`:** the design docs + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`) + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`).
+- **Latest merged: the enquiry slice** (7 tasks + a post-review re-enquiry test + PATCH-contract docs) on top of the sales module. **154 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from the 132 order/accept baseline.
 - **Enquiry scope:** the wedge's *head* (lead capture) — 7 tasks (phone normalizer, the `Enquiry` aggregate + guarded 5-stage lifecycle, migration/RLS/partial-index dedupe, create endpoint, get + filtered list via a JPA `Specification`, edit/advance/lose transitions, and this challenges/annotations/handoff wrap-up).
 - **What enquiry delivered:** the `Enquiry` aggregate (table `enquiry` — not reserved; tenant-scoped, RLS-covered) carrying nullable `customerId` (walk-ins), raw contact fields (`contactName`, `contactPhone` + derived `normalizedPhone`, `contactEmail`), `source` (own `EnquirySource` enum — same six values as `crm.CustomerSource`, kept separate so `sales` stays decoupled), `requirementText`, `assignedTo`, `stage` (`EnquiryStage`), optional `expectedValue` (money, JSON-string wire), and `lostReason`. **5-stage guarded lifecycle** `NEW → CONTACTED → QUALIFIED → CONVERTED / LOST`: guards live in the entity (mirroring `Quotation`'s transition methods), `advanceTo` allows only a later *active* stage (skips ok, no backward/terminal-target), `lose` requires a reason, `markConverted()` exists but is **reserved for the later conversion slice — no controller reaches it yet** (so in this slice a phone is freed for re-enquiry only via `LOST`). **Dedupe = one active enquiry per phone**, enforced structurally by a Postgres **partial unique index** `UNIQUE(tenant_id, normalized_phone) WHERE stage NOT IN ('CONVERTED','LOST')` plus an app-level active-only pre-check (→409) with the challenge #15 `DataIntegrityViolation`→409 backstop (challenge #23). **List** uses a JPA `Specification` that AND-composes any subset of `?stage=&assignedTo=&source=` — deliberately avoiding the order-list "drops a filter when two are supplied" bug (challenge #24). REST: `POST` (201), `GET /{id}` (cross-tenant 404), `GET` (filtered, offset `PageResponse`, cross-tenant empty), `PATCH /{id}` (active-only edit, re-dedupes on phone change), `POST /{id}/advance`, `POST /{id}/lose`. Lives under `com.easycrm.sales` (+ `.web`, `.web.dto`). Challenges #23–#24; no new annotations (`JpaSpecificationExecutor`/`Specification` noted in the annotations reference as concepts, not annotations).
 - **P1a scope:** product/customer/contact/price-list CRUD — 13 planned tasks plus three execution-time additions (Task 7b global 409 handler, Task 13b test-hardening, and a final-review fix — see §4).
@@ -55,7 +55,7 @@ All under `docs/superpowers/`:
 
 ## 4. THE NEXT TASK
 
-**The enquiry slice is DONE on branch `enquiry-slice`, pending merge to `main`.** All 7 tasks landed and reviewed; clean-build total is 153 tests, all green. Next step is for the controller to run a final review and merge/PR the branch (`superpowers:finishing-a-development-branch`), then pick the next chunk with the user (see §8).
+**The enquiry slice is DONE and merged to `main` (`a68035d`).** All 7 tasks landed and reviewed, plus a post-final-review re-enquiry HTTP test and PATCH-contract docs; clean-build total is 154 tests, all green. Next step is to pick the next chunk with the user (see §8).
 
 **Deferred out of enquiry scope** (explicit — do not assume any of this exists):
 - **Enquiry → quotation conversion wiring** — `Enquiry.markConverted()` exists but no endpoint reaches it; nothing flips an enquiry to `CONVERTED` or stamps `quotation.enquiry_id` from an enquiry yet. `quotation.enquiry_id` remains a nullable forward-compat column. This is the natural next thin follow-up.
