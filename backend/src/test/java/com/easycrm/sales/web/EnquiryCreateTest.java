@@ -3,6 +3,7 @@ package com.easycrm.sales.web;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,5 +60,34 @@ class EnquiryCreateTest extends IntegrationTest {
         mvc.perform(post("/api/v1/enquiries").header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isConflict());
+    }
+
+    @Test
+    void reEnquiringAfterPriorIsLostSucceeds() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String body = """
+            {"contactName":"Ravi","contactPhone":"9876543210","source":"PHONE"}""";
+
+        // First active enquiry occupies the phone.
+        String id = JsonPath.read(
+            mvc.perform(post("/api/v1/enquiries").header("Authorization", auth)
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+
+        // A second active enquiry for the same phone is blocked (dedupe).
+        mvc.perform(post("/api/v1/enquiries").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isConflict());
+
+        // Once the first is LOST (terminal), it leaves the partial index and the
+        // service's active-only pre-check no longer sees it -> a fresh enquiry succeeds.
+        mvc.perform(post("/api/v1/enquiries/" + id + "/lose").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"lostReason\":\"bought elsewhere\"}"))
+            .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/enquiries").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated());
     }
 }
