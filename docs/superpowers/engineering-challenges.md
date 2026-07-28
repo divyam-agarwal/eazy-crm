@@ -1340,6 +1340,67 @@ forward, not an oversight of this slice.
 
 ---
 
+## Challenge 28 — `PDDocument.setDocumentId()` silently doing nothing
+
+**Phase:** Implementation
+
+### The problem
+
+`PdfEngine.render()` needs two renders of the same XHTML + timestamp to produce
+byte-identical PDFs — the design spec's "shown, emailed and WhatsApped output
+are the same document" is meant to be an assertable property, not an aspiration.
+openhtmltopdf writes the PDF; a post-process step reopens it with PDFBox to stamp
+a fixed `PDDocumentInformation` (producer, creator, creation/mod date) derived
+from the caller's timestamp, then re-saves.
+
+That alone wasn't enough: `sameInputRendersToIdenticalBytes` kept failing with
+byte-identical output everywhere *except* the trailer's `/ID` entry, which
+differed on every run. Setting `PDDocument.setDocumentId(timestamp.toEpochMilli())`
+before `save()` — the documented way to pin it — had **no effect at all**. Two
+back-to-back renders still produced two different random-looking hex `/ID`
+pairs.
+
+The naive next move — reading the PDFBox 2.0.24 Javadoc harder — didn't explain
+it, because the behavior isn't in the Javadoc. It's in `COSWriter.write(PDDocument,
+SignatureInterface)`'s bytecode: before computing anything, it reads the
+trailer's *existing* `/ID` entry, and if that's already a 2-element `COSArray` —
+which it is, because openhtmltopdf's own first-pass writer already stamped a
+random `/ID` into the raw bytes we're re-opening — the method takes an early
+branch that **keeps the inherited ID unchanged** and skips the whole
+MD5(`documentId` + Info-dictionary-values) computation. `setDocumentId()` only
+feeds a code path that never runs when an ID is already present and the save is
+non-incremental.
+
+### The solution
+
+Disassembled `COSWriter.class` with `javap -c` to find the actual branch
+condition (there is no `PDDocument` API to query it). Confirmed with a temporary
+diagnostic in the test itself — printing the first differing byte offset per the
+task's own instruction not to weaken the assertion — that the sole divergence was
+the `/ID` array, byte offset ~1156 in a 1258-byte PDF.
+
+Fix: explicitly remove the inherited entry before saving —
+`doc.getDocument().getTrailer().removeItem(COSName.ID)` — so PDFBox has nothing
+to inherit and falls onto its MD5-recompute branch, which then hashes our pinned
+`setDocumentId()` value together with the Info dictionary (itself already a pure
+function of `timestamp`). With no upstream randomness left in either input to
+that hash, the digest — and therefore the whole file — is now identical across
+runs.
+
+### Lesson
+
+A "set the field, then save" API can be a no-op if the writer's decision to use
+that field is conditional on state that already exists on the object you loaded
+— and that condition usually isn't documented, because it's an internal
+optimization (avoid rehashing an ID that's presumably already fine), not a
+contract. When a setter provably has no effect, don't reach for a different
+setter — read the writer's actual control flow (bytecode is fine if source
+isn't handy) to find the branch you're not reaching, then remove whatever's
+satisfying the branch you don't want, rather than layering more state-setting
+on top of a path that's being skipped entirely.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
