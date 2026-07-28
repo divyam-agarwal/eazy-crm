@@ -363,8 +363,7 @@ Create `backend/src/main/java/com/easycrm/platform/format/IndianFormats.java`:
 package com.easycrm.platform.format;
 
 import java.math.BigDecimal;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -381,16 +380,50 @@ public final class IndianFormats {
     private IndianFormats() {}
 
     /**
-     * "Rs. 1,23,456.78". The pattern's two grouping sizes give lakh/crore grouping
-     * explicitly, so the result does not depend on the JVM's default locale or on
-     * which CLDR version ships with the JDK.
-     *
-     * "Rs." rather than the rupee sign: U+20B9 is not in the base-14 PDF fonts and
-     * this slice embeds no font.
+     * "Rs. 1,23,456.78". "Rs." rather than the rupee sign: U+20B9 is not in the
+     * base-14 PDF fonts and this slice embeds no font.
      */
     public static String rupees(BigDecimal amount) {
         if (amount == null) return "";
-        return "Rs. " + moneyFormat().format(amount);
+        return "Rs. " + indianGrouped(amount);
+    }
+
+    /**
+     * Indian (lakh/crore) digit grouping: the first group from the right is three
+     * digits, every group after it is two.
+     *
+     * Hand-rolled deliberately. java.text.DecimalFormat holds a single groupingSize
+     * taken from the rightmost separator, so a "#,##,##0.00" pattern silently gives
+     * Western grouping; an en-IN locale lookup would instead tie this output to
+     * whichever CLDR version ships with the JDK. This is a pure function of its input.
+     *
+     * setScale(2) also guarantees a decimal point exists, which the substring logic
+     * depends on — BigDecimal.ZERO.toPlainString() is "0", with no dot.
+     */
+    private static String indianGrouped(BigDecimal amount) {
+        BigDecimal scaled = amount.setScale(2, RoundingMode.HALF_UP);
+        boolean negative = scaled.signum() < 0;
+        String plain = scaled.abs().toPlainString();
+        int dot = plain.indexOf('.');
+        String whole = plain.substring(0, dot);
+        String fraction = plain.substring(dot);
+
+        String grouped;
+        if (whole.length() <= 3) {
+            grouped = whole;
+        } else {
+            String lastThree = whole.substring(whole.length() - 3);
+            String rest = whole.substring(0, whole.length() - 3);
+            StringBuilder sb = new StringBuilder();
+            int i = rest.length();
+            while (i > 2) {
+                sb.insert(0, "," + rest.substring(i - 2, i));
+                i -= 2;
+            }
+            sb.insert(0, rest, 0, i);
+            grouped = sb + "," + lastThree;
+        }
+        return (negative ? "-" : "") + grouped + fraction;
     }
 
     public static String qty(BigDecimal quantity) {
@@ -409,11 +442,6 @@ public final class IndianFormats {
         return instant == null ? "" : DAY_FIRST.format(instant.atZone(IST));
     }
 
-    // DecimalFormat is not thread-safe, so build one per call rather than sharing a
-    // static instance across request threads.
-    private static DecimalFormat moneyFormat() {
-        return new DecimalFormat("#,##,##0.00", DecimalFormatSymbols.getInstance(Locale.ROOT));
-    }
 }
 ```
 
@@ -428,9 +456,9 @@ Expected: PASS, 5 tests.
 git add backend/src/main/java/com/easycrm/platform/format/IndianFormats.java backend/src/test/java/com/easycrm/platform/format/IndianFormatsTest.java
 git commit -m "feat(platform): Indian money, quantity and date formatting
 
-Lakh/crore digit grouping from an explicit DecimalFormat pattern rather
-than a locale lookup, so output does not vary with the JVM default or the
-bundled CLDR. Rs. rather than the rupee glyph, which the base-14 PDF fonts
+Lakh/crore digit grouping hand-rolled rather than delegated: DecimalFormat
+holds a single groupingSize and silently gives Western grouping, and a
+locale lookup would vary with the bundled CLDR. Rs. rather than the rupee glyph, which the base-14 PDF fonts
 lack. Instants render in Asia/Kolkata."
 ```
 
