@@ -116,4 +116,21 @@ class OrderListTest extends IntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalElements").value(2));
     }
+
+    @Test
+    void crossTenantListIsEmpty() throws Exception {
+        // The list now goes through orders.findAll(OrderSpecifications.filter(...), pageable) --
+        // a new query path that adds no tenant predicate of its own (by design: @TenantId + RLS
+        // handle it). This guards against a future regression, e.g. a "helpful" join or predicate
+        // that bypasses RLS.
+        String authA = "Bearer " + tokens.provisionOwner("27").token();
+        String p = createProduct(authA);
+        String c1 = createCustomer(authA, "Alpha");
+        createOrderFor(authA, c1, p);
+
+        String authB = "Bearer " + tokens.provisionOwner("29").token();
+        mvc.perform(get("/api/v1/orders").header("Authorization", authB))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(0));
+    }
 }

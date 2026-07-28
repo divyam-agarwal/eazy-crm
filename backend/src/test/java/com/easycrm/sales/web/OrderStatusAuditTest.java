@@ -95,4 +95,35 @@ class OrderStatusAuditTest extends IntegrationTest {
         assertThat(cancelled).isEqualTo(1);
         assertThat(dispatched).isEqualTo(0);
     }
+
+    /**
+     * Regression guard: the existing tests above only count rows, so OrderService could
+     * regress to reading status *after* the mutation (making from == to) and every count
+     * assertion would still pass. This asserts the detail map itself: `from` must carry the
+     * pre-transition status, and `cancelReason` must be present only on the cancel row.
+     */
+    @Test
+    void auditDetailCarriesPreTransitionStatusAndCancelReasonOnlyWhereExpected() throws Exception {
+        var owner = tokens.provisionOwner("27");
+        String auth = "Bearer " + owner.token();
+
+        String dispatchedOrderId = createOrder(auth);
+        mvc.perform(post("/api/v1/orders/" + dispatchedOrderId + "/dispatch").header("Authorization", auth))
+            .andExpect(status().isOk());
+
+        String cancelledOrderId = createOrder(auth);
+        mvc.perform(post("/api/v1/orders/" + cancelledOrderId + "/cancel").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                    {"cancelReason":"customer withdrew PO"}"""))
+            .andExpect(status().isOk());
+
+        TenantContext.set(new TenantContext.TenantPrincipal(owner.tenantId(), null, "OWNER"));
+        var dispatchedRow = tx.execute(s -> audits.findFirstByAction("ORDER_DISPATCHED")).orElseThrow();
+        assertThat(dispatchedRow.getDetail()).containsEntry("from", "CONFIRMED");
+        assertThat(dispatchedRow.getDetail()).doesNotContainKey("cancelReason");
+
+        var cancelledRow = tx.execute(s -> audits.findFirstByAction("ORDER_CANCELLED")).orElseThrow();
+        assertThat(cancelledRow.getDetail()).containsEntry("from", "CONFIRMED");
+        assertThat(cancelledRow.getDetail()).containsEntry("cancelReason", "customer withdrew PO");
+    }
 }

@@ -179,4 +179,9 @@ rejected-transition tests assert only the exception type, not that `status`/`can
 unmutated — only the blank-reason test snapshots state; and four near-identical `createOrder` test
 fixtures now exist across the sales test classes (`OrderReadTest`, `OrderTransitionTest`,
 `OrderStatusAuditTest`, plus `QuotationAcceptAuditTest`'s variant) — extracting a shared sales
-test-fixture helper is a candidate cleanup, deliberately out of this slice.
+test-fixture helper is a candidate cleanup, deliberately out of this slice; and **cancelling an
+enquiry-linked order has no path back to that enquiry** (challenge #27) — "raise a new quotation"
+only fully works for enquiry-less quotations, since `Enquiry.requireActive()` and the
+`UNIQUE(tenant_id, enquiry_id)` constraint together block a second quotation against the same
+enquiry, so the replacement quotation must go in with `enquiryId: null`. Re-opening the enquiry on
+cancel, or relaxing the one-quote-per-enquiry rule, is a deliberate open design decision, not a bug.

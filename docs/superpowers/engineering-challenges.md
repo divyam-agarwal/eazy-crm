@@ -1323,6 +1323,21 @@ And when a structural constraint removes the option of "just make another one",
 that is the constraint doing its job. The fix is to say no clearly, not to relax
 the constraint.
 
+### The enquiry-linked dead end this doesn't cover
+
+"Raise a new quotation" is only fully actionable when the cancelled order's
+quotation had no enquiry behind it. When it did, `QuotationService.create()`
+calls `enquiry.markConverted()`, which routes through `Enquiry.requireActive()`
+and throws 422 on an already-`CONVERTED` enquiry — and
+`V22__quotation_enquiry_unique.sql`'s `UNIQUE(tenant_id, enquiry_id)` on
+`quotation` makes one-quote-per-enquiry structural. So after
+`enquiry → quotation → order → cancel`, the operator *can* raise a replacement
+quotation, but *cannot* link it back to the original enquiry — the only route is
+a fresh quotation with `enquiryId: null`, which silently severs lead
+traceability. The remedy — re-opening the enquiry on cancel, or relaxing the
+one-quote-per-enquiry rule — is a deliberate open design decision carried
+forward, not an oversight of this slice.
+
 ---
 
 <!-- Append new challenges below. Template:
