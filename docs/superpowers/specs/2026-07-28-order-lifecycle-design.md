@@ -1,7 +1,7 @@
 # Order lifecycle — design spec
 
 **Date:** 2026-07-28
-**Status:** approved, ready for implementation planning
+**Status:** implemented on branch `sales-order-lifecycle`, pending merge
 **Slice:** order status transitions (`DISPATCHED` / `CLOSED` / `CANCELLED`) + the deferred
 order-list filter fix (challenge #24)
 **Builds on:** the order/accept slice (`specs/2026-07-27-order-accept-design.md`, merged `ea11d3f`)
