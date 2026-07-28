@@ -90,10 +90,8 @@ public class QuotationService {
 
     @Transactional(readOnly = true)
     public PageResponse<QuotationResponse> list(QuotationStatus status, UUID customerId, Pageable pageable) {
-        Page<Quotation> page;
-        if (status != null) page = quotations.findByStatus(status, pageable);
-        else if (customerId != null) page = quotations.findByCustomerId(customerId, pageable);
-        else page = quotations.findAll(pageable);
+        Page<Quotation> page = quotations.findAll(
+            QuotationSpecifications.filter(status, customerId), pageable);
         return PageResponse.of(page.map(this::toResponse));
     }
 
