@@ -3,6 +3,7 @@ package com.easycrm.sales.web;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.QuotationService;
 import com.easycrm.sales.QuotationStatus;
+import com.easycrm.sales.ShareLinkService;
 import com.easycrm.sales.pdf.QuotationPdfService;
 import com.easycrm.sales.web.dto.AcceptRequest;
 import com.easycrm.sales.web.dto.ItemsRequest;
@@ -11,6 +12,7 @@ import com.easycrm.sales.web.dto.QuotationCreateRequest;
 import com.easycrm.sales.web.dto.QuotationHeaderRequest;
 import com.easycrm.sales.web.dto.QuotationResponse;
 import com.easycrm.sales.web.dto.QuotationVersionResponse;
+import com.easycrm.sales.web.dto.ShareResponse;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
@@ -36,10 +38,13 @@ public class QuotationController {
 
     private final QuotationService service;
     private final QuotationPdfService pdfService;
+    private final ShareLinkService shareLinks;
 
-    public QuotationController(QuotationService service, QuotationPdfService pdfService) {
+    public QuotationController(QuotationService service, QuotationPdfService pdfService,
+                               ShareLinkService shareLinks) {
         this.service = service;
         this.pdfService = pdfService;
+        this.shareLinks = shareLinks;
     }
 
     @PostMapping
@@ -106,4 +111,7 @@ public class QuotationController {
 
     @PostMapping("/{id}/expire")
     public QuotationResponse expire(@PathVariable UUID id) { return service.expire(id); }
+
+    @PostMapping("/{id}/share")
+    public ShareResponse share(@PathVariable UUID id) { return shareLinks.share(id); }
 }

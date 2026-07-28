@@ -47,6 +47,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Primary` | `org.springframework.context.annotation` | When multiple beans of a type exist, prefer this one (our `TenantAwareTransactionManager`). | — |
 | `@ConfigurationPropertiesScan` | `org.springframework.boot.context.properties` | On the main class; scans for `@ConfigurationProperties` records/classes to bind. | — |
 | `@ConfigurationProperties` | `org.springframework.boot.context.properties` | Binds a group of `easycrm.*` YAML keys to a typed record (`JwtProperties`). | — |
+| `@Value` | `org.springframework.beans.factory.annotation` | Injects a single resolved property/SpEL expression into a constructor or field parameter; `ShareLinkService`'s constructor takes `@Value("${easycrm.public-base-url}") String publicBaseUrl` — a lighter-weight alternative to `@ConfigurationProperties` for a single scalar. | — |
 
 ## 2. Persistence — JPA (jakarta.persistence)
 

@@ -24,6 +24,7 @@ easycrm:
   jwt:
     secret: ${JWT_SECRET:0123456789-0123456789-0123456789-devsecret}
     access-ttl-seconds: 900
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
 management:
   endpoints:
     web:
