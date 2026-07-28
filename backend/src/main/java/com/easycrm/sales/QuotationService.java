@@ -152,9 +152,17 @@ public class QuotationService {
     public OrderResponse accept(UUID id, AcceptRequest req) {
         Quotation q = findQuotation(id);
         if (q.getStatus() == QuotationStatus.ACCEPTED) {
-            // Idempotent: return the order already created for this quotation.
-            return OrderResponse.of(orders.findByQuotationId(q.getId())
-                .orElseThrow(() -> new NotFoundException("order not found")));
+            // Idempotent: return the order already created for this quotation — unless it
+            // was cancelled, in which case there is no live order to hand back. Reopening
+            // means a new quotation: UNIQUE(tenant_id, quotation_id) on sales_order makes
+            // one-order-per-quotation structural, so a second order here is impossible.
+            Order existing = orders.findByQuotationId(q.getId())
+                .orElseThrow(() -> new NotFoundException("order not found"));
+            if (existing.getStatus() == OrderStatus.CANCELLED) {
+                throw new ValidationException("status",
+                    "the order for this quotation was cancelled; raise a new quotation");
+            }
+            return OrderResponse.of(existing);
         }
         if (q.getStatus() != QuotationStatus.SENT) {
             throw new ValidationException("status", "only a sent quotation can be accepted");
