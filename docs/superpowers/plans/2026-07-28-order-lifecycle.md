@@ -1350,8 +1350,8 @@ status transitions item, and the design spec is marked implemented."
 
 Before declaring the slice done, confirm each of these by *running* it, not by reasoning about it:
 
-- [ ] `cd backend && ./gradlew clean test` → **185 tests, all green** from a clean build.
-- [ ] `git log --oneline main..HEAD` → eight commits: the six task commits plus two legitimate
+- [ ] `cd backend && ./gradlew clean test` → **187 tests, all green** from a clean build (185 after Task 6; the final whole-branch review added two more).
+- [ ] `git log --oneline main..HEAD` → nine commits: the six task commits, two mid-flight documentation corrections, and one final-review fix wave. Legitimate
       mid-flight documentation corrections (`2d4a81e`, fixing a wrong JSON path in this plan's own
       test code; `6b9accd`, correcting a handoff claim) — none mentioning Claude or AI.
 - [ ] `git diff main --stat` → only the files listed in **File Structure** above.
