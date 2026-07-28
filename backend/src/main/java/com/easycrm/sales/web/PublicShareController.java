@@ -1,5 +1,6 @@
 package com.easycrm.sales.web;
 
+import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.sales.ShareLinkService;
 import com.easycrm.sales.pdf.QuotationPdfService;
@@ -35,12 +36,25 @@ public class PublicShareController {
     @GetMapping("/{token}")
     public ResponseEntity<byte[]> quotation(@PathVariable String token) {
         ShareLinkService.Resolved resolved = shareLinks.resolve(token);   // 404 if unknown
-        byte[] pdf = TenantContext.runAs(
-            new TenantContext.TenantPrincipal(resolved.tenantId(), null, "PUBLIC"),
-            () -> pdfService.renderByVersionId(resolved.quotationVersionId()));
+        byte[] pdf;
+        try {
+            pdf = TenantContext.runAs(
+                new TenantContext.TenantPrincipal(resolved.tenantId(), null, "PUBLIC"),
+                () -> pdfService.renderByVersionId(resolved.quotationVersionId()));
+        } catch (NotFoundException e) {
+            // Uniform 404 for every failure on this route. Without this, a token whose
+            // recorded version can't be loaded under its recorded tenant (data corruption,
+            // or a forged share_link row) would surface renderByVersionId's own message
+            // ("quotation version not found") instead of resolve()'s ("not found") -
+            // and a holder could use the differing body to confirm their token is real.
+            throw new NotFoundException("not found");
+        }
         return ResponseEntity.ok()
             .contentType(MediaType.APPLICATION_PDF)
             .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+            // A share URL pasted somewhere crawlable (a forum, a public channel) should
+            // not end up indexed - it's a live link to one customer's priced quotation.
+            .header("X-Robots-Tag", "noindex, nofollow")
             .body(pdf);
     }
 }
