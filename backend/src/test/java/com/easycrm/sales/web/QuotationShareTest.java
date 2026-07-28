@@ -59,6 +59,14 @@ class QuotationShareTest extends IntegrationTest {
                            whatsapp == null ? "null" : "\"" + whatsapp + "\"")));
     }
 
+    private void addContactWithPrimary(String auth, String customerId, String whatsapp,
+                                       boolean isPrimary) throws Exception {
+        mvc.perform(post("/api/v1/customers/" + customerId + "/contacts")
+            .header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("""
+                {"name":"Contact","whatsappNumber":"%s","isPrimary":%s}"""
+                .formatted(whatsapp, isPrimary)));
+    }
+
     @Test
     void sharingTwiceReturnsTheSameLink() throws Exception {
         String auth = "Bearer " + tokens.provisionOwner("27").token();
@@ -91,6 +99,50 @@ class QuotationShareTest extends IntegrationTest {
         assertTrue(waMe.startsWith("https://wa.me/919876543210?text="), waMe);
         assertFalse(waMe.contains("919000000001"), waMe);
         assertTrue(waMe.contains("%2F"), waMe);   // the public URL's slashes are encoded
+
+        // The text segment must be RFC 3986-encoded (%20 for space), not
+        // form-urlencoded (+ for space) — a literal '+' renders as-is to the customer.
+        String text = waMe.substring(waMe.indexOf("text=") + "text=".length());
+        assertTrue(text.contains("%20"), waMe);
+        assertFalse(text.contains("+"), waMe);
+    }
+
+    @Test
+    void theWaMeLinkTargetsThePrimaryContactAmongSeveral() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String cId = customer(auth, "27");
+        addContactWithPrimary(auth, cId, "919000000001", false);
+        addContactWithPrimary(auth, cId, "919876543210", true);
+        addContactWithPrimary(auth, cId, "919000000003", false);
+        String qId = sentQuotation(auth, cId);
+
+        String waMe = JsonPath.read(mvc.perform(post("/api/v1/quotations/" + qId + "/share")
+            .header("Authorization", auth)).andReturn().getResponse().getContentAsString(),
+            "$.waMeUrl");
+
+        // Neither non-primary contact must be picked, regardless of insertion order.
+        assertTrue(waMe.startsWith("https://wa.me/919876543210?text="), waMe);
+    }
+
+    @Test
+    void withNoPrimaryContactTheRecipientChoiceIsStableAcrossRepeatedShares() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String cId = customer(auth, "27");
+        addContactWithPrimary(auth, cId, "919000000001", false);
+        addContactWithPrimary(auth, cId, "919000000002", false);
+        String qId = sentQuotation(auth, cId);
+
+        String first = JsonPath.read(mvc.perform(post("/api/v1/quotations/" + qId + "/share")
+                .header("Authorization", auth))
+            .andReturn().getResponse().getContentAsString(), "$.waMeUrl");
+        String second = JsonPath.read(mvc.perform(post("/api/v1/quotations/" + qId + "/share")
+                .header("Authorization", auth))
+            .andReturn().getResponse().getContentAsString(), "$.waMeUrl");
+
+        // No primary contact: the tie-break (oldest contact first) must be deterministic,
+        // not an arbitrary pick that could vary between calls.
+        assertEquals(first, second);
+        assertTrue(first.startsWith("https://wa.me/919000000001?text="), first);
     }
 
     @Test

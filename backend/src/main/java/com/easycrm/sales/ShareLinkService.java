@@ -112,14 +112,20 @@ public class ShareLinkService {
 
         // No number is not an error: wa.me with only text opens WhatsApp's contact
         // picker, which costs the salesperson one tap instead of blocking the share.
+        // URLEncoder is form-urlencoding, not RFC 3986: it emits '+' for a space, which
+        // a client that decodes the query string per RFC 3986 renders as a literal '+'.
+        // wa.me's `text` parameter expects the RFC 3986 convention, so swap '+' for %20.
         return "https://wa.me/" + number + "?text="
-             + URLEncoder.encode(message, StandardCharsets.UTF_8);
+             + URLEncoder.encode(message, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     private Optional<Contact> primaryContact(UUID customerId) {
-        List<Contact> all = contacts.findByCustomerId(customerId);
-        return all.stream()
-            .max(Comparator.comparing(Contact::isPrimary));   // a primary one, else any
+        // findByCustomerId has no ORDER BY and nothing enforces a single primary contact,
+        // so the tie-break must be explicit: primaries first, then the oldest contact.
+        // Ids are UUIDv7, so id order is creation order.
+        return contacts.findByCustomerId(customerId).stream()
+            .min(Comparator.comparing((Contact c) -> !c.isPrimary())
+                .thenComparing(Contact::getId));
     }
 
     /** wa.me wants digits only: no +, spaces or dashes. */
