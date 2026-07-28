@@ -19,8 +19,7 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public OrderResponse get(UUID id) {
-        return OrderResponse.of(orders.findById(id)
-            .orElseThrow(() -> new NotFoundException("order not found")));
+        return OrderResponse.of(find(id));
     }
 
     @Transactional(readOnly = true)
@@ -30,5 +29,32 @@ public class OrderService {
         else if (customerId != null) page = orders.findByCustomerId(customerId, pageable);
         else page = orders.findAll(pageable);
         return PageResponse.of(page.map(OrderResponse::of));
+    }
+
+    @Transactional
+    public OrderResponse dispatch(UUID id) {
+        Order o = find(id);
+        o.dispatch();
+        return OrderResponse.of(o);
+    }
+
+    @Transactional
+    public OrderResponse close(UUID id) {
+        Order o = find(id);
+        o.close();
+        return OrderResponse.of(o);
+    }
+
+    @Transactional
+    public OrderResponse cancel(UUID id, String reason) {
+        Order o = find(id);
+        o.cancel(reason);
+        return OrderResponse.of(o);
+    }
+
+    /** Cross-tenant rows are invisible to RLS, so "not mine" and "not there" both 404. */
+    private Order find(UUID id) {
+        return orders.findById(id)
+            .orElseThrow(() -> new NotFoundException("order not found"));
     }
 }
