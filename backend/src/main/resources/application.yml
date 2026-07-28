@@ -17,6 +17,9 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  thymeleaf:
+    suffix: .xhtml
+    mode: XML
 easycrm:
   jwt:
     secret: ${JWT_SECRET:0123456789-0123456789-0123456789-devsecret}

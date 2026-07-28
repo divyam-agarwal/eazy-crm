@@ -1,0 +1,106 @@
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <title th:text="${d.doc.quoteNo} + ' (v' + ${d.doc.versionNo} + ')'">Quotation</title>
+  <style>
+    @page { size: A4; margin: 18mm 14mm; }
+    body { font-family: Helvetica, sans-serif; font-size: 9pt; color: #111; }
+    h1 { font-size: 15pt; margin: 0 0 2mm 0; }
+    .muted { color: #555; }
+    .parties { width: 100%; margin-top: 6mm; }
+    .parties td { vertical-align: top; width: 50%; padding-right: 6mm; }
+    .label { font-size: 7.5pt; text-transform: uppercase; color: #777;
+             letter-spacing: 0.4pt; margin-bottom: 1mm; }
+    table.items { width: 100%; border-collapse: collapse; margin-top: 6mm; }
+    table.items th { background: #f0f0f0; text-align: left; font-size: 8pt;
+                     padding: 2mm; border-bottom: 0.4mm solid #999; }
+    table.items td { padding: 2mm; border-bottom: 0.2mm solid #ddd; }
+    .num { text-align: right; }
+    table.totals { margin-top: 4mm; margin-left: auto; width: 62mm; }
+    table.totals td { padding: 1.2mm 2mm; }
+    table.totals tr.grand td { font-weight: bold; border-top: 0.4mm solid #999; }
+    .terms { margin-top: 8mm; font-size: 8.5pt; }
+    .terms div { margin-bottom: 1.5mm; }
+  </style>
+</head>
+<body>
+
+  <h1 th:text="${d.seller.businessName}">Seller</h1>
+  <div class="muted">
+    <span th:if="${d.seller.address}" th:text="${d.seller.address}">Address</span>
+    <span th:if="${d.seller.gstin}" th:text="'| GSTIN: ' + ${d.seller.gstin}">GSTIN</span>
+    <span th:if="${d.seller.phone}" th:text="'| ' + ${d.seller.phone}">Phone</span>
+    <span th:if="${d.seller.email}" th:text="'| ' + ${d.seller.email}">Email</span>
+  </div>
+
+  <table class="parties">
+    <tr>
+      <td>
+        <div class="label">Quotation to</div>
+        <div th:text="${d.buyer.businessName}">Buyer</div>
+        <div class="muted" th:if="${d.buyer.address}" th:text="${d.buyer.address}">Addr</div>
+        <div class="muted" th:if="${d.buyer.gstin}"
+             th:text="'GSTIN: ' + ${d.buyer.gstin}">GSTIN</div>
+      </td>
+      <td>
+        <div class="label">Quotation</div>
+        <div th:text="${d.doc.quoteNo} + '  (v' + ${d.doc.versionNo} + ')'">No</div>
+        <div class="muted" th:text="'Date: ' + ${d.doc.date}">Date</div>
+        <div class="muted" th:if="${d.doc.validUntil}"
+             th:text="'Valid until: ' + ${d.doc.validUntil}">Valid</div>
+        <div class="muted" th:text="'Place of supply: ' + ${d.doc.placeOfSupply}">POS</div>
+      </td>
+    </tr>
+  </table>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th>#</th><th>Description</th><th>HSN</th><th>UOM</th>
+        <th class="num">Qty</th><th class="num">Rate</th><th class="num">Disc %</th>
+        <th class="num">GST %</th><th class="num">Taxable</th><th class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr th:each="line : ${d.lines}">
+        <td th:text="${line.serial}">1</td>
+        <td th:text="${line.name}">Item</td>
+        <td th:text="${line.hsn}">HSN</td>
+        <td th:text="${line.uom}">PCS</td>
+        <td class="num" th:text="${line.qty}">1</td>
+        <td class="num" th:text="${line.rate}">Rs. 0.00</td>
+        <td class="num" th:text="${line.discountPct}">0</td>
+        <td class="num" th:text="${line.gstRate}">18</td>
+        <td class="num" th:text="${line.taxableValue}">Rs. 0.00</td>
+        <td class="num" th:text="${line.lineTotal}">Rs. 0.00</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Sub total</td><td class="num" th:text="${d.totals.subTotal}">Rs. 0.00</td></tr>
+    <tr th:unless="${d.interState}">
+      <td>CGST</td><td class="num" th:text="${d.totals.cgst}">Rs. 0.00</td>
+    </tr>
+    <tr th:unless="${d.interState}">
+      <td>SGST</td><td class="num" th:text="${d.totals.sgst}">Rs. 0.00</td>
+    </tr>
+    <tr th:if="${d.interState}">
+      <td>IGST</td><td class="num" th:text="${d.totals.igst}">Rs. 0.00</td>
+    </tr>
+    <tr class="grand">
+      <td>Grand total</td><td class="num" th:text="${d.totals.grandTotal}">Rs. 0.00</td>
+    </tr>
+  </table>
+
+  <div class="terms">
+    <div th:if="${d.doc.paymentTerms}"
+         th:text="'Payment terms: ' + ${d.doc.paymentTerms}">Payment</div>
+    <div th:if="${d.doc.deliveryTerms}"
+         th:text="'Delivery terms: ' + ${d.doc.deliveryTerms}">Delivery</div>
+    <div th:if="${d.doc.notes}" th:text="${d.doc.notes}">Notes</div>
+    <div class="muted">This is a quotation, not a tax invoice.</div>
+  </div>
+
+</body>
+</html>
