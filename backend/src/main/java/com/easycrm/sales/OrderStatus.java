@@ -1,4 +1,8 @@
 package com.easycrm.sales;
 
-// Only CONFIRMED for now; DISPATCHED/CLOSED/CANCELLED arrive with the order-management slice.
-public enum OrderStatus { CONFIRMED }
+public enum OrderStatus {
+    CONFIRMED, DISPATCHED, CLOSED, CANCELLED;
+
+    public boolean isTerminal() { return this == CLOSED || this == CANCELLED; }
+    public boolean isActive()   { return !isTerminal(); }
+}

@@ -1,5 +1,6 @@
 package com.easycrm.sales;
 
+import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.persistence.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -51,6 +52,9 @@ public class Order extends TenantScopedEntity {
     @Column(nullable = false, length = 16)
     private OrderStatus status;
 
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
     protected Order() {}
 
     public Order(UUID quotationId, UUID quotationVersionId, UUID customerId, String orderNo,
@@ -68,6 +72,38 @@ public class Order extends TenantScopedEntity {
         this.status = OrderStatus.CONFIRMED;
     }
 
+    /** CONFIRMED -> DISPATCHED. Dispatch is a status flag only; no dispatch details are modelled. */
+    public void dispatch() {
+        if (status != OrderStatus.CONFIRMED) {
+            throw new ValidationException("status", "only a confirmed order can be dispatched");
+        }
+        this.status = OrderStatus.DISPATCHED;
+    }
+
+    /** DISPATCHED -> CLOSED. No skipping: a confirmed order must be dispatched first. */
+    public void close() {
+        if (status != OrderStatus.DISPATCHED) {
+            throw new ValidationException("status", "only a dispatched order can be closed");
+        }
+        this.status = OrderStatus.CLOSED;
+    }
+
+    /**
+     * CONFIRMED or DISPATCHED -> CANCELLED. Terminal, and a reason is mandatory.
+     * Both checks run before any mutation, so a rejected cancel leaves the order untouched.
+     */
+    public void cancel(String reason) {
+        if (status.isTerminal()) {
+            throw new ValidationException("status",
+                "a " + status.name().toLowerCase() + " order cannot be cancelled");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new ValidationException("cancelReason", "a reason is required to cancel an order");
+        }
+        this.status = OrderStatus.CANCELLED;
+        this.cancelReason = reason;
+    }
+
     public String getOrderNo() { return orderNo; }
     public UUID getQuotationId() { return quotationId; }
     public UUID getQuotationVersionId() { return quotationVersionId; }
@@ -78,4 +114,5 @@ public class Order extends TenantScopedEntity {
     public BigDecimal getTotalTax() { return totalTax; }
     public BigDecimal getGrandTotal() { return grandTotal; }
     public OrderStatus getStatus() { return status; }
+    public String getCancelReason() { return cancelReason; }
 }
