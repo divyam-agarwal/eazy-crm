@@ -3,6 +3,7 @@ package com.easycrm.sales.web;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.QuotationService;
 import com.easycrm.sales.QuotationStatus;
+import com.easycrm.sales.pdf.QuotationPdfService;
 import com.easycrm.sales.web.dto.AcceptRequest;
 import com.easycrm.sales.web.dto.ItemsRequest;
 import com.easycrm.sales.web.dto.OrderResponse;
@@ -12,7 +13,9 @@ import com.easycrm.sales.web.dto.QuotationResponse;
 import com.easycrm.sales.web.dto.QuotationVersionResponse;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -32,8 +35,12 @@ import java.util.UUID;
 public class QuotationController {
 
     private final QuotationService service;
+    private final QuotationPdfService pdfService;
 
-    public QuotationController(QuotationService service) { this.service = service; }
+    public QuotationController(QuotationService service, QuotationPdfService pdfService) {
+        this.service = service;
+        this.pdfService = pdfService;
+    }
 
     @PostMapping
     public ResponseEntity<QuotationResponse> create(@Valid @RequestBody QuotationCreateRequest req) {
@@ -59,6 +66,16 @@ public class QuotationController {
     @GetMapping("/{id}/versions/{versionNo}")
     public QuotationVersionResponse version(@PathVariable UUID id, @PathVariable int versionNo) {
         return service.getVersion(id, versionNo);
+    }
+
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> pdf(@PathVariable UUID id,
+                                      @RequestParam(required = false) Integer version) {
+        byte[] bytes = pdfService.renderByQuotation(id, version);
+        return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_PDF)
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+            .body(bytes);
     }
 
     @PatchMapping("/{id}")
