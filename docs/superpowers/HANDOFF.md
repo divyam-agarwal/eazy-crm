@@ -339,3 +339,8 @@ Roughly highest-value first.
     `application.yml` accordingly. What's still open: bind it through a validated
     `@ConfigurationProperties` class that requires an `https` scheme outside a dev profile, so a
     misconfigured deployment fails loudly at startup instead of shipping a broken link silently.
+22. **The inter-state PDF assertion cannot distinguish the IGST row from the Total tax row.** In
+    the endpoint test's fixture both happen to be `Rs. 180.00`, so a regression that dropped the
+    inter-state Total tax row specifically would not turn the test red. The row does render
+    (verified by inspection); the intra-state branch has no such ambiguity. Asserting on the
+    literal `Total tax` label, or choosing a fixture where the two amounts differ, closes it.
