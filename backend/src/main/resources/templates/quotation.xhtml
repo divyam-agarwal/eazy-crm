@@ -88,6 +88,7 @@
     <tr th:if="${d.interState}">
       <td>IGST</td><td class="num" th:text="${d.totals.igst}">Rs. 0.00</td>
     </tr>
+    <tr><td>Total tax</td><td class="num" th:text="${d.totals.totalTax}">Rs. 0.00</td></tr>
     <tr class="grand">
       <td>Grand total</td><td class="num" th:text="${d.totals.grandTotal}">Rs. 0.00</td>
     </tr>

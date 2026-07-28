@@ -24,6 +24,11 @@ easycrm:
   jwt:
     secret: ${JWT_SECRET:0123456789-0123456789-0123456789-devsecret}
     access-ttl-seconds: 900
+  # Dev-only default. A real deployment MUST set PUBLIC_BASE_URL to an https:// origin:
+  # this value is prefixed onto every minted quotation share link and WhatsApped straight
+  # to a customer, so a forgotten override is silent — nothing fails at startup, the bad
+  # URL just shows up in the customer's chat (and http:// puts a bearer credential, the
+  # share token, in the clear).
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
 management:
   endpoints:

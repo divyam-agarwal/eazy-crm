@@ -251,71 +251,91 @@ Roughly highest-value first.
    PDF/share slice's Task 9: `QuotationSpecifications.filter` mirrors `OrderSpecifications`,
    `QuotationRepository` now extends `JpaSpecificationExecutor<Quotation>`, and a two-filter
    regression test (`?status=` + `?customerId=` together) guards it.
-2. **No rate limiting on `/public/q/{token}`** — the app's **only unauthenticated route**, and its
+2. **Non-Latin script silently renders as `#` in the quotation PDF — the most user-visible
+   limitation this slice ships with.** Base-14 Helvetica (the template's font) covers WinAnsi
+   (Latin-1) only. Confirmed empirically through the real `PdfEngine`: Devanagari text came back
+   as `Shri Ram #### Traders`. A `businessName`, `billingAddress` or product name in Devanagari,
+   Gujarati, Tamil or any other Indian script is entirely ordinary for this product's actual
+   customers, and the result is a corrupted document sent over WhatsApp with no exception, no log
+   line, and no test failure — the substitution is silent. See design spec §2 for the full
+   reasoning. Fix: embed a Unicode-capable font (Noto Sans or DejaVu Sans, subset) — the
+   jar-weight/font-licensing trade-off §2 already declined once for the `₹` glyph alone, now with
+   its real cost visible.
+3. **No rate limiting on `/public/q/{token}`** — the app's **only unauthenticated route**, and its
    most expensive uncapped operation: every hit renders a PDF from scratch, and the 128-bit token
    space, while not guessable, is nothing an attacker is prevented from hammering. Already flagged
    in §8 above as a candidate to pull forward rather than leave purely on the backlog.
-3. **No expiry or revoke on a share link.** A link minted once renders forever; the only way to
-   invalidate one today is sharing the same version again, which replaces it (a crude revoke, not
-   a deliberate one). The `share_link` row is exactly where expiry/revoke columns belong when this
+4. **No expiry or revoke on a share link, and no way to invalidate one by any means today.** A
+   link minted once renders forever. Resharing the same version does **not** replace anything —
+   `ShareLinkService.share()` returns the version's existing stored token (that is the point of
+   the plaintext-idempotency design in the design spec §4), and there is no delete path anywhere
+   in the codebase. The `share_link` row is exactly where expiry/revoke columns belong when this
    is prioritized — see the design spec §4/§8 for the reasoning already on record.
-4. **`Totals.totalTax` is carried in the quotation PDF's view model but rendered nowhere in
-   `quotation.xhtml`.** Present in the design spec's own template sketch too, so it's not a task
-   implementer's slip. Needs a deliberate call: add a "Total tax" row to the document, or drop the
-   field from the view model. Cheap either way; undecided is the only wrong state to leave it in.
-5. **Cancelling an enquiry-linked order has no path back to that enquiry** (challenge #27). The
+5. ~~**`Totals.totalTax` is carried in the quotation PDF's view model but rendered nowhere in
+   `quotation.xhtml`.**~~ **DONE.** A "Total tax" row now sits between the tax rows and Grand
+   total, matching the design spec §2 template contract (`subTotal`, `totalTax`, `grandTotal`).
+6. **Cancelling an enquiry-linked order has no path back to that enquiry** (challenge #27). The
    422 message says "raise a new quotation", which only fully works for enquiry-less quotations:
    `Enquiry.requireActive()` rejects a second `markConverted()` and `UNIQUE(tenant_id,
    enquiry_id)` blocks a second quotation, so the replacement must go in with `enquiryId: null`,
    silently severing lead traceability. Re-opening the enquiry on cancel, or relaxing
    one-quote-per-enquiry, is an **open design decision, not a bug** — decide it deliberately.
-6. **PDF rendering runs inside `@Transactional(readOnly = true)`** (`QuotationPdfService`),
+7. **PDF rendering runs inside `@Transactional(readOnly = true)`** (`QuotationPdfService`),
    holding a database connection open for the duration of CPU-bound render work. Fine at today's
    volumes; if rendering gets heavier, consider fetching inside the transaction and rendering
    outside it.
-7. **PATCH endpoints house-wide are full-header-replace**, not partial merges — an omitted
+8. **PATCH endpoints house-wide are full-header-replace**, not partial merges — an omitted
    nullable field is cleared. The PUT-vs-PATCH-vs-partial decision is deliberately deferred until
    the frontend lands and can state what it needs. This semantic is documented on
    `Tenant.updateProfile` (the PDF/share slice's new tenant-profile PATCH) but, house-wide, is
    asserted by no test — a regression test would be cheap if this is ever revisited.
-8. **`OrderSpecifications`, `EnquirySpecifications`, and now `QuotationSpecifications` all use
+9. **`OrderSpecifications`, `EnquirySpecifications`, and now `QuotationSpecifications` all use
    string-keyed `root.get(...)`** rather than a JPA static metamodel, so a field rename fails at
    runtime rather than compile time. All three have immediate test coverage. If fixed, fix them
    together — doing one alone just makes the others inconsistent.
-9. **Only `Seller`'s optional fields have a null-render test in `QuotationPdfRendererTest`.**
+10. **Only `Seller`'s optional fields have a null-render test in `QuotationPdfRendererTest`.**
    `Buyer.gstin`, `Buyer.address`, `validUntil`, payment/delivery terms and notes are all
    `th:if`-guarded in `quotation.xhtml`, but no test renders any of them absent — the same
    category of gap as the `OrderTest` item below, just on the newer surface.
-10. **`OrderTest`'s three rejected-transition tests assert only the exception type**, not that
+11. **`OrderTest`'s three rejected-transition tests assert only the exception type**, not that
     `status`/`cancelReason` are left unmutated; only the blank-reason test snapshots state. Safe
     today (every guard runs before any assignment), but a future guard reorder would go uncaught.
-11. **Four near-identical order-building test fixtures** now exist across the sales test classes
+12. **Four near-identical order-building test fixtures** now exist across the sales test classes
     (`OrderReadTest`, `OrderTransitionTest`, `OrderStatusAuditTest`, plus
     `QuotationAcceptAuditTest`'s inlined variant). Extracting a shared sales test-fixture helper
     is a candidate cleanup; it was consciously declined to keep slices independent.
-12. **`Enquiry.advanceTo` couples to enum ordinal order** (guarded, but a reorder changes
+13. **`Enquiry.advanceTo` couples to enum ordinal order** (guarded, but a reorder changes
     behaviour). `Order`'s transitions deliberately avoid this by naming each precondition — that
     is the pattern to copy if `Enquiry` is ever revisited.
-13. **`expectedValue` / `contactEmail` lack `@PositiveOrZero` / `@Email`** on the enquiry DTOs.
-14. **No index supports a status-only order-list filter.** `sales_order` has
+14. **`expectedValue` / `contactEmail` lack `@PositiveOrZero` / `@Email`** on the enquiry DTOs.
+15. **No index supports a status-only order-list filter.** `sales_order` has
     `(tenant_id, customer_id)` and `(tenant_id, id)`; `?status=` alone has none. Irrelevant at
     current volumes — worth revisiting before the first large tenant.
-15. **`PdfEngine` catches broad `Exception` in both its render and metadata-stamp paths.** Matches
+16. **`PdfEngine` catches broad `Exception` in both its render and metadata-stamp paths.** Matches
     the brief's reference code as given; narrowing it to something that distinguishes malformed
     input from an environment failure belongs with whichever caller first needs to tell the two
     apart. No caller does yet.
-16. **Two dead null-checks guard a value that's never actually null.**
+17. **Two dead null-checks guard a value that's never actually null.**
     `QuotationPdfService.requireCurrentVersion`'s null-`currentVersionId` branch (`create()`
     always sets it) and `ShareLinkService.share`'s equivalent `q.getCurrentVersionId() == null`
     check are both harmless defensive code inherited from the plan. Deliberately left as-is:
     fixing one without the other would just make them inconsistent, so revisit together if ever.
-17. **Quotation-totals `sum()` references `java.util.function.Function` / `java.util.Objects`
+18. **Quotation-totals `sum()` references `java.util.function.Function` / `java.util.Objects`
     fully-qualified inline** rather than importing them — a style inconsistency inherited from
     the plan, not introduced by this slice.
-18. **A malformed `/public/q/{token}` containing a literal `/` returns 401, not 404.** Ruled
+19. **A malformed `/public/q/{token}` containing a literal `/` returns 401, not 404.** Ruled
     acceptable as-is: the path never resolves as this route at all, and the 401 reveals nothing
     beyond "`/public/**` is auth-gated" — it isn't a usable oracle for probing real tokens.
-19. **`PdfEngineTest.sameInputRendersToIdenticalBytes` renders XHTML with no `<title>`,** so
+20. **`PdfEngineTest.sameInputRendersToIdenticalBytes` renders XHTML with no `<title>`,** so
     byte-determinism is never exercised with a title present. The re-reviewer decompiled the
     renderer and confirmed title is a pure function of input, so this is a coverage gap, not a
     suspected risk — lowest priority on this list.
+21. **`easycrm.public-base-url` has a bare `http://localhost:8080` dev default with no validation
+    that a real deployment overrode it to an `https://` origin.** A deploy that forgets
+    `PUBLIC_BASE_URL` mints and WhatsApps a `localhost` link to a customer — silent, because the
+    only place the bad URL surfaces is the customer's chat, not the server's logs. The default
+    itself is intentional (no production profile exists yet; local dev and the demo flow need it
+    to work out of the box, same shape as the `JWT_SECRET` dev default) and is commented in
+    `application.yml` accordingly. What's still open: bind it through a validated
+    `@ConfigurationProperties` class that requires an `https` scheme outside a dev profile, so a
+    misconfigured deployment fails loudly at startup instead of shipping a broken link silently.
