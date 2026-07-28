@@ -33,6 +33,24 @@ class PdfEngineTest {
     }
 
     @Test
+    void preservesTitleFromXhtmlHeadIntoDocumentInformation() throws Exception {
+        String xhtmlWithTitle = """
+            <html><head><title>Quotation QTN/2026-27/0001</title>
+            <style>body { font-family: Helvetica; }</style></head>
+            <body><h1>Quotation QTN/2026-27/0001</h1></body></html>
+            """;
+
+        byte[] pdf = engine.render(xhtmlWithTitle, Instant.parse("2026-07-28T10:15:30Z"));
+
+        try (PDDocument doc = PDDocument.load(pdf)) {
+            // Task 8 serves these PDFs inline in a browser, where /Title becomes the
+            // tab name; the metadata-stamping step must not discard it while pinning
+            // the deterministic fields (producer, creator, dates).
+            assertEquals("Quotation QTN/2026-27/0001", doc.getDocumentInformation().getTitle());
+        }
+    }
+
+    @Test
     void sameInputRendersToIdenticalBytes() {
         Instant at = Instant.parse("2026-07-28T10:15:30Z");
 

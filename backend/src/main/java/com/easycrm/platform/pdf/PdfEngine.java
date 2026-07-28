@@ -46,12 +46,16 @@ public class PdfEngine {
         Calendar at = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
         at.setTimeInMillis(timestamp.toEpochMilli());
         try (PDDocument doc = PDDocument.load(pdf)) {
-            PDDocumentInformation info = new PDDocumentInformation();
+            // Start from what openhtmltopdf already wrote -- notably /Title, which it
+            // maps from the XHTML <title> element -- and overwrite only the fields that
+            // are otherwise a source of nondeterminism (producer, creator, the two
+            // dates). Replacing the whole PDDocumentInformation object would silently
+            // drop /Title and any other metadata the template supplies.
+            PDDocumentInformation info = doc.getDocumentInformation();
             info.setProducer("EasyCRM");
             info.setCreator("EasyCRM");
             info.setCreationDate(at);
             info.setModificationDate(at);
-            doc.setDocumentInformation(info);
             // openhtmltopdf's own first-pass writer already stamped a random /ID pair
             // into the trailer. PDFBox's COSWriter only recomputes /ID via MD5 when the
             // trailer does NOT already carry a 2-element ID array; otherwise it silently
