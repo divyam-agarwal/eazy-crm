@@ -1,20 +1,26 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-28 (order lifecycle merged to `main` as `8247579`).
+**Last updated:** 2026-07-29 (quotation PDF/share slice complete on branch
+`worktree-quotation-pdf-share`, not yet merged to `main`).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-**Nothing is in flight.** `main` is clean, all work is merged, and the next session begins by
-choosing what to build — there is no half-finished task to rescue.
+**One slice is implemented and reviewed clean, but not yet merged.** The quotation PDF +
+`wa.me` share slice (design spec `specs/2026-07-28-quotation-pdf-share-design.md`) is done on
+`worktree-quotation-pdf-share`, off `main` @ `3410e42`, and this docs wrap-up is its final task.
+`main` itself is still clean at the order-lifecycle merge (`8247579`) until that branch merges.
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. Expect **187 tests, 0 failures**. If that number
-   differs, stop and reconcile before writing code — everything below assumes it.
+   then `cd backend && ./gradlew clean test`. On `worktree-quotation-pdf-share`, expect **231
+   tests, 0 failures**; on `main` (pre-merge), expect **187**. If either number differs, stop and
+   reconcile before writing code — everything below assumes it.
 2. **Read §1** (what this product is) and **§7** (non-negotiable working agreements).
-3. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
+3. If the PDF/share slice hasn't been merged yet, do that first (see
+   `superpowers:finishing-a-development-branch`). Once merged, **go to §8** and pick the next
+   chunk *with the user*. Do not start one unilaterally.
 4. Then run the standard workflow on a feature branch off `main`:
    **brainstorming → (design spec →) writing-plans → subagent-driven-development →
    finishing-a-development-branch.**
@@ -52,15 +58,49 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (27 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (30 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
+21. **`specs/2026-07-28-quotation-pdf-share-design.md`** — quotation PDF/share design spec
+    (server-side rendering, the tenant-resolution seam for a public link, `share_link`'s
+    plaintext-token design, the `wa.me` deep link, and the deferred `QuotationService.list`
+    filter fix). Source of truth for *what* this slice built. Implemented on
+    `worktree-quotation-pdf-share`; not yet merged.
+22. **`plans/2026-07-28-quotation-pdf-share.md`** — quotation PDF/share implementation plan (10
+    tasks: PDF engine spike, Indian-format money, tenant profile columns, the Thymeleaf template,
+    the render endpoint, the `share_link` table, the share endpoint, the public endpoint, the
+    list-filter fix, this docs wrap-up). Executed in full, every task reviewed clean.
 
 ## 3. Current state
 
-- **Branch:** `main`, working tree clean (order lifecycle merged; feature branch deleted).
-- **Merged & done on `main`:** the design docs (including this slice's `specs/2026-07-28-order-lifecycle-design.md` `8a6c9dd` and `plans/2026-07-28-order-lifecycle.md` `8c0703f`, both committed directly) + **P0 tenant-isolation foundation** + **P0-auth core** + **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`) + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`) + **enquiry→quotation conversion** (merge commit `06e6014`) + **sales hardening** (merge commit `abc2bd3`) + **order lifecycle** (merge commit `8247579`).
+- **Branch:** `worktree-quotation-pdf-share`, off `main` @ `3410e42`, working tree clean, all 10
+  tasks done and reviewed clean. **Not yet merged** — `main` itself is still at the order-lifecycle
+  merge (`8247579`) until this branch lands.
+- **Merged & done on `main`:** the design docs (including the order-lifecycle slice's
+  `specs/2026-07-28-order-lifecycle-design.md` `8a6c9dd` and `plans/2026-07-28-order-lifecycle.md`
+  `8c0703f`, both committed directly) + **P0 tenant-isolation foundation** + **P0-auth core** +
+  **P1a master data** (merge commit `2f9a2f4`) + **P1b quotation engine** (merge commit `43e9642`)
+  + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`) +
+  **enquiry→quotation conversion** (merge commit `06e6014`) + **sales hardening** (merge commit
+  `abc2bd3`) + **order lifecycle** (merge commit `8247579`).
+- **Latest completed, awaiting merge: quotation PDF + `wa.me` share.** 10 tasks on
+  `worktree-quotation-pdf-share` (PDF engine spike + determinism, Indian digit-grouping money
+  formatting, seller-profile columns on `Tenant`, a Thymeleaf quotation template, the
+  authenticated PDF render endpoint, the global `share_link` table, the idempotent share
+  endpoint + `wa.me` deep link, the public no-auth render endpoint, the `QuotationService.list`
+  filter fix, and this docs wrap-up), every task reviewed clean (one adversarial, execution-based
+  review on the public endpoint). Delivered: server-side quotation rendering (Thymeleaf →
+  openhtmltopdf, byte-identical across renders of the same frozen version — challenge #28);
+  `Tenant.address/phone/email` for the letterhead; `GET /api/v1/quotations/{id}/pdf?version=<n>`
+  (JWT-gated, defaults to the latest SENT version); a global, RLS-exempt `share_link` table
+  mapping a plaintext token to `(tenant_id, quotation_version_id)` — deliberately unhashed, unlike
+  `refresh_token`, so `POST /api/v1/quotations/{id}/share` is genuinely idempotent (see the design
+  spec §4 for the full blast-radius reasoning); `GET /public/q/{token}` serving the PDF with **no**
+  JWT at all, `TenantContext.runAs` installing the resolved tenant before the rendering
+  transaction opens (challenges #29–#30); and the `QuotationService.list` two-filter fix
+  (challenge #24's pattern, closing backlog item #1 below). **231 tests passing** from a clean
+  build, up from the 187 order-lifecycle baseline (+44).
 - **Latest merged: order lifecycle** — merged to `main` as `8247579` (5 code/test tasks + a docs wrap-up + one final-review fix wave, each review clean). Delivered: the four-state guarded machine `CONFIRMED → DISPATCHED → CLOSED` (terminal) with `cancel()` legal from either active state, all three transitions guarded entity-side (`Order.dispatch()`/`close()`/`cancel(reason)`, each naming its own precondition rather than coupling to enum ordinal order); a required, non-blank `cancelReason` (`VARCHAR(500)`, migration `V23__order_cancel_reason.sql`); `POST /api/v1/orders/{id}/dispatch|close|cancel` (422 on an illegal transition, 400 on a blank cancel reason, 404 cross-tenant); a generic `OrderStatusChangedEvent` + synchronous same-transaction `OrderStatusChangedAuditListener` writing `ORDER_DISPATCHED`/`ORDER_CLOSED`/`ORDER_CANCELLED` audit rows; `OrderSpecifications.filter(status, customerId)` AND-composing both list filters (`OrderRepository` now extends `JpaSpecificationExecutor<Order>`), closing the challenge #24 dropped-filter bug for orders; and a 422 on `QuotationService.accept`'s idempotent branch when the existing order is `CANCELLED`, instead of silently handing back a dead order with 200 (challenge #27). The final whole-branch review added audit-detail-payload assertions (proving `from` carries the *pre*-transition status and `cancelReason` appears only on the cancel row) and cross-tenant coverage on the new `Specification` query path. **187 tests passing** from a clean build, up from the 166 sales-hardening baseline (+21).
 - **Prior latest merged: sales hardening** — 2 code/test tasks + docs closing the two Minors deferred from the conversion review. **166 tests passing** from a clean build (`cd backend && ./gradlew clean test`), up from the 162 conversion baseline (+4). Delivered: (1) a global `@ExceptionHandler(OptimisticLockingFailureException.class)` → 409 so a lost-update race (concurrent `accept`/convert-at-create) returns 409 not 500 — a sibling of the challenge #15 `DataIntegrityViolation` backstop on the disjoint concurrency subtree; (2) `UNIQUE(tenant_id, enquiry_id)` on `quotation` (migration `V22` + entity `@Table`; NULLs distinct so enquiry-less quotes coexist) making one-quote-per-enquiry structural, a guard-bypassed/raced second insert now routing through the challenge #15 handler → 409. Both proven deterministically (no threads): a handler unit test, a single-threaded stale-write repo test, and repo constraint tests. Challenge #26 logged; challenge #25's 500-gap note updated to "closed".
 - **Enquiry→quotation conversion** (prior): 2 code/test tasks + docs, merged as `06e6014` (162 tests). `QuotationService.create()` flips the enquiry to `CONVERTED` and stamps `quotation.enquiry_id` when raised with an `enquiryId`, atomically. Challenge #25.
@@ -87,6 +127,22 @@ All under `docs/superpowers/`:
 Read it before extending any of the areas it describes, so you don't rebuild something that
 exists or assume something that doesn't.
 
+**The quotation PDF/share slice is DONE on `worktree-quotation-pdf-share`, not yet merged.** 10
+tasks, every review clean: (1) a PDF-engine spike proving openhtmltopdf 1.0.10 renders on JDK 25
+and can be made byte-deterministic (challenge #28 — a PDFBox writer branch silently ignores
+`setDocumentId()` when the trailer already carries an inherited `/ID`); (2) Indian digit-grouping
+money formatting (`java.text.DecimalFormat` cannot do it — single `groupingSize`, hand-rolled
+instead); (3) `Tenant.address/phone/email` for the letterhead; (4) the Thymeleaf quotation
+template (CGST+SGST xor IGST, base-14 fonts, no ₹ glyph); (5) `GET
+/api/v1/quotations/{id}/pdf?version=<n>`; (6) the global `share_link` table; (7) `POST
+/api/v1/quotations/{id}/share` + the `wa.me` deep link (RFC 3986 space encoding, a deterministic
+primary-contact tie-break); (8) `GET /public/q/{token}` — no auth, tenant resolved from the
+global table and installed via `TenantContext.runAs` before the rendering transaction opens
+(challenges #29–#30); (9) the `QuotationService.list` two-filter fix (closes backlog item #1
+below); (10) this docs wrap-up. **231 tests passing** from a clean build, up from the 187
+order-lifecycle baseline (+44). See the §3 bullet above for the fuller feature list and the
+design spec for the tenant-resolution seam and the plaintext-token reasoning.
+
 **The order-lifecycle slice is DONE and merged to `main` (`8247579`).** 5 code/test tasks plus this docs wrap-up landed and reviewed clean: (1) `OrderStatus` widened to `CONFIRMED, DISPATCHED, CLOSED, CANCELLED` with `isTerminal()`/`isActive()` and entity-side guarded `dispatch()`/`close()`/`cancel(reason)` transitions, plus a required non-blank `cancelReason` (migration `V23`); (2) `POST /api/v1/orders/{id}/dispatch|close|cancel`, with `OrderResponse` gaining `cancelReason` as its 7th component; (3) a generic `OrderStatusChangedEvent` + `OrderStatusChangedAuditListener` writing the three new audit action rows; (4) `OrderSpecifications.filter` closing the challenge #24 dropped-filter bug for orders; (5) a 422 on `QuotationService.accept`'s idempotent branch when the existing order is `CANCELLED` (challenge #27). The whole-branch review then added audit-detail and cross-tenant assertions. Clean-build total is **187 tests**, all green, up from the 166 sales-hardening baseline. Next step is to pick the next chunk with the user (see §8).
 
 **Prior:** the sales-hardening slice is DONE and merged to `main` (`abc2bd3`). 3 tasks landed and reviewed (optimistic-lock→409 handler + tests; `UNIQUE(tenant_id, enquiry_id)` migration/entity + tests; docs), each task-review clean, and the whole-branch review returned READY TO MERGE with no Critical/Important findings. It closes the two Minors that the enquiry→quotation conversion whole-branch review consciously deferred (both now struck from the deferred list below).
@@ -95,7 +151,7 @@ exists or assume something that doesn't.
 - ~~**Enquiry → quotation conversion wiring**~~ — **DONE, merged** (`06e6014`). `QuotationService.create()` flips the enquiry to `CONVERTED` and stamps `quotation.enquiry_id` when a quote is raised with an `enquiryId`. Note: still convert-*at-create* only; no standalone `/enquiries/{id}/convert` endpoint, and one enquiry maps to at most one quotation (a second create against a converted enquiry → 422).
 - **`activity` / `follow_up` entities** — the spec's Activity section (CALL/WHATSAPP/EMAIL/VISIT/NOTE logs + first-class follow-up reminders) is still unbuilt.
 - ~~**Order status transitions beyond `CONFIRMED`**~~ — **DONE, merged** (`8247579`). `OrderStatus` now has `CONFIRMED, DISPATCHED, CLOSED, CANCELLED` with entity-side guarded `dispatch()`/`close()`/`cancel(reason)` transitions and a required `cancelReason` — see the order-lifecycle summary above. Challenge #27.
-- **PDF generation** and the **`wa.me` WhatsApp share link** — no rendering/sharing of a quotation or order exists yet.
+- ~~**PDF generation** and the **`wa.me` WhatsApp share link**~~ — **DONE** on `worktree-quotation-pdf-share` (not yet merged). Server-side quotation PDF rendering, a public tokenized share link, and the `wa.me` deep link all exist — see the §3/§4 summaries above. **Order PDF is still out of scope** (design spec §8 — the quotation is the document customers actually ask for at this stage), as are link expiry/revoke and rate limiting on the public route (see the backlog below).
 - **Scheduled auto-expiry** — only a manual `expire` action exists on quotations; nothing runs on a schedule to expire quotations past `validUntil` automatically.
 - **Record-level visibility filtering** — still open from P1a (§4 P1a notes); quotations, orders, and now enquiries inherit the same gap (every user in a tenant reads every enquiry in it).
 - **Cursor pagination** — quotation, order, and enquiry list endpoints use the same offset-based `Pageable`/`PageResponse` as P1a; large tenants will need cursor pagination later.
@@ -160,27 +216,28 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 ## 8. The next chunk — pick one with the user
 
 The wedge (**enquiry → quotation → order**) is functionally complete end-to-end and hardened,
-including the order aggregate's own lifecycle. All five candidates below are scoped in the design
-spec (`specs/2026-07-22-easycrm-design.md`). Present them, take the user's choice, and only then
-start the workflow from §0 step 4.
+including the order aggregate's own lifecycle, and quotations can now be rendered as a PDF and
+shared over WhatsApp. All four candidates below are scoped in the design spec
+(`specs/2026-07-22-easycrm-design.md`). Present them, take the user's choice, and only then start
+the workflow from §0 step 4 — after the PDF/share branch itself is merged (§0).
 
-1. **PDF + `wa.me` WhatsApp share** for a quotation/order — the **first external-I/O slice**, and the
-   trigger to move the accept-audit event from same-transaction to **after-commit + outbox**
-   (challenge #22 flagged this seam). Highest product value, but introduces rendering + the outbox
-   pattern.
-2. **`activity` / `follow_up` entities** — the "never lose a follow-up" promise (CALL/WHATSAPP/EMAIL/
+1. **`activity` / `follow_up` entities** — the "never lose a follow-up" promise (CALL/WHATSAPP/EMAIL/
    VISIT/NOTE logs + first-class reminders). New aggregate(s); the accept event seam already exists
    to hang activity listeners on.
-3. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
+2. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
    today; nothing runs on a schedule. Small, introduces the first scheduled job.
-4. **P0-auth follow-up** — user invitations + **record-level visibility filtering** (`assigned_to`,
-   still open from P1a — every user in a tenant reads every record) + rate limiting.
-5. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
+3. **P0-auth follow-up** — user invitations + **record-level visibility filtering** (`assigned_to`,
+   still open from P1a — every user in a tenant reads every record) + **rate limiting**, which is
+   now overdue: `/public/q/{token}` is the app's only unauthenticated route and its most expensive
+   uncapped operation (a PDF render per hit, off a 128-bit token an attacker could in principle
+   brute-force offline).
+4. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
    `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
 
-**Suggested default:** **#1 (PDF + `wa.me` WhatsApp share)** — with order status transitions now
-done, this is the highest-product-value chunk left and the natural trigger for the challenge #22
-outbox migration. But confirm with the user.
+**Suggested default:** no single obvious next step this time — **#1 (activity/follow-up)** is the
+next spec-scoped product surface, but **#3's rate-limiting half** has gone from "on the backlog"
+to "the only unauthenticated route in the app is uncapped," which is a real argument for pulling
+it forward. Confirm with the user rather than assuming.
 
 ### Smaller deferred-Minor backlog
 
@@ -188,37 +245,52 @@ Open and non-blocking. This list is the complete record — it is **self-contain
 looking for an SDD ledger to corroborate it (those workspaces are deleted once a slice merges).
 Roughly highest-value first.
 
-1. **`QuotationService.list` has the dropped-filter bug** the order-lifecycle slice fixed for
-   orders — `QuotationService.java`, the `if (status != null) … else if (customerId != null) …`
-   block, so `?status=` and `?customerId=` together silently ignores the customer. Found while
-   fixing the order list; left out only because that spec scoped the fix to orders. **The fix is
-   mechanical:** a `QuotationSpecifications.filter` mirroring `OrderSpecifications`, plus
-   `JpaSpecificationExecutor<Quotation>` on the repository and a two-filter regression test.
-   *The whole-branch reviewer recommended this lead the next slice, whatever that slice is.*
-2. **Cancelling an enquiry-linked order has no path back to that enquiry** (challenge #27). The
+1. ~~**`QuotationService.list` has the dropped-filter bug**~~ — **DONE.** Closed by the quotation
+   PDF/share slice's Task 9: `QuotationSpecifications.filter` mirrors `OrderSpecifications`,
+   `QuotationRepository` now extends `JpaSpecificationExecutor<Quotation>`, and a two-filter
+   regression test (`?status=` + `?customerId=` together) guards it.
+2. **No rate limiting on `/public/q/{token}`** — the app's **only unauthenticated route**, and its
+   most expensive uncapped operation: every hit renders a PDF from scratch, and the 128-bit token
+   space, while not guessable, is nothing an attacker is prevented from hammering. Already flagged
+   in §8 above as a candidate to pull forward rather than leave purely on the backlog.
+3. **No expiry or revoke on a share link.** A link minted once renders forever; the only way to
+   invalidate one today is sharing the same version again, which replaces it (a crude revoke, not
+   a deliberate one). The `share_link` row is exactly where expiry/revoke columns belong when this
+   is prioritized — see the design spec §4/§8 for the reasoning already on record.
+4. **`Totals.totalTax` is carried in the quotation PDF's view model but rendered nowhere in
+   `quotation.xhtml`.** Present in the design spec's own template sketch too, so it's not a task
+   implementer's slip. Needs a deliberate call: add a "Total tax" row to the document, or drop the
+   field from the view model. Cheap either way; undecided is the only wrong state to leave it in.
+5. **Cancelling an enquiry-linked order has no path back to that enquiry** (challenge #27). The
    422 message says "raise a new quotation", which only fully works for enquiry-less quotations:
    `Enquiry.requireActive()` rejects a second `markConverted()` and `UNIQUE(tenant_id,
    enquiry_id)` blocks a second quotation, so the replacement must go in with `enquiryId: null`,
    silently severing lead traceability. Re-opening the enquiry on cancel, or relaxing
    one-quote-per-enquiry, is an **open design decision, not a bug** — decide it deliberately.
-3. **PATCH endpoints house-wide are full-header-replace**, not partial merges — an omitted
+6. **PDF rendering runs inside `@Transactional(readOnly = true)`** (`QuotationPdfService`),
+   holding a database connection open for the duration of CPU-bound render work. Fine at today's
+   volumes; if rendering gets heavier, consider fetching inside the transaction and rendering
+   outside it.
+7. **PATCH endpoints house-wide are full-header-replace**, not partial merges — an omitted
    nullable field is cleared. The PUT-vs-PATCH-vs-partial decision is deliberately deferred until
-   the frontend lands and can state what it needs.
-4. **`OrderSpecifications` and `EnquirySpecifications` use string-keyed `root.get(...)`** rather
-   than a JPA static metamodel, so a field rename fails at runtime rather than compile time. Both
-   have immediate test coverage. If fixed, fix them together — doing one alone just makes them
-   inconsistent.
-5. **`OrderTest`'s three rejected-transition tests assert only the exception type**, not that
+   the frontend lands and can state what it needs. This semantic is documented on
+   `Tenant.updateProfile` (the PDF/share slice's new tenant-profile PATCH) but, house-wide, is
+   asserted by no test — a regression test would be cheap if this is ever revisited.
+8. **`OrderSpecifications`, `EnquirySpecifications`, and now `QuotationSpecifications` all use
+   string-keyed `root.get(...)`** rather than a JPA static metamodel, so a field rename fails at
+   runtime rather than compile time. All three have immediate test coverage. If fixed, fix them
+   together — doing one alone just makes the others inconsistent.
+9. **`OrderTest`'s three rejected-transition tests assert only the exception type**, not that
    `status`/`cancelReason` are left unmutated; only the blank-reason test snapshots state. Safe
    today (every guard runs before any assignment), but a future guard reorder would go uncaught.
-6. **Four near-identical order-building test fixtures** now exist across the sales test classes
-   (`OrderReadTest`, `OrderTransitionTest`, `OrderStatusAuditTest`, plus
-   `QuotationAcceptAuditTest`'s inlined variant). Extracting a shared sales test-fixture helper
-   is a candidate cleanup; it was consciously declined to keep slices independent.
-7. **`Enquiry.advanceTo` couples to enum ordinal order** (guarded, but a reorder changes
-   behaviour). `Order`'s transitions deliberately avoid this by naming each precondition — that
-   is the pattern to copy if `Enquiry` is ever revisited.
-8. **`expectedValue` / `contactEmail` lack `@PositiveOrZero` / `@Email`** on the enquiry DTOs.
-9. **No index supports a status-only order-list filter.** `sales_order` has
-   `(tenant_id, customer_id)` and `(tenant_id, id)`; `?status=` alone has none. Irrelevant at
-   current volumes — worth revisiting before the first large tenant.
+10. **Four near-identical order-building test fixtures** now exist across the sales test classes
+    (`OrderReadTest`, `OrderTransitionTest`, `OrderStatusAuditTest`, plus
+    `QuotationAcceptAuditTest`'s inlined variant). Extracting a shared sales test-fixture helper
+    is a candidate cleanup; it was consciously declined to keep slices independent.
+11. **`Enquiry.advanceTo` couples to enum ordinal order** (guarded, but a reorder changes
+    behaviour). `Order`'s transitions deliberately avoid this by naming each precondition — that
+    is the pattern to copy if `Enquiry` is ever revisited.
+12. **`expectedValue` / `contactEmail` lack `@PositiveOrZero` / `@Email`** on the enquiry DTOs.
+13. **No index supports a status-only order-list filter.** `sales_order` has
+    `(tenant_id, customer_id)` and `(tenant_id, id)`; `?status=` alone has none. Irrelevant at
+    current volumes — worth revisiting before the first large tenant.

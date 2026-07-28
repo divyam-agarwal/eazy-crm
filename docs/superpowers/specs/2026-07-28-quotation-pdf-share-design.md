@@ -1,7 +1,7 @@
 # Quotation PDF + `wa.me` share — design spec
 
 **Date:** 2026-07-28
-**Status:** designed, not yet implemented
+**Status:** implemented on branch `worktree-quotation-pdf-share`; merge SHA to be stamped at merge time
 **Slice:** server-side quotation PDF rendering + a public tokenized share link + the `wa.me`
 deep link, plus the deferred `QuotationService.list` filter fix (challenge #24)
 **Builds on:** the P1b quotation engine (`specs/2026-07-26-p1b-quotation-engine-design.md`,
