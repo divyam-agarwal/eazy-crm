@@ -5,7 +5,6 @@ import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.OrderResponse;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,11 +29,9 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public PageResponse<OrderResponse> list(OrderStatus status, UUID customerId, Pageable pageable) {
-        Page<Order> page;
-        if (status != null) page = orders.findByStatus(status, pageable);
-        else if (customerId != null) page = orders.findByCustomerId(customerId, pageable);
-        else page = orders.findAll(pageable);
-        return PageResponse.of(page.map(OrderResponse::of));
+        return PageResponse.of(
+            orders.findAll(OrderSpecifications.filter(status, customerId), pageable)
+                .map(OrderResponse::of));
     }
 
     @Transactional
