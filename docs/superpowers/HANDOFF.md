@@ -241,8 +241,10 @@ it forward. Confirm with the user rather than assuming.
 
 ### Smaller deferred-Minor backlog
 
-Open and non-blocking. This list is the complete record — it is **self-contained**, so don't go
-looking for an SDD ledger to corroborate it (those workspaces are deleted once a slice merges).
+Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
+ledger (`progress.md`, quotation PDF/share slice) accumulated across all ten tasks, cross-checked
+line-by-line against that ledger before its workspace was deleted at merge — so it really is
+**self-contained**: don't go looking for an SDD ledger to corroborate it, there won't be one.
 Roughly highest-value first.
 
 1. ~~**`QuotationService.list` has the dropped-filter bug**~~ — **DONE.** Closed by the quotation
@@ -280,17 +282,40 @@ Roughly highest-value first.
    string-keyed `root.get(...)`** rather than a JPA static metamodel, so a field rename fails at
    runtime rather than compile time. All three have immediate test coverage. If fixed, fix them
    together — doing one alone just makes the others inconsistent.
-9. **`OrderTest`'s three rejected-transition tests assert only the exception type**, not that
-   `status`/`cancelReason` are left unmutated; only the blank-reason test snapshots state. Safe
-   today (every guard runs before any assignment), but a future guard reorder would go uncaught.
-10. **Four near-identical order-building test fixtures** now exist across the sales test classes
+9. **Only `Seller`'s optional fields have a null-render test in `QuotationPdfRendererTest`.**
+   `Buyer.gstin`, `Buyer.address`, `validUntil`, payment/delivery terms and notes are all
+   `th:if`-guarded in `quotation.xhtml`, but no test renders any of them absent — the same
+   category of gap as the `OrderTest` item below, just on the newer surface.
+10. **`OrderTest`'s three rejected-transition tests assert only the exception type**, not that
+    `status`/`cancelReason` are left unmutated; only the blank-reason test snapshots state. Safe
+    today (every guard runs before any assignment), but a future guard reorder would go uncaught.
+11. **Four near-identical order-building test fixtures** now exist across the sales test classes
     (`OrderReadTest`, `OrderTransitionTest`, `OrderStatusAuditTest`, plus
     `QuotationAcceptAuditTest`'s inlined variant). Extracting a shared sales test-fixture helper
     is a candidate cleanup; it was consciously declined to keep slices independent.
-11. **`Enquiry.advanceTo` couples to enum ordinal order** (guarded, but a reorder changes
+12. **`Enquiry.advanceTo` couples to enum ordinal order** (guarded, but a reorder changes
     behaviour). `Order`'s transitions deliberately avoid this by naming each precondition — that
     is the pattern to copy if `Enquiry` is ever revisited.
-12. **`expectedValue` / `contactEmail` lack `@PositiveOrZero` / `@Email`** on the enquiry DTOs.
-13. **No index supports a status-only order-list filter.** `sales_order` has
+13. **`expectedValue` / `contactEmail` lack `@PositiveOrZero` / `@Email`** on the enquiry DTOs.
+14. **No index supports a status-only order-list filter.** `sales_order` has
     `(tenant_id, customer_id)` and `(tenant_id, id)`; `?status=` alone has none. Irrelevant at
     current volumes — worth revisiting before the first large tenant.
+15. **`PdfEngine` catches broad `Exception` in both its render and metadata-stamp paths.** Matches
+    the brief's reference code as given; narrowing it to something that distinguishes malformed
+    input from an environment failure belongs with whichever caller first needs to tell the two
+    apart. No caller does yet.
+16. **Two dead null-checks guard a value that's never actually null.**
+    `QuotationPdfService.requireCurrentVersion`'s null-`currentVersionId` branch (`create()`
+    always sets it) and `ShareLinkService.share`'s equivalent `q.getCurrentVersionId() == null`
+    check are both harmless defensive code inherited from the plan. Deliberately left as-is:
+    fixing one without the other would just make them inconsistent, so revisit together if ever.
+17. **Quotation-totals `sum()` references `java.util.function.Function` / `java.util.Objects`
+    fully-qualified inline** rather than importing them — a style inconsistency inherited from
+    the plan, not introduced by this slice.
+18. **A malformed `/public/q/{token}` containing a literal `/` returns 401, not 404.** Ruled
+    acceptable as-is: the path never resolves as this route at all, and the 401 reveals nothing
+    beyond "`/public/**` is auth-gated" — it isn't a usable oracle for probing real tokens.
+19. **`PdfEngineTest.sameInputRendersToIdenticalBytes` renders XHTML with no `<title>`,** so
+    byte-determinism is never exercised with a title present. The re-reviewer decompiled the
+    renderer and confirmed title is a pure function of input, so this is a coverage gap, not a
+    suspected risk — lowest priority on this list.
