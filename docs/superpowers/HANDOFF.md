@@ -1,7 +1,26 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-28 (order lifecycle — `DISPATCHED`/`CLOSED`/`CANCELLED` transitions + order-list filter fix — merged to `main` as `8247579`; sales hardening merged to `main` as `abc2bd3`; enquiry→quotation conversion merged as `06e6014`; enquiry slice merged as `a68035d`). **Fresh session? Read §3 (current state) then jump to §8 (pick the next chunk).**
+**Last updated:** 2026-07-28 (order lifecycle merged to `main` as `8247579`).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
+
+---
+
+## 0. Resuming? Start here
+
+**Nothing is in flight.** `main` is clean, all work is merged, and the next session begins by
+choosing what to build — there is no half-finished task to rescue.
+
+1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
+   then `cd backend && ./gradlew clean test`. Expect **187 tests, 0 failures**. If that number
+   differs, stop and reconcile before writing code — everything below assumes it.
+2. **Read §1** (what this product is) and **§7** (non-negotiable working agreements).
+3. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
+4. Then run the standard workflow on a feature branch off `main`:
+   **brainstorming → (design spec →) writing-plans → subagent-driven-development →
+   finishing-a-development-branch.**
+
+§3 is the detailed inventory of what exists; §4 is history and standing gotchas. Read them when
+you need the detail, not to find out what to do next.
 
 ---
 
@@ -47,11 +66,11 @@ All under `docs/superpowers/`:
 - **Enquiry→quotation conversion** (prior): 2 code/test tasks + docs, merged as `06e6014` (162 tests). `QuotationService.create()` flips the enquiry to `CONVERTED` and stamps `quotation.enquiry_id` when raised with an `enquiryId`, atomically. Challenge #25.
 - **Enquiry slice** (prior): 7 tasks + a post-review re-enquiry test + PATCH-contract docs, merged as `a68035d` (154 tests).
 - **Enquiry scope:** the wedge's *head* (lead capture) — 7 tasks (phone normalizer, the `Enquiry` aggregate + guarded 5-stage lifecycle, migration/RLS/partial-index dedupe, create endpoint, get + filtered list via a JPA `Specification`, edit/advance/lose transitions, and this challenges/annotations/handoff wrap-up).
-- **What enquiry delivered:** the `Enquiry` aggregate (table `enquiry` — not reserved; tenant-scoped, RLS-covered) carrying nullable `customerId` (walk-ins), raw contact fields (`contactName`, `contactPhone` + derived `normalizedPhone`, `contactEmail`), `source` (own `EnquirySource` enum — same six values as `crm.CustomerSource`, kept separate so `sales` stays decoupled), `requirementText`, `assignedTo`, `stage` (`EnquiryStage`), optional `expectedValue` (money, JSON-string wire), and `lostReason`. **5-stage guarded lifecycle** `NEW → CONTACTED → QUALIFIED → CONVERTED / LOST`: guards live in the entity (mirroring `Quotation`'s transition methods), `advanceTo` allows only a later *active* stage (skips ok, no backward/terminal-target), `lose` requires a reason, `markConverted()` exists but is **reserved for the later conversion slice — no controller reaches it yet** (so in this slice a phone is freed for re-enquiry only via `LOST`). **Dedupe = one active enquiry per phone**, enforced structurally by a Postgres **partial unique index** `UNIQUE(tenant_id, normalized_phone) WHERE stage NOT IN ('CONVERTED','LOST')` plus an app-level active-only pre-check (→409) with the challenge #15 `DataIntegrityViolation`→409 backstop (challenge #23). **List** uses a JPA `Specification` that AND-composes any subset of `?stage=&assignedTo=&source=` — deliberately avoiding the order-list "drops a filter when two are supplied" bug (challenge #24). REST: `POST` (201), `GET /{id}` (cross-tenant 404), `GET` (filtered, offset `PageResponse`, cross-tenant empty), `PATCH /{id}` (active-only edit, re-dedupes on phone change), `POST /{id}/advance`, `POST /{id}/lose`. Lives under `com.easycrm.sales` (+ `.web`, `.web.dto`). Challenges #23–#24; no new annotations (`JpaSpecificationExecutor`/`Specification` noted in the annotations reference as concepts, not annotations).
+- **What enquiry delivered:** the `Enquiry` aggregate (table `enquiry` — not reserved; tenant-scoped, RLS-covered) carrying nullable `customerId` (walk-ins), raw contact fields (`contactName`, `contactPhone` + derived `normalizedPhone`, `contactEmail`), `source` (own `EnquirySource` enum — same six values as `crm.CustomerSource`, kept separate so `sales` stays decoupled), `requirementText`, `assignedTo`, `stage` (`EnquiryStage`), optional `expectedValue` (money, JSON-string wire), and `lostReason`. **5-stage guarded lifecycle** `NEW → CONTACTED → QUALIFIED → CONVERTED / LOST`: guards live in the entity (mirroring `Quotation`'s transition methods), `advanceTo` allows only a later *active* stage (skips ok, no backward/terminal-target), `lose` requires a reason, `markConverted()` was **reserved for the later conversion slice** at the time — it is now reached by `QuotationService.create()` when a quote is raised with an `enquiryId` (merged `06e6014`), so a phone is freed for re-enquiry via either `CONVERTED` or `LOST`. **Dedupe = one active enquiry per phone**, enforced structurally by a Postgres **partial unique index** `UNIQUE(tenant_id, normalized_phone) WHERE stage NOT IN ('CONVERTED','LOST')` plus an app-level active-only pre-check (→409) with the challenge #15 `DataIntegrityViolation`→409 backstop (challenge #23). **List** uses a JPA `Specification` that AND-composes any subset of `?stage=&assignedTo=&source=` — deliberately avoiding the "drops a filter when two are supplied" bug (challenge #24) that the order list had at the time, and which was fixed for orders in `8247579`. **The quotation list still has it** — see the backlog in §8. REST: `POST` (201), `GET /{id}` (cross-tenant 404), `GET` (filtered, offset `PageResponse`, cross-tenant empty), `PATCH /{id}` (active-only edit, re-dedupes on phone change), `POST /{id}/advance`, `POST /{id}/lose`. Lives under `com.easycrm.sales` (+ `.web`, `.web.dto`). Challenges #23–#24; no new annotations (`JpaSpecificationExecutor`/`Specification` noted in the annotations reference as concepts, not annotations).
 - **P1a scope:** product/customer/contact/price-list CRUD — 13 planned tasks plus three execution-time additions (Task 7b global 409 handler, Task 13b test-hardening, and a final-review fix — see §4).
 - **P1b scope:** the quotation engine on top of P1a's master data — 12 planned tasks (money-as-JSON-string wire format, GST calc, gapless document numbering, price resolution, the quotation/version/item aggregate + RLS, create/get/list/versions, edit with the frozen-version guard, send, revise, reject/expire, and its challenges/annotations/handoff wrap-up).
 - **Order/accept scope:** the wedge's final stage on top of P1b — 7 tasks (the `Order` aggregate on physical table `sales_order`, gapless `ORD/FY/NNNN` numbering, the `accept` transition, `QuotationAcceptedEvent` + audit subscriber, order read endpoints, and this challenges/annotations/handoff wrap-up).
-- **What order/accept delivered:** the `Order` aggregate — tenant-scoped, RLS-covered, physical table **`sales_order`** because `order` is a reserved SQL word (class stays `Order`, challenge #20) — carrying `orderNo`, `quotationId`/`quotationVersionId`, `customerId`, optional `poReference`/`poDate`, `subTotal`/`totalTax`/`grandTotal`, and `status` (currently only **`CONFIRMED`**; `DISPATCHED`/`CLOSED`/`CANCELLED` are deferred). Gapless per-tenant/per-FY order numbering (`ORD/FY/NNNN`) reuses `DocumentNumberService`/`document_counter` under a distinct `"ORDER"` counter key (challenge #16's pattern, second doc type). `QuotationService.accept(id, AcceptRequest)`: validates the quotation is `SENT`, creates the `Order` inline (so the HTTP response carries it immediately), flips the quotation to `ACCEPTED`, then publishes `QuotationAcceptedEvent` for decoupled subscribers — a deliberate deviation from the parent spec's "the order handler subscribes" wording, keeping the event as a side-effect seam rather than a return channel while preserving same-transaction atomicity (challenge #22). `OrderAcceptedAuditListener` (`@EventListener`, synchronous, same-transaction) writes the `QUOTATION_ACCEPTED` audit row. Idempotency is **natural/state-based**, not a client idempotency key: a re-accept of an already-`ACCEPTED` quotation returns the existing order (`OrderRepository.findByQuotationId`), backed by `UNIQUE(tenant_id, quotation_id)` on `sales_order` plus the quotation's inherited `@Version` optimistic lock for the raced case (challenge #21). Read endpoints: `GET /api/v1/orders/{id}` and `GET /api/v1/orders` (status/customerId filters, offset-paginated `PageResponse`, cross-tenant → 404). Lives under `com.easycrm.sales` (+ `.web`, `.web.dto`).
+- **What order/accept delivered:** the `Order` aggregate — tenant-scoped, RLS-covered, physical table **`sales_order`** because `order` is a reserved SQL word (class stays `Order`, challenge #20) — carrying `orderNo`, `quotationId`/`quotationVersionId`, `customerId`, optional `poReference`/`poDate`, `subTotal`/`totalTax`/`grandTotal`, and `status` (**`CONFIRMED`** only *at the time of that slice* — `DISPATCHED`/`CLOSED`/`CANCELLED` and their guarded transitions arrived later in the order-lifecycle slice `8247579`; see the order-lifecycle bullet above). Gapless per-tenant/per-FY order numbering (`ORD/FY/NNNN`) reuses `DocumentNumberService`/`document_counter` under a distinct `"ORDER"` counter key (challenge #16's pattern, second doc type). `QuotationService.accept(id, AcceptRequest)`: validates the quotation is `SENT`, creates the `Order` inline (so the HTTP response carries it immediately), flips the quotation to `ACCEPTED`, then publishes `QuotationAcceptedEvent` for decoupled subscribers — a deliberate deviation from the parent spec's "the order handler subscribes" wording, keeping the event as a side-effect seam rather than a return channel while preserving same-transaction atomicity (challenge #22). `OrderAcceptedAuditListener` (`@EventListener`, synchronous, same-transaction) writes the `QUOTATION_ACCEPTED` audit row. Idempotency is **natural/state-based**, not a client idempotency key: a re-accept of an already-`ACCEPTED` quotation returns the existing order (`OrderRepository.findByQuotationId`), backed by `UNIQUE(tenant_id, quotation_id)` on `sales_order` plus the quotation's inherited `@Version` optimistic lock for the raced case (challenge #21). Read endpoints: `GET /api/v1/orders/{id}` and `GET /api/v1/orders` (status/customerId filters, offset-paginated `PageResponse`, cross-tenant → 404). Lives under `com.easycrm.sales` (+ `.web`, `.web.dto`).
 - **What P1b delivered:** the `Quotation`/`QuotationVersion`/`QuotationItem` aggregate (tenant-scoped, RLS-covered); a price resolver (customer + product → effective rate off `PriceList`/`PriceListItem`, falling back to `Product.baseRate`); server-side GST calc (per-line round-then-sum, intra-state CGST+SGST vs inter-state IGST, keyed off `Tenant.state_code` vs the customer's GSTIN-derived state); gapless per-tenant/per-FY document numbering (`document_counter` + `SELECT … FOR UPDATE`, see challenge #16); the global `BigDecimal`-as-JSON-string wire format for money (challenge #17, also retroactively fixing P1a's money fields); and the full lifecycle — create → edit (header patch / full item replace, guarded to DRAFT only) → send (freezes the version, assigns the quote number) → revise (spawns a new DRAFT version copying the frozen items verbatim) → reject/expire (challenge #18). Lives under `com.easycrm.sales` (+ `platform.money.BigDecimalStringModule`).
 - **What P1a delivered:** tenant-scoped REST CRUD for `Product`, `Customer` (+ GSTIN checksum validation and GST-state-code derivation via the new `platform.gst.Gstin`/`StateCode` value types), `Contact` (nested under customer), `PriceList`, and `PriceListItem` (override-rate/discount-percent mutually-exclusive pricing). New shared plumbing: `platform.error.ValidationException` → 422 with field errors, `platform.web.PageResponse` (offset-paginated list envelope). Cross-tenant reads return 404 (not 403/200), matching the P0 pattern. Lives under `com.easycrm.catalog` and `com.easycrm.crm`.
 - **What P0-auth delivered:** self-serve auth on top of the isolation foundation — atomic signup (tenant + first OWNER in one transaction), bcrypt login, rotating opaque JWT refresh tokens (SHA-256 at rest), tenant-scoped audit log, public auth endpoints with generic 401s. Lives under `com.easycrm.iam` (+ `platform.persistence.UuidV7`, `platform.error.{Conflict,Unauthorized}Exception`). Working `signup → login → GET /api/v1/auth/me → refresh` loop, all verified against Postgres + RLS.
@@ -62,7 +81,11 @@ All under `docs/superpowers/`:
   4. **ArchUnit** (`arch/TenantScopingArchTest` — every `@Entity` must extend `TenantScopedEntity` unless allowlisted in `GLOBAL_TABLES`)
   - Plus: `BaseEntity` (UUIDv7 ids, auditing, `@Version`), `TenantContext` (ThreadLocal + `runAs`), `TenantAwareTaskDecorator` (async propagation), `Tenant` (global entity), `DemoRecord` (isolation test subject — throwaway, replaced by real entities later), 404-not-403 error mapping, `DemoSeeder` + `backend/DEMO.md`.
 
-## 4. THE NEXT TASK
+## 4. Recently completed, and what was deliberately left out
+
+**This section is history plus standing gotchas — the *next* task is chosen in §8, not here.**
+Read it before extending any of the areas it describes, so you don't rebuild something that
+exists or assume something that doesn't.
 
 **The order-lifecycle slice is DONE and merged to `main` (`8247579`).** 5 code/test tasks plus this docs wrap-up landed and reviewed clean: (1) `OrderStatus` widened to `CONFIRMED, DISPATCHED, CLOSED, CANCELLED` with `isTerminal()`/`isActive()` and entity-side guarded `dispatch()`/`close()`/`cancel(reason)` transitions, plus a required non-blank `cancelReason` (migration `V23`); (2) `POST /api/v1/orders/{id}/dispatch|close|cancel`, with `OrderResponse` gaining `cancelReason` as its 7th component; (3) a generic `OrderStatusChangedEvent` + `OrderStatusChangedAuditListener` writing the three new audit action rows; (4) `OrderSpecifications.filter` closing the challenge #24 dropped-filter bug for orders; (5) a 422 on `QuotationService.accept`'s idempotent branch when the existing order is `CANCELLED` (challenge #27). The whole-branch review then added audit-detail and cross-tenant assertions. Clean-build total is **187 tests**, all green, up from the 166 sales-hardening baseline. Next step is to pick the next chunk with the user (see §8).
 
@@ -134,14 +157,12 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string.
 - **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces).
 
-## 8. START HERE NEXT SESSION — pick the next chunk
+## 8. The next chunk — pick one with the user
 
-The wedge (**enquiry → quotation → order**) is now functionally complete end-to-end and hardened,
-including the order aggregate's own lifecycle. `main` is clean at **187 tests**, with the
-order-lifecycle slice merged as `8247579`. Nothing is in flight — the next session **opens by
-picking one chunk with the user**, then runs the normal skill workflow: **brainstorming →
-(design spec →) writing-plans → subagent-driven-development → finishing-a-development-branch**, on a
-feature branch off `main`. All five are scoped in the design spec (`specs/2026-07-22-easycrm-design.md`).
+The wedge (**enquiry → quotation → order**) is functionally complete end-to-end and hardened,
+including the order aggregate's own lifecycle. All five candidates below are scoped in the design
+spec (`specs/2026-07-22-easycrm-design.md`). Present them, take the user's choice, and only then
+start the workflow from §0 step 4.
 
 1. **PDF + `wa.me` WhatsApp share** for a quotation/order — the **first external-I/O slice**, and the
    trigger to move the accept-audit event from same-transaction to **after-commit + outbox**
@@ -161,25 +182,43 @@ feature branch off `main`. All five are scoped in the design spec (`specs/2026-0
 done, this is the highest-product-value chunk left and the natural trigger for the challenge #22
 outbox migration. But confirm with the user.
 
-**Smaller deferred-Minor backlog** (open, non-blocking; see `.superpowers/sdd/progress.md` for the
-full list): the enquiry list `Specification` uses string-keyed `root.get(...)` rather than a JPA
-static metamodel; `expectedValue`/`contactEmail` lack `@PositiveOrZero`/`@Email`; `advanceTo`
-couples to enum ordinal order (guarded); **PATCH endpoints house-wide are full-header-replace**
-(a PUT-vs-PATCH-vs-partial decision deliberately deferred to when the frontend lands);
-**`OrderSpecifications`**, like `EnquirySpecifications`, uses string-keyed `root.get(...)` rather
-than a JPA static metamodel; **`QuotationService.list` still has the same dropped-filter bug** this
-slice fixed for orders (`QuotationService.java`, the `if (status != null) … else if (customerId !=
-null) …` block) — supplying both `?status=` and `?customerId=` ignores the customer. Found while
-fixing the order list; left out because the spec scoped the fix to orders. Fix is mechanical: a
-`QuotationSpecifications.filter` mirroring `OrderSpecifications`, plus
-`JpaSpecificationExecutor<Quotation>` and a two-filter regression test; `OrderTest`'s three
-rejected-transition tests assert only the exception type, not that `status`/`cancelReason` are left
-unmutated — only the blank-reason test snapshots state; and four near-identical `createOrder` test
-fixtures now exist across the sales test classes (`OrderReadTest`, `OrderTransitionTest`,
-`OrderStatusAuditTest`, plus `QuotationAcceptAuditTest`'s variant) — extracting a shared sales
-test-fixture helper is a candidate cleanup, deliberately out of this slice; and **cancelling an
-enquiry-linked order has no path back to that enquiry** (challenge #27) — "raise a new quotation"
-only fully works for enquiry-less quotations, since `Enquiry.requireActive()` and the
-`UNIQUE(tenant_id, enquiry_id)` constraint together block a second quotation against the same
-enquiry, so the replacement quotation must go in with `enquiryId: null`. Re-opening the enquiry on
-cancel, or relaxing the one-quote-per-enquiry rule, is a deliberate open design decision, not a bug.
+### Smaller deferred-Minor backlog
+
+Open and non-blocking. This list is the complete record — it is **self-contained**, so don't go
+looking for an SDD ledger to corroborate it (those workspaces are deleted once a slice merges).
+Roughly highest-value first.
+
+1. **`QuotationService.list` has the dropped-filter bug** the order-lifecycle slice fixed for
+   orders — `QuotationService.java`, the `if (status != null) … else if (customerId != null) …`
+   block, so `?status=` and `?customerId=` together silently ignores the customer. Found while
+   fixing the order list; left out only because that spec scoped the fix to orders. **The fix is
+   mechanical:** a `QuotationSpecifications.filter` mirroring `OrderSpecifications`, plus
+   `JpaSpecificationExecutor<Quotation>` on the repository and a two-filter regression test.
+   *The whole-branch reviewer recommended this lead the next slice, whatever that slice is.*
+2. **Cancelling an enquiry-linked order has no path back to that enquiry** (challenge #27). The
+   422 message says "raise a new quotation", which only fully works for enquiry-less quotations:
+   `Enquiry.requireActive()` rejects a second `markConverted()` and `UNIQUE(tenant_id,
+   enquiry_id)` blocks a second quotation, so the replacement must go in with `enquiryId: null`,
+   silently severing lead traceability. Re-opening the enquiry on cancel, or relaxing
+   one-quote-per-enquiry, is an **open design decision, not a bug** — decide it deliberately.
+3. **PATCH endpoints house-wide are full-header-replace**, not partial merges — an omitted
+   nullable field is cleared. The PUT-vs-PATCH-vs-partial decision is deliberately deferred until
+   the frontend lands and can state what it needs.
+4. **`OrderSpecifications` and `EnquirySpecifications` use string-keyed `root.get(...)`** rather
+   than a JPA static metamodel, so a field rename fails at runtime rather than compile time. Both
+   have immediate test coverage. If fixed, fix them together — doing one alone just makes them
+   inconsistent.
+5. **`OrderTest`'s three rejected-transition tests assert only the exception type**, not that
+   `status`/`cancelReason` are left unmutated; only the blank-reason test snapshots state. Safe
+   today (every guard runs before any assignment), but a future guard reorder would go uncaught.
+6. **Four near-identical order-building test fixtures** now exist across the sales test classes
+   (`OrderReadTest`, `OrderTransitionTest`, `OrderStatusAuditTest`, plus
+   `QuotationAcceptAuditTest`'s inlined variant). Extracting a shared sales test-fixture helper
+   is a candidate cleanup; it was consciously declined to keep slices independent.
+7. **`Enquiry.advanceTo` couples to enum ordinal order** (guarded, but a reorder changes
+   behaviour). `Order`'s transitions deliberately avoid this by naming each precondition — that
+   is the pattern to copy if `Enquiry` is ever revisited.
+8. **`expectedValue` / `contactEmail` lack `@PositiveOrZero` / `@Email`** on the enquiry DTOs.
+9. **No index supports a status-only order-list filter.** `sales_order` has
+   `(tenant_id, customer_id)` and `(tenant_id, id)`; `?status=` alone has none. Irrelevant at
+   current volumes — worth revisiting before the first large tenant.
