@@ -98,38 +98,51 @@ This is what turns byte-identity from an aspiration into an assertable test, and
 ```sql
 CREATE TABLE share_link (
     id                   UUID PRIMARY KEY,
-    token_hash           VARCHAR(64) NOT NULL UNIQUE,   -- SHA-256 hex
+    token                VARCHAR(64) NOT NULL UNIQUE,   -- 128-bit CSPRNG, base64url
     tenant_id            UUID        NOT NULL,          -- plain column, NOT @TenantId
     quotation_version_id UUID        NOT NULL,
     created_at           TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX idx_share_link_version ON share_link (quotation_version_id);
+CREATE UNIQUE INDEX uq_share_link_version ON share_link (quotation_version_id);
 ```
 
 The entity is **global**, not `TenantScopedEntity`, and must be added to the ArchUnit
 `GLOBAL_TABLES` allowlist — exactly the treatment `refresh_token` already receives, and for the
 same reason: it is read on a request that has no tenant yet.
 
-The token is **hashed at rest with SHA-256**, mirroring `refresh_token`. The raw token is a bearer
-credential living in a URL; a database leak must not hand over every live quote link. Lookup is by
-hash on the unique index, so the cost is unchanged.
+### The token is stored in plaintext — deliberately, and unlike `refresh_token`
 
-### Share is additive, not idempotent
+`refresh_token` is hashed at rest (SHA-256); this table is not. That is a considered divergence
+from the P0-auth pattern rather than an oversight, so the reasoning is recorded here.
 
-Hashing at rest has a direct consequence worth stating rather than discovering during
-implementation: **the raw token exists only in the mint-time response and can never be
-recovered.** A second `POST /share` for the same version therefore cannot return the same URL —
-the server no longer knows it.
+**The two credentials have different blast radii.** A refresh token grants *authenticated
+capability*: impersonate a user, mutate data, act through the application's front door, persist
+beyond the leak that produced it. Hashing it means a database compromise does not hand over live
+sessions. A share token grants exactly one thing — read one frozen quotation PDF — and that
+document renders entirely from rows in the same database an attacker must already have read in
+order to obtain the token. Hashing here protects a pointer to data the attacker is holding.
 
-So each share **mints a new row**, and several tokens may resolve to the same version. The index
-on `quotation_version_id` is non-unique for exactly this reason. The alternative — replacing the
-row so only the newest link is live — was rejected because it silently kills a link already
-WhatsApped to someone: sharing the same quote with a second customer would break the first
-customer's copy. A link that was sent keeps working.
+**Plaintext buys idempotent sharing, which the product needs.** A hashed token exists in cleartext
+only inside the mint-time HTTP response and is unrecoverable afterwards, so `POST /share` could
+never return the same URL twice. The quotation screen will want a "copy link" button, and under
+hashing that forces one of three bad options: mint a new row on every page view, stash the raw
+token in the client, or offer a "regenerate link" action for a document already sent to a
+customer. Plaintext makes the endpoint genuinely idempotent — **one stable link per version**,
+enforced by the unique index on `quotation_version_id`, retrievable whenever the page loads. A
+link WhatsApped last week keeps working, and sharing the same quote with a second customer cannot
+break the first customer's copy.
 
-This is the price of hashing, paid deliberately. Plaintext storage would allow returning a stable
-URL, and was rejected above: a table of live credentials is worse than a table of duplicate rows. Revocation is out of scope (§8), and when it arrives the `share_link` row is the
-natural place for it.
+**What this costs, and the mitigations.** A database backup or a read-only production credential
+now exposes live quote links directly, rather than only the data behind them. Against that:
+
+- the token is **128 bits of CSPRNG output** — not guessable, not enumerable;
+- it authorises **no mutation**, and reaches nothing but that one frozen version;
+- it must **never reach logs, access logs, or exception messages** — kept out of any `toString()`
+  and out of every error response.
+
+Revocation and expiry stay out of scope (§8); when they arrive, the `share_link` row is where they
+belong, and a revoked row is what should make a link die — on purpose, not as a side effect of
+sharing again.
 
 ### The token points at a version, not a quotation
 
@@ -161,7 +174,7 @@ convenience; it is forced by the isolation model.
 
 ```
 GET /public/q/{token}                       no JWT, no tenant
-  → ShareLinkService.resolve(sha256(token))  global table, RLS-exempt
+  → ShareLinkService.resolve(token)          global table, RLS-exempt
       → 404 if absent
   → TenantContext.runAs(tenantId, () -> …)   P0's existing mechanism
       → load version + items + customer + tenant, @TenantId and RLS enforced as normal
@@ -170,7 +183,7 @@ GET /public/q/{token}                       no JWT, no tenant
 
 The exception to *"tenant comes from the JWT only"* is narrow and structural, and worth naming
 precisely: exactly **one** table is readable without a tenant, and it contains nothing but an
-opaque hash mapped to a tenant id and a version id. No document data is reachable through it
+opaque token mapped to a tenant id and a version id. No document data is reachable through it
 directly. Every actual read of quotation content still goes through `@TenantId` + RLS, with the
 tenant established by `runAs` before the transaction opens — the same ordering P0-auth's signup
 already requires (challenge #9: Hibernate resolves a session's tenant once, at session-open).
@@ -192,8 +205,8 @@ that path rather than reject it.
 `GET .../pdf` defaults to the **latest SENT version**; the optional `?version=<n>` selects an
 earlier frozen version, since traders revise 3–4× and need to see what was actually sent.
 
-`POST .../share` mints a **new** token against the latest sent version and returns both URLs (see
-§4 — sharing twice yields two working links, not one reused link). The `waMeUrl`
+`POST .../share` is **idempotent**: it returns the latest sent version's existing link, minting one
+only if that version has never been shared (see §4). The `waMeUrl`
 is `https://wa.me/<number>?text=<url-encoded message>`, where the message carries the buyer's
 contact name, quote number, grand total, validity date, the public URL and the seller's business
 name.
@@ -247,7 +260,7 @@ request that previously returned too many rows now returns the correct ones.
   under `runAs` sees only tenant A's rows
 - after v2 is sent and shared, v1's earlier token **still renders v1** — the snapshot a customer
   was sent does not change under them — while v2's token renders v2
-- sharing the same version twice yields two distinct tokens that both resolve
+- sharing the same version twice returns the **same** URL and creates only one `share_link` row
 - `POST /share` on a DRAFT-only quotation returns 422
 
 **wa.me composition** — number resolution prefers `whatsappNumber` over `phone`, omits the number
