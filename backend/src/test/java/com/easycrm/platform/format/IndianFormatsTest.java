@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class IndianFormatsTest {
 
@@ -22,7 +23,7 @@ class IndianFormatsTest {
     @Test
     void rupeesNeverUsesTheRupeeGlyph() {
         // U+20B9 is absent from the base-14 PDF fonts and no font is embedded.
-        assertEquals(false, IndianFormats.rupees(new BigDecimal("1")).contains("₹"));
+        assertFalse(IndianFormats.rupees(new BigDecimal("1")).contains("₹"));
     }
 
     @Test
@@ -47,5 +48,24 @@ class IndianFormatsTest {
         // 21:00 UTC on the 27th is 02:30 on the 28th in Asia/Kolkata — the date the
         // Indian user would expect to see on the document.
         assertEquals("28-07-2026", IndianFormats.date(Instant.parse("2026-07-27T21:00:00Z")));
+    }
+
+    @Test
+    void negativeAmountsKeepTheSignAheadOfTheDigits() {
+        assertEquals("Rs. -1,23,456.78", IndianFormats.rupees(new BigDecimal("-123456.78")));
+        // signum() reads the unscaled value, so negative zero must not render a stray minus
+        assertEquals("Rs. 0.00", IndianFormats.rupees(new BigDecimal("-0.00")));
+    }
+
+    @Test
+    void groupingIsCorrectAtEachBoundaryWhereTheLoopChangesShape() {
+        assertEquals("Rs. 1,000.00", IndianFormats.rupees(new BigDecimal("1000")));
+        assertEquals("Rs. 99,999.00", IndianFormats.rupees(new BigDecimal("99999")));
+        assertEquals("Rs. 1,00,000.00", IndianFormats.rupees(new BigDecimal("100000")));
+    }
+
+    @Test
+    void roundingIsAppliedCorrectly() {
+        assertEquals("Rs. 1.01", IndianFormats.rupees(new BigDecimal("1.005")));
     }
 }
