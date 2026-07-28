@@ -407,7 +407,7 @@ class OrderTransitionTest extends IntegrationTest {
 
         mvc.perform(post("/api/v1/orders/" + id + "/close").header("Authorization", auth))
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -1155,9 +1155,11 @@ Append this method to `backend/src/test/java/com/easycrm/sales/web/QuotationAcce
         mvc.perform(post("/api/v1/quotations/" + qId + "/accept").header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 ```
+
+Note the JSON path: `ApiExceptionHandler.body` wraps everything under an `error` object, so the assertion is `$.error.code`, not `$.code`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
