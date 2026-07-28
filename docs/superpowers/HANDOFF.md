@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-27 (sales hardening — optimistic-lock→409 + quote-uniqueness backstop — merged to `main` as `abc2bd3`; enquiry→quotation conversion merged as `06e6014`; enquiry slice merged as `a68035d`)
+**Last updated:** 2026-07-28 (sales hardening — optimistic-lock→409 + quote-uniqueness backstop — merged to `main` as `abc2bd3`; enquiry→quotation conversion merged as `06e6014`; enquiry slice merged as `a68035d`). **Fresh session? Read §3 (current state) then jump to §8 (pick the next chunk).**
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -129,6 +129,40 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string.
 - **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces).
 
-## 8. After enquiry
+## 8. START HERE NEXT SESSION — pick the next chunk
 
-Options (confirm with the user): **order status transitions** (`DISPATCHED`/`CLOSED`/`CANCELLED`, + the deferred order-list filter backlog), PDF + `wa.me` share for a quotation/order (first external-I/O slice — the trigger to move the accept-audit event from same-transaction to after-commit + outbox, challenge #22), scheduled auto-expiry of quotations past `validUntil`, the **`activity`/`follow_up`** entities (the "never lose a follow-up" promise), or the still-open **P0-auth follow-up** (invitations + visibility layer + rate limiting). All are scoped in the spec. Each new chunk goes: (already-approved spec →) writing-plans → executing-plans → finishing-a-development-branch.
+The wedge (**enquiry → quotation → order**) is now functionally complete end-to-end and hardened.
+`main` is clean at **166 tests**. Nothing is in flight — the next session **opens by picking one
+chunk with the user**, then runs the normal skill workflow: **brainstorming → (design spec →)
+writing-plans → subagent-driven-development → finishing-a-development-branch**, on a feature branch
+off `main`. All six are scoped in the design spec (`specs/2026-07-22-easycrm-design.md`).
+
+1. **Order status transitions** — `DISPATCHED`/`CLOSED`/`CANCELLED` on `Order` (today a one-member
+   `CONFIRMED` enum) + guarded transitions mirroring `Quotation`. Also the home for the **deferred
+   order-list filter backlog** (`OrderService.list` still has the "drops a filter when two are
+   supplied" if/else bug that enquiry avoided via a `Specification` — challenge #24). *Natural,
+   self-contained next step; pure domain work, no new infra.*
+2. **PDF + `wa.me` WhatsApp share** for a quotation/order — the **first external-I/O slice**, and the
+   trigger to move the accept-audit event from same-transaction to **after-commit + outbox**
+   (challenge #22 flagged this seam). Highest product value, but introduces rendering + the outbox
+   pattern.
+3. **`activity` / `follow_up` entities** — the "never lose a follow-up" promise (CALL/WHATSAPP/EMAIL/
+   VISIT/NOTE logs + first-class reminders). New aggregate(s); the accept event seam already exists
+   to hang activity listeners on.
+4. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
+   today; nothing runs on a schedule. Small, introduces the first scheduled job.
+5. **P0-auth follow-up** — user invitations + **record-level visibility filtering** (`assigned_to`,
+   still open from P1a — every user in a tenant reads every record) + rate limiting.
+6. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
+   `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
+
+**Suggested default:** **#1 (order status transitions)** — it completes the order aggregate's
+lifecycle, is fully domain-local (no new infra), and lets us clear the deferred order-list filter
+bug in the same slice. But confirm with the user; #2 has the highest product value if they want to
+move toward something demoable.
+
+**Smaller deferred-Minor backlog** (open, non-blocking; see `.superpowers/sdd/progress.md` for the
+full list): the enquiry list `Specification` uses string-keyed `root.get(...)` rather than a JPA
+static metamodel; `expectedValue`/`contactEmail` lack `@PositiveOrZero`/`@Email`; `advanceTo`
+couples to enum ordinal order (guarded); and **PATCH endpoints house-wide are full-header-replace**
+(a PUT-vs-PATCH-vs-partial decision deliberately deferred to when the frontend lands).
