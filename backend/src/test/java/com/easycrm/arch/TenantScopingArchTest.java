@@ -17,7 +17,8 @@ class TenantScopingArchTest {
     /** Global tables are intentionally NOT tenant-scoped. Add here only with review. */
     private static final Set<String> GLOBAL_TABLES = Set.of(
         "com.easycrm.tenant.Tenant",
-        "com.easycrm.iam.RefreshToken"  // pre-auth session table, looked up by hash
+        "com.easycrm.iam.RefreshToken",   // pre-auth session table, looked up by hash
+        "com.easycrm.sales.ShareLink"     // pre-auth share table: resolves the tenant itself
     );
 
     @Test
