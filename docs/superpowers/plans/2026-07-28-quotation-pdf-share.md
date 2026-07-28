@@ -77,10 +77,12 @@ In `backend/build.gradle.kts`, add to the `dependencies` block, after the `sprin
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
     // XHTML -> PDF, pure Java (PDFBox backend). No external binary, so CI and
     // Testcontainers need nothing extra installed.
-    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.1.22")
+    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
 ```
 
-If `1.1.22` does not resolve, check Maven Central for the latest `1.1.x` of `com.openhtmltopdf:openhtmltopdf-pdfbox` and use that. Do not silently drop to `1.0.x`.
+`1.0.10` (2021) is genuinely the latest published version — the project never cut a `1.1` line, and every module in the `com.openhtmltopdf` group tops out there. It pulls PDFBox 2.0.x, so the `PDDocument.load(byte[])` calls in this plan's tests are the correct API.
+
+A 2021 library on JDK 25 is precisely why this task is a spike rather than an assumption.
 
 - [ ] **Step 2: Write the failing test**
 
