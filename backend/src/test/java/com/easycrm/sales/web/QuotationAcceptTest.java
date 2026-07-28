@@ -139,4 +139,27 @@ class QuotationAcceptTest extends IntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isUnprocessableEntity());
     }
+
+    @Test
+    void acceptingAQuotationWhoseOrderWasCancelledIs422() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String qId = createSent(auth);
+
+        String orderId = JsonPath.read(mvc.perform(post("/api/v1/quotations/" + qId + "/accept")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString(), "$.id");
+
+        mvc.perform(post("/api/v1/orders/" + orderId + "/cancel").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                    {"cancelReason":"customer withdrew PO"}"""))
+            .andExpect(status().isOk());
+
+        // No live order to hand back, and the unique constraint rules out making another.
+        mvc.perform(post("/api/v1/quotations/" + qId + "/accept").header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
 }

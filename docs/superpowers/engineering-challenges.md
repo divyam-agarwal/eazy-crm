@@ -1277,6 +1277,69 @@ failure into the 409 you already map.
 
 ---
 
+## Challenge 27 — A terminal order state versus an idempotent accept
+
+**Phase:** Design
+
+### The problem
+
+Adding `CANCELLED` to `Order` collides with two decisions already baked into the
+accept path: accept is **idempotent** — re-accepting an `ACCEPTED` quotation
+returns the order that already exists — and `UNIQUE(tenant_id, quotation_id)` on
+`sales_order` makes one-order-per-quotation **structural** (challenge #21).
+
+Cancellation therefore has no obvious undo. The naive move — flip the quotation
+back to `SENT` so it can be accepted again — cannot work: the cancelled row still
+occupies the unique slot, so the second accept's `INSERT` hits the constraint and
+surfaces as a 409 no caller can act on. But leaving accept untouched is quietly
+worse. It keeps returning **200 with a dead order**, so a client that reasonably
+reads accept as "give me the live order for this quote" gets a plausible-looking
+response describing an order that no longer exists commercially. Nothing fails
+loudly; the contract just stops being true.
+
+### The solution
+
+Keep cancellation order-local and make the dead end explicit. The quotation stays
+`ACCEPTED`, the cancelled row stays put, the unique constraint is untouched — and
+accept's idempotent branch gains one check: if the existing order is `CANCELLED`,
+throw `ValidationException` → **422** with "the order for this quotation was
+cancelled; raise a new quotation" instead of returning it.
+
+Reopening a cancelled sale means raising a new quotation, which is also the
+commercially honest answer: after a cancellation, price, stock and terms have all
+had a chance to move, so silently reviving the old accepted version would be the
+wrong default even if the schema allowed it.
+
+### Lesson
+
+Idempotency is a claim about a *result*, not about a status code. "Call it again,
+get the same answer" holds only while the resource the call produced is still
+valid — and introducing a terminal state downstream breaks that invisibly,
+because the endpoint carries on returning 200. When you add a terminal state to
+an aggregate, re-read every idempotent path that hands that aggregate back and
+decide explicitly what each one now means.
+
+And when a structural constraint removes the option of "just make another one",
+that is the constraint doing its job. The fix is to say no clearly, not to relax
+the constraint.
+
+### The enquiry-linked dead end this doesn't cover
+
+"Raise a new quotation" is only fully actionable when the cancelled order's
+quotation had no enquiry behind it. When it did, `QuotationService.create()`
+calls `enquiry.markConverted()`, which routes through `Enquiry.requireActive()`
+and throws 422 on an already-`CONVERTED` enquiry — and
+`V22__quotation_enquiry_unique.sql`'s `UNIQUE(tenant_id, enquiry_id)` on
+`quotation` makes one-quote-per-enquiry structural. So after
+`enquiry → quotation → order → cancel`, the operator *can* raise a replacement
+quotation, but *cannot* link it back to the original enquiry — the only route is
+a fresh quotation with `enquiryId: null`, which silently severs lead
+traceability. The remedy — re-opening the enquiry on cancel, or relaxing the
+one-quote-per-enquiry rule — is a deliberate open design decision carried
+forward, not an oversight of this slice.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

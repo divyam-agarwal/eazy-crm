@@ -407,7 +407,7 @@ class OrderTransitionTest extends IntegrationTest {
 
         mvc.perform(post("/api/v1/orders/" + id + "/close").header("Authorization", auth))
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -1155,9 +1155,11 @@ Append this method to `backend/src/test/java/com/easycrm/sales/web/QuotationAcce
         mvc.perform(post("/api/v1/quotations/" + qId + "/accept").header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 ```
+
+Note the JSON path: `ApiExceptionHandler.body` wraps everything under an `error` object, so the assertion is `$.error.code`, not `$.code`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1349,7 +1351,9 @@ status transitions item, and the design spec is marked implemented."
 Before declaring the slice done, confirm each of these by *running* it, not by reasoning about it:
 
 - [ ] `cd backend && ./gradlew clean test` → **185 tests, all green** from a clean build.
-- [ ] `git log --oneline main..HEAD` → six commits, one per task, none mentioning Claude or AI.
+- [ ] `git log --oneline main..HEAD` → eight commits: the six task commits plus two legitimate
+      mid-flight documentation corrections (`2d4a81e`, fixing a wrong JSON path in this plan's own
+      test code; `6b9accd`, correcting a handoff claim) — none mentioning Claude or AI.
 - [ ] `git diff main --stat` → only the files listed in **File Structure** above.
 - [ ] Challenge #27 is in `engineering-challenges.md`.
 - [ ] The handoff's test count, merged list, and §8 menu all reflect this slice.
