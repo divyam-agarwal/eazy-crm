@@ -76,8 +76,8 @@ All under `docs/superpowers/`:
   + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`) +
   **enquiry→quotation conversion** (merge commit `06e6014`) + **sales hardening** (merge commit
   `abc2bd3`) + **order lifecycle** (merge commit `8247579`).
-- **Latest completed, awaiting merge: quotation PDF + `wa.me` share.** 10 tasks on
-  `worktree-quotation-pdf-share` (PDF engine spike + determinism, Indian digit-grouping money
+- **Latest merged: quotation PDF + `wa.me` share** (merge commit `8b6644b`). 10 tasks
+  (PDF engine spike + determinism, Indian digit-grouping money
   formatting, seller-profile columns on `Tenant`, a Thymeleaf quotation template, the
   authenticated PDF render endpoint, the global `share_link` table, the idempotent share
   endpoint + `wa.me` deep link, the public no-auth render endpoint, the `QuotationService.list`
