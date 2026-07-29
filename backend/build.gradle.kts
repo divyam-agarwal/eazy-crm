@@ -25,6 +25,13 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 
+    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
+    // XHTML -> PDF, pure Java (PDFBox backend). No external binary, so CI and
+    // Testcontainers need nothing extra installed.
+    // As of 2026-07-28, 1.1.x was never cut upstream (latest on Maven Central: 1.0.10,
+    // dev branch pom.xml reads 1.0.11-SNAPSHOT) -- 1.0.10 is the actual latest.
+    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
+
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")

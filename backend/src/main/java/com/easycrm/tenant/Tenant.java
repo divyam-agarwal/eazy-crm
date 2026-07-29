@@ -52,6 +52,15 @@ public class Tenant implements Persistable<UUID> {
     @Column(length = 15)
     private String gstin;
 
+    @Column(length = 512)
+    private String address;
+
+    @Column(length = 20)
+    private String phone;
+
+    @Column(length = 255)
+    private String email;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private TenantStatus status = TenantStatus.TRIAL;
@@ -104,10 +113,20 @@ public class Tenant implements Persistable<UUID> {
     public String getBusinessName() { return businessName; }
     public String getStateCode() { return stateCode; }
     public String getGstin() { return gstin; }
+    public String getAddress() { return address; }
+    public String getPhone() { return phone; }
+    public String getEmail() { return email; }
     public TenantStatus getStatus() { return status; }
     public Instant getTrialEndsAt() { return trialEndsAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
     public void setStatus(TenantStatus status) { this.status = status; }
+
+    /** Full replace: an omitted field clears the stored value (house-wide PATCH semantics). */
+    public void updateProfile(String address, String phone, String email) {
+        this.address = address;
+        this.phone = phone;
+        this.email = email;
+    }
 }

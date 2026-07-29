@@ -31,4 +31,20 @@ public final class TenantContext {
             if (previous == null) HOLDER.remove(); else HOLDER.set(previous);
         }
     }
+
+    /**
+     * Value-returning sibling of {@link #runAs(TenantPrincipal, Runnable)}. The tenant
+     * must be established BEFORE the transaction opens: TenantAwareTransactionManager
+     * reads it in doBegin to set the RLS GUC, and Hibernate resolves a session's tenant
+     * once at session-open and never re-reads it (see challenge #9).
+     */
+    public static <T> T runAs(TenantPrincipal principal, java.util.function.Supplier<T> body) {
+        TenantPrincipal previous = HOLDER.get();
+        HOLDER.set(principal);
+        try {
+            return body.get();
+        } finally {
+            if (previous == null) HOLDER.remove(); else HOLDER.set(previous);
+        }
+    }
 }

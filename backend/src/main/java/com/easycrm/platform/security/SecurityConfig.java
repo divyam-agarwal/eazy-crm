@@ -21,6 +21,13 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
+                // Public share links: no JWT. The tenant is resolved from the share_link
+                // row itself, and every read behind it still goes through @TenantId + RLS.
+                // HEAD is permitted alongside GET: link unfurlers and some WhatsApp/proxy
+                // paths issue HEAD before GET, and Spring MVC answers HEAD on a @GetMapping
+                // automatically, so without this the link would preview as broken (401).
+                .requestMatchers(HttpMethod.GET, "/public/q/*").permitAll()
+                .requestMatchers(HttpMethod.HEAD, "/public/q/*").permitAll()
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/auth/signup", "/api/v1/auth/login",
                     "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()

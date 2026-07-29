@@ -1340,6 +1340,226 @@ forward, not an oversight of this slice.
 
 ---
 
+## Challenge 28 — `PDDocument.setDocumentId()` silently doing nothing
+
+**Phase:** Implementation
+
+### The problem
+
+`PdfEngine.render()` needs two renders of the same XHTML + timestamp to produce
+byte-identical PDFs — the design spec's "shown, emailed and WhatsApped output
+are the same document" is meant to be an assertable property, not an aspiration.
+openhtmltopdf writes the PDF; a post-process step reopens it with PDFBox to stamp
+a fixed `PDDocumentInformation` (producer, creator, creation/mod date) derived
+from the caller's timestamp, then re-saves.
+
+That alone wasn't enough: `sameInputRendersToIdenticalBytes` kept failing with
+byte-identical output everywhere *except* the trailer's `/ID` entry, which
+differed on every run. Setting `PDDocument.setDocumentId(timestamp.toEpochMilli())`
+before `save()` — the documented way to pin it — had **no effect at all**. Two
+back-to-back renders still produced two different random-looking hex `/ID`
+pairs.
+
+The naive next move — reading the PDFBox 2.0.24 Javadoc harder — didn't explain
+it, because the behavior isn't in the Javadoc. It's in `COSWriter.write(PDDocument,
+SignatureInterface)`'s bytecode: before computing anything, it reads the
+trailer's *existing* `/ID` entry, and if that's already a 2-element `COSArray` —
+which it is, because openhtmltopdf's own first-pass writer already stamped a
+random `/ID` into the raw bytes we're re-opening — the method takes an early
+branch that **keeps the inherited ID unchanged** and skips the whole
+MD5(`documentId` + Info-dictionary-values) computation. `setDocumentId()` only
+feeds a code path that never runs when an ID is already present and the save is
+non-incremental.
+
+### The solution
+
+Disassembled `COSWriter.class` with `javap -c` to find the actual branch
+condition (there is no `PDDocument` API to query it). Confirmed with a temporary
+diagnostic in the test itself — printing the first differing byte offset per the
+task's own instruction not to weaken the assertion — that the sole divergence was
+the `/ID` array, byte offset ~1156 in a 1258-byte PDF.
+
+Fix: explicitly remove the inherited entry before saving —
+`doc.getDocument().getTrailer().removeItem(COSName.ID)` — so PDFBox has nothing
+to inherit and falls onto its MD5-recompute branch, which then hashes our pinned
+`setDocumentId()` value together with the Info dictionary (itself already a pure
+function of `timestamp`). With no upstream randomness left in either input to
+that hash, the digest — and therefore the whole file — is now identical across
+runs.
+
+### Lesson
+
+A "set the field, then save" API can be a no-op if the writer's decision to use
+that field is conditional on state that already exists on the object you loaded
+— and that condition usually isn't documented, because it's an internal
+optimization (avoid rehashing an ID that's presumably already fine), not a
+contract. When a setter provably has no effect, don't reach for a different
+setter — read the writer's actual control flow (bytecode is fine if source
+isn't handy) to find the branch you're not reaching, then remove whatever's
+satisfying the branch you don't want, rather than layering more state-setting
+on top of a path that's being skipped entirely.
+
+---
+
+## Challenge 29 — Serving a tenant-scoped document to a request that has no tenant
+
+**Phase:** Design + Implementation (quotation PDF/share slice, Tasks 6/8)
+
+### The problem
+
+`GET /public/q/{token}` exists so a customer can open a quotation PDF from a
+WhatsApp link with **no login at all**. That collides head-on with every layer
+challenge #1 built: no JWT means `JwtAuthenticationFilter` never populates
+`TenantContext`, which means `TenantIdentifierResolver` hands Hibernate the nil
+`NO_TENANT` UUID, which means `TenantAwareTransactionManager` has nothing to
+write into the `app.current_tenant` GUC — so every RLS-scoped query on this
+request, by design, returns zero rows. A `share_token` column bolted onto
+`quotation_version` would therefore be **unlookupable by construction**: you
+cannot `SELECT … WHERE share_token = ?` on a table RLS has already reduced to
+"no rows visible," so the very column meant to let the request in is the first
+thing RLS hides from it.
+
+### Why it's hard
+
+The problem isn't "add a public endpoint" — Spring Security's `permitAll` does
+that trivially. The problem is that *nothing tenant-scoped is reachable* from a
+request with no tenant, and the one thing this endpoint needs is precisely a
+tenant-scoped row. Any fix that tries to keep the lookup table tenant-scoped is
+solving a contradiction: the row can't be both protected by the identity you
+don't have yet and findable without it.
+
+### The solution
+
+Move the resolution step **outside** the isolation boundary rather than
+weakening it. `share_link` is a global, RLS-exempt table (allowlisted in
+`TenantScopingArchTest.GLOBAL_TABLES`, same treatment as `refresh_token`) whose
+only job is `token → (tenant_id, quotation_version_id)`. It carries no document
+content — no buyer name, no amounts, nothing GST-related — so exposing it to
+tenant-less reads exposes nothing worth protecting. The request flow is then:
+
+```
+GET /public/q/{token}                          no JWT, no tenant
+  → ShareLinkService.resolve(token)             global table, no @TenantId, no RLS
+      → 404 if absent or malformed
+  → TenantContext.runAs(tenantId, () -> …)       tenant installed HERE
+      → QuotationPdfService.renderByVersionId(…) opens its @Transactional now
+      → @TenantId + RLS enforce as normal from this point on
+```
+
+The ordering — `runAs` wrapping the call, not the other way around — is not a
+style choice, it's load-bearing, and it's the same constraint challenge #9
+already found the hard way: Hibernate resolves a session's tenant identifier
+**once, at session-open**, and `TenantAwareTransactionManager` only reads
+`TenantContext` in `doBegin`. If the rendering call's `@Transactional` method
+opened before `runAs` installed the tenant, the session would freeze on
+`NO_TENANT` and every subsequent read would silently return nothing — not a
+crash, just an empty PDF path, all the way to a 404 with no clue why. Putting
+`resolve()` before `runAs`, and `runAs` before the call that opens the
+transaction, is what makes the tenant available at the one moment Hibernate
+will ever look for it.
+
+There's a second, sharper trap buried in the same ordering, caught only
+because it was flagged for this log during Task 8: **this endpoint's
+correctness depends on `spring.jpa.open-in-view: false`.** With OSIV on, Spring
+opens the `EntityManager` in a servlet filter *before the controller method
+runs at all* — before `shareLinks.resolve(token)` executes, let alone before
+`runAs` installs the tenant. Hibernate would pin whatever tenant resolves at
+that point (`NO_TENANT`, since no context exists yet) for the *entire request's
+session*, and `runAs` setting the real tenant afterward would change nothing —
+the session already froze on the wrong identifier. The failure mode is total
+silence: no exception, no log line points at OSIV, just every render coming
+back empty. Nothing in the build catches this; it would only surface as "the
+share feature doesn't work" in a manual check, because no test spins up the
+app with OSIV deliberately re-enabled.
+
+The exception this carves out of "tenant comes from the JWT only" is
+deliberately narrow: exactly one table is readable pre-auth, and it holds
+nothing but identifiers. Every byte of actual document content — quotation,
+version, items, customer, tenant profile — still goes through `@TenantId` +
+RLS untouched, with the tenant supplied by `runAs` before any of those reads
+can execute.
+
+### Lesson
+
+When a pre-auth endpoint must ultimately reach tenant-scoped data, don't try to
+make the tenant-scoped table reachable without a tenant — that's backwards.
+Put a single, deliberately minimal resolution table *outside* the isolation
+boundary, holding only the identifiers needed to establish tenancy, then
+install that tenancy (`runAs`) **before** anything opens a session or
+transaction that will read it — session-open timing (challenge #9) applies at
+the controller-entry boundary just as much as at the transaction boundary, and
+`open-in-view: false` is what keeps those two boundaries at the same place.
+Keeping the exception table free of content is what keeps the exception small:
+there's nothing in it worth leaking even to an attacker who reads it directly.
+
+---
+
+## Challenge 30 — An isolation test that could never fail
+
+**Phase:** Implementation (quotation PDF/share slice, Task 8 review)
+
+### The problem
+
+The original cross-tenant test on `GET /public/q/{token}` — the app's only
+unauthenticated route, and therefore the one place isolation bugs are hardest
+to notice from the outside — asserted that tenant B's buyer name never appears
+in a PDF rendered from a token that resolves to tenant A's own quotation
+version. It passed. It would have passed even if `@TenantId` and the RLS
+policy on `quotation`/`customer` had both been deleted, because the token in
+the test was **only ever capable of resolving to tenant A's data in the first
+place** — B's row was never on the other end of the lookup, so its absence
+from the output proves nothing about isolation. It's a negative assertion with
+no path by which the positive case could have occurred.
+
+### Why it's hard
+
+This is not a bug in the feature — the feature was correct throughout. It's a
+trap in how the *test* was constructed: "assert the forbidden thing is absent"
+reads as a genuine security check, and every other cross-tenant test in this
+codebase (challenge #1's "log in as A, request B's resource → 404") has real
+teeth precisely because the request *could* have reached B's row if isolation
+had failed. Here, nothing in the ordinary flow ever constructs a token that
+points across tenants — `ShareLinkService.share()` always stores the caller's
+own `TenantContext.tenantId()` — so an isolation test built from that ordinary
+flow can only ever exercise the case where isolation was never at risk. The
+gap is easy to miss because the test *looks* identical in shape to the ones
+that do work.
+
+### The solution
+
+Construct the adversarial case directly rather than trusting the app to
+produce it. `aForgedShareLinkPointingAnotherTenantAtThisTenantsVersionIs404`
+saves a `ShareLink` row straight through `ShareLinkRepository` — bypassing
+`ShareLinkService` entirely — with `tenantId` set to tenant B while
+`quotationVersionId` belongs to a version owned by tenant A: a row no
+production code path can ever create, but exactly the shape `@TenantId`/RLS
+must reject if the tenant established by `runAs` doesn't actually gate the
+read. The endpoint is asserted to return 404. The re-reviewer additionally
+traced the app's `easycrm_app` role (no `BYPASSRLS`, not table owner) to
+confirm the 404 is genuinely RLS enforcement and not some other check-first
+gate that would return 404 regardless. The original test was kept, renamed to
+`happyPathRendersOwnQuotationWithASecondTenantsDataPresent`, with a doc comment
+stating plainly what it does and does not prove — it's still useful as a
+happy-path/no-leakage-into-formatting check, just not as an isolation
+guarantee.
+
+### Lesson
+
+A test that asserts the absence of something is only meaningful if there is a
+concrete path by which that something could have arrived — otherwise a
+regression that deletes the very protection under test leaves the assertion
+green. This bites hardest on isolation checks, because the *natural* flow
+through the application almost never manufactures the adversarial input by
+itself (the whole point of the isolation layer is that it doesn't let that
+input arise) — so proving the layer works means deliberately forging the state
+the layer is supposed to prevent, not exercising the happy path and hoping the
+forbidden case would have shown up if it could. When reviewing a "must not
+leak" test, ask first whether the leaked data could ever, even in principle,
+have reached this code path — if the answer is no by construction, the test
+needs a forged counterpart before it proves anything.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

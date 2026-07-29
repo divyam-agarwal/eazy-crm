@@ -1,7 +1,7 @@
 # Quotation PDF + `wa.me` share — design spec
 
 **Date:** 2026-07-28
-**Status:** designed, not yet implemented
+**Status:** implemented on branch `worktree-quotation-pdf-share`; merge SHA to be stamped at merge time
 **Slice:** server-side quotation PDF rendering + a public tokenized share link + the `wa.me`
 deep link, plus the deferred `QuotationService.list` filter fix (challenge #24)
 **Builds on:** the P1b quotation engine (`specs/2026-07-26-p1b-quotation-engine-design.md`,
@@ -57,6 +57,21 @@ Money renders as `Rs. 1,23,456.78` — Indian digit grouping, formatted from `Bi
 via `double`. The `₹` glyph (U+20B9) is **not** used: it is absent from the base-14 PDF fonts, and
 embedding a TTF to obtain it was declined as not worth the jar weight and font-licensing note for
 this slice. The template is pinned to base-14 Helvetica accordingly.
+
+**The same font limitation applies to every string of user data, not just the `₹` glyph, and this
+was not asked at the time.** Base-14 Helvetica covers WinAnsi (Latin-1) only. Accented characters,
+curly quotes and em-dashes render fine; anything outside WinAnsi does not. A `businessName`,
+`billingAddress` or product name written in Devanagari, Gujarati, Tamil or any other Indian script
+renders as a run of `#` characters — confirmed empirically through the real `PdfEngine`:
+`"Shri Ram Traders"` in Devanagari came back as `"Shri Ram #### Traders"`. There is no exception,
+no log line, and no test failure — the substitution is silent. For a product sold to Indian
+tier-2/3 distributors, non-Latin script in tenant, customer or product data is entirely ordinary,
+so this is a real and likely-to-be-hit gap, not a theoretical one: a corrupted document reaches a
+customer over WhatsApp with no signal to anyone that anything went wrong. The fix is the same
+trade-off this section already declined once for the `₹` glyph alone, now with its real cost
+visible: embed a Unicode-capable font (Noto Sans or DejaVu Sans, subset to keep jar weight down)
+so the template can render arbitrary script rather than base-14 Helvetica's Latin-1 subset.
+Deferred — see the backlog in `HANDOFF.md` §8.
 
 Only a **SENT** (frozen) version is renderable. A `DRAFT` has no quote number yet — `send` is what
 assigns it — so there is no document to produce.
@@ -279,8 +294,11 @@ tenant id: the letterhead reads real `Tenant` row data, exactly as the GST split
 - **Order PDF.** The wedge's promise is the quotation; the order is an internal confirmation the
   customer already agreed to. A second template, share path and test suite for a document rarely
   asked for at this stage.
-- **Link expiry and revoke.** The `share_link` row is the seam when we want it; replace-on-reshare
-  already gives a crude revoke.
+- **Link expiry and revoke.** The `share_link` row is the seam when we want it. There is **no
+  revocation mechanism today, by any means**: `share()` on an already-shared version returns the
+  same stored token rather than minting a new one (that is the point of §4's plaintext-idempotency
+  design), and no delete path exists anywhere. A minted link renders forever until expiry/revoke
+  is deliberately built.
 - **Rate limiting** on the public endpoint. Already on the backlog with the rest of rate limiting.
 - **Logo upload.** Needs file storage, which this project does not yet have.
 - **PDF caching or blob storage.** Rendering is deterministic and cheap; storing bytes would add a
