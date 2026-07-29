@@ -59,8 +59,7 @@ All under `docs/superpowers/`:
 21. **`specs/2026-07-28-quotation-pdf-share-design.md`** — quotation PDF/share design spec
     (server-side rendering, the tenant-resolution seam for a public link, `share_link`'s
     plaintext-token design, the `wa.me` deep link, and the deferred `QuotationService.list`
-    filter fix). Source of truth for *what* this slice built. Implemented on
-    `worktree-quotation-pdf-share`; not yet merged.
+    filter fix). Source of truth for *what* this slice built. **DONE, merged as `8b6644b`.**
 22. **`plans/2026-07-28-quotation-pdf-share.md`** — quotation PDF/share implementation plan (10
     tasks: PDF engine spike, Indian-format money, tenant profile columns, the Thymeleaf template,
     the render endpoint, the `share_link` table, the share endpoint, the public endpoint, the
@@ -68,9 +67,8 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Branch:** `worktree-quotation-pdf-share`, off `main` @ `3410e42`, working tree clean, all 10
-  tasks done and reviewed clean. **Not yet merged** — `main` itself is still at the order-lifecycle
-  merge (`8247579`) until this branch lands.
+- **Branch:** `main`, working tree clean (quotation PDF/share merged as `8b6644b`; feature branch
+  and its worktree deleted). All 10 tasks were reviewed clean, as was the whole-branch review.
 - **Merged & done on `main`:** the design docs (including the order-lifecycle slice's
   `specs/2026-07-28-order-lifecycle-design.md` `8a6c9dd` and `plans/2026-07-28-order-lifecycle.md`
   `8c0703f`, both committed directly) + **P0 tenant-isolation foundation** + **P0-auth core** +
@@ -121,7 +119,7 @@ All under `docs/superpowers/`:
 Read it before extending any of the areas it describes, so you don't rebuild something that
 exists or assume something that doesn't.
 
-**The quotation PDF/share slice is DONE on `worktree-quotation-pdf-share`, not yet merged.** 10
+**The quotation PDF/share slice is DONE and merged to `main` (`8b6644b`).** 10
 tasks, every review clean: (1) a PDF-engine spike proving openhtmltopdf 1.0.10 renders on JDK 25
 and can be made byte-deterministic (challenge #28 — a PDFBox writer branch silently ignores
 `setDocumentId()` when the trailer already carries an inherited `/ID`); (2) Indian digit-grouping
@@ -145,7 +143,7 @@ design spec for the tenant-resolution seam and the plaintext-token reasoning.
 - ~~**Enquiry → quotation conversion wiring**~~ — **DONE, merged** (`06e6014`). `QuotationService.create()` flips the enquiry to `CONVERTED` and stamps `quotation.enquiry_id` when a quote is raised with an `enquiryId`. Note: still convert-*at-create* only; no standalone `/enquiries/{id}/convert` endpoint, and one enquiry maps to at most one quotation (a second create against a converted enquiry → 422).
 - **`activity` / `follow_up` entities** — the spec's Activity section (CALL/WHATSAPP/EMAIL/VISIT/NOTE logs + first-class follow-up reminders) is still unbuilt.
 - ~~**Order status transitions beyond `CONFIRMED`**~~ — **DONE, merged** (`8247579`). `OrderStatus` now has `CONFIRMED, DISPATCHED, CLOSED, CANCELLED` with entity-side guarded `dispatch()`/`close()`/`cancel(reason)` transitions and a required `cancelReason` — see the order-lifecycle summary above. Challenge #27.
-- ~~**PDF generation** and the **`wa.me` WhatsApp share link**~~ — **DONE** on `worktree-quotation-pdf-share` (not yet merged). Server-side quotation PDF rendering, a public tokenized share link, and the `wa.me` deep link all exist — see the §3/§4 summaries above. **Order PDF is still out of scope** (design spec §8 — the quotation is the document customers actually ask for at this stage), as are link expiry/revoke and rate limiting on the public route (see the backlog below).
+- ~~**PDF generation** and the **`wa.me` WhatsApp share link**~~ — **DONE, merged** (`8b6644b`). Server-side quotation PDF rendering, a public tokenized share link, and the `wa.me` deep link all exist — see the §3/§4 summaries above. **Order PDF is still out of scope** (design spec §8 — the quotation is the document customers actually ask for at this stage), as are link expiry/revoke and rate limiting on the public route (see the backlog below).
 - **Scheduled auto-expiry** — only a manual `expire` action exists on quotations; nothing runs on a schedule to expire quotations past `validUntil` automatically.
 - **Record-level visibility filtering** — still open from P1a (§4 P1a notes); quotations, orders, and now enquiries inherit the same gap (every user in a tenant reads every enquiry in it).
 - **Cursor pagination** — quotation, order, and enquiry list endpoints use the same offset-based `Pageable`/`PageResponse` as P1a; large tenants will need cursor pagination later.
