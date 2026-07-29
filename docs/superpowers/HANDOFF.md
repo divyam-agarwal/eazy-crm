@@ -1,26 +1,20 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-29 (quotation PDF/share slice complete on branch
-`worktree-quotation-pdf-share`, not yet merged to `main`).
+**Last updated:** 2026-07-29 (quotation PDF/share slice merged to `main` as `8b6644b`).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-**One slice is implemented and reviewed clean, but not yet merged.** The quotation PDF +
-`wa.me` share slice (design spec `specs/2026-07-28-quotation-pdf-share-design.md`) is done on
-`worktree-quotation-pdf-share`, off `main` @ `3410e42`, and this docs wrap-up is its final task.
-`main` itself is still clean at the order-lifecycle merge (`8247579`) until that branch merges.
+**Nothing is in flight.** `main` is clean, all work is merged, and the next session begins by
+choosing what to build — there is no half-finished task to rescue.
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On `worktree-quotation-pdf-share`, expect **231
-   tests, 0 failures**; on `main` (pre-merge), expect **187**. If either number differs, stop and
-   reconcile before writing code — everything below assumes it.
+   then `cd backend && ./gradlew clean test`. Expect **231 tests, 0 failures**. If that number
+   differs, stop and reconcile before writing code — everything below assumes it.
 2. **Read §1** (what this product is) and **§7** (non-negotiable working agreements).
-3. If the PDF/share slice hasn't been merged yet, do that first (see
-   `superpowers:finishing-a-development-branch`). Once merged, **go to §8** and pick the next
-   chunk *with the user*. Do not start one unilaterally.
+3. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
 4. Then run the standard workflow on a feature branch off `main`:
    **brainstorming → (design spec →) writing-plans → subagent-driven-development →
    finishing-a-development-branch.**
