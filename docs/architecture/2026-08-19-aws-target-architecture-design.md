@@ -40,6 +40,9 @@ the reasoning later.
 | D9 | **`audit_log` removed** | Keep it synchronous; move it async | User decision. `LOGIN_FAILED` was a real security control and becomes a structured CloudWatch log line with a metric filter and alarm |
 | D10 | **Freeze a buyer snapshot into `QuotationVersion`** | Read the customer live at render time | Fixes a live correctness bug (F11) *and* removes `document-svc`'s synchronous dependency on `master-data` from the cached public render path. Prerequisite of the split |
 | D11 | **RS256 + JWKS** | Keep HS256 | A shared symmetric secret across five services means every service can *mint* tokens, not merely verify them |
+| D13 | **CodeDeploy blue/green**, except `notification` | ECS rolling + circuit breaker | A replacement task set validated by a `BeforeAllowTraffic` hook before it takes any traffic, and a rollback that shifts the listener back in seconds rather than draining tasks. `notification` has no ALB target, so blue/green does not apply to it — it stays rolling. The mixed strategy is forced, not chosen. Cost: two target groups per service, an `appspec.yaml` each, CodeDeploy owning the ECS service, and **double the tasks during a deploy** (F17) |
+| D14 | **Migrations run pre-deploy as a one-off ECS task, as the schema owner, directly to RDS** | Flyway at application startup | Startup Flyway makes N tasks race the lock and offers no place to fail before traffic shifts. The owner credential is never registered on the Proxy, and long DDL transactions should not be multiplexed (F3) |
+| D15 | **Terraform owns roles and credentials; Flyway owns schemas, grants and objects** | Flyway owns everything, as `V1__roles_and_extensions.sql` does today; Terraform owns grants too | A password is a rotation concern, a schema is a migration concern. Splitting them there keeps secrets out of version-controlled SQL without scattering grants across two tools that must stay in step |
 | D12 | **One monorepo, Gradle multi-project, path-filtered CI** | A repository per service | "Independent deploys" is a pipeline property, not a repository property — path filters give them without giving up atomic refactors. `platform` becomes `implementation(project(":platform"))` rather than a published artifact, so a change to it and all five consumers is one commit. Contract tests fail in the same CI run as the change that breaks them, rather than later via a broker. Polyrepo wins on different team cadences, mixed toolchains, or repo scale — none of which apply |
 
 ---
@@ -255,21 +258,33 @@ ArchUnit `GLOBAL_TABLES` allowlist.
 ### F9 — the autoscaler's real ceiling is the database
 
 ```
-max_tasks × hikari_pool_size  ≤  MaxConnectionsPercent × max_connections
+max_tasks × deploy_factor × hikari_pool_size  ≤  MaxConnectionsPercent × max_connections
 ```
 
-| Service | Max tasks | Pool | Connections |
-|---|---:|---:|---:|
-| identity | 4 | 5 | 20 |
-| master-data | 4 | 5 | 20 |
-| sales | 10 | 10 | 100 |
-| document | 20 | 5 | 100 |
-| notification | 6 | 5 | 30 |
-| **Total at full scale-out** | | | **270** |
+**`deploy_factor` is 2 for every blue/green service** (D13): a replacement task set runs alongside
+the original until traffic shifts and the bake completes. Sizing the pool for steady state and then
+deploying is how you exhaust the connection budget with a deployment — see F17.
 
-A `db.t4g.medium` allows roughly 340 connections, and each costs ~10 MB of server memory. Without
-this table written down, autoscaling does not prevent an outage — it moves the outage from one
-service's ALB to Postgres, where it takes down all five.
+| Service | Max tasks | Deploy factor | Pool | Peak connections |
+|---|---:|---:|---:|---:|
+| identity | 4 | ×2 | 4 | 32 |
+| master-data | 4 | ×2 | 4 | 32 |
+| sales | 8 | ×2 | 8 | 128 |
+| document | 20 | ×2 | **3** | 120 |
+| notification | 6 | ×1 (rolling) | 4 | 24 |
+| **Peak, mid-deploy at full scale-out** | | | | **336** |
+
+`document`'s pool is deliberately the smallest despite having the highest task ceiling: rendering is
+**CPU-bound**, and a task reads one `render_payload` row and then spends its time in openhtmltopdf.
+Uniform pool sizing would have made the busiest-scaling service the largest connection consumer for
+no reason.
+
+A `db.t4g.medium` (4 GiB) permits roughly 450 connections by the RDS default formula; budgeting 75%
+of that through the Proxy gives ~340. **336 against 340 is tight, not comfortable** — the levers, in
+order, are `document`'s pool, `sales`'s task ceiling, and moving to `db.t4g.large`.
+
+Without this table written down, autoscaling does not prevent an outage — it moves the outage from
+one service's ALB to Postgres, where it takes down all five.
 
 ### Cross-service references
 
@@ -653,16 +668,18 @@ the latest `SENT` version.
 
 ## 2.8 Deployment, migrations and recovery
 
-### F14 — rolling deploys, Flyway and `ddl-auto: validate` are mutually hostile (R5)
+### F14 — concurrent versions, Flyway and `ddl-auto: validate` are mutually hostile (R5)
 
 Flyway runs at application startup today. Deployed to ECS that breaks in two ways:
 
 1. **N tasks start at once** and race for the Flyway lock. Flyway serialises them, but every
    loser waits on a lock during startup, inflating deploy time and health-check windows.
-2. **A rolling deploy runs old and new code against the same schema simultaneously.** With
+2. **Every deployment strategy runs old and new code against the same schema simultaneously.**
+   Rolling interleaves them; blue/green (D13) keeps the *entire* previous task set alive through
+   traffic shift and bake, so the overlap window is longer, not shorter. With
    `spring.jpa.hibernate.ddl-auto: validate` — which this codebase relies on — an old task meeting a
-   new schema fails validation and **crash-loops**, and ECS interprets that as a failed deployment
-   of the *new* version.
+   new schema fails validation and **crash-loops**, and ECS reads that as a failed deployment of the
+   *new* version.
 
 Two rules follow, and neither is optional:
 
@@ -670,23 +687,138 @@ Two rules follow, and neither is optional:
   Flyway is disabled in the service image.
 - **Migrations are expand/contract.** A release may only add. Anything destructive — dropping a
   column, tightening a constraint, renaming — ships one release *after* the code that stopped using
-  it. This is what makes a rolling deploy survivable, and it is a discipline, not a mechanism, so it
-  belongs in the review checklist.
+  it. This is what makes any deployment strategy survivable, and it is a discipline rather than a
+  mechanism, so it belongs in the review checklist — the migration lint can only flag destructive
+  statements, not judge whether the code that used them is gone.
 
-### Deployment pipeline (R10)
+### Database change management (D14, D15)
+
+**Where migrations live.** In the monorepo, partitioned the same way the schemas are — **five
+independent histories**, each with its own `flyway_schema_history` table inside its own schema
+(`flyway.defaultSchema=sales`). Version numbers restart at `V1` per history, because the histories
+are genuinely independent.
 
 ```
-GitHub Actions
-  ├── build + unit/integration tests (Testcontainers)
-  ├── contract tests (consumer-driven, gate the merge)
-  ├── build image → ECR (immutable tag = git sha, scan on push)
-  ├── run migration task (one-off, per service, before deploy)
-  └── ECS rolling deploy
-        deployment circuit breaker ON, rollback on failure
-        minimumHealthyPercent 100, maximumPercent 200
+platform/db/src/main/resources/db/migration/      extensions · shared schema · grants · RLS helpers
+services/identity/src/main/resources/db/migration/
+services/master-data/src/main/resources/db/migration/
+services/sales/src/main/resources/db/migration/
+services/document/src/main/resources/db/migration/
 ```
 
-The deployment circuit breaker is what makes a bad deploy self-reverting rather than an incident.
+`platform/db` runs **first, always**. It owns what belongs to no single service: `CREATE EXTENSION`,
+schema creation, the `shared` schema (`tenant`, `plan`, `shedlock`), and the grants that make D2's
+ownership boundary real — including the `relay_app` grants that bound F12's `BYPASSRLS`.
+
+Under D15, **Terraform creates the roles and owns their Secrets Manager secrets and rotation**,
+reaching the database through a bootstrap task in the VPC; Flyway creates schemas, grants and
+objects. Today's single `V1__roles_and_extensions.sql` splits along that line.
+
+Collapsing today's 25-migration single history into five is a one-time restructuring, part of
+sub-project 8.
+
+**How they run.**
+
+| | |
+|---|---|
+| Trigger | The pipeline, `aws ecs run-task` on a dedicated task definition, waiting on exit code |
+| Credential | The schema **owner** — application roles are non-owner and cannot execute DDL |
+| Network | **Directly to RDS, bypassing the Proxy** (F3) |
+| In the service image | `spring.flyway.enabled=false` — disabled, not merely unused |
+| On failure | The pipeline stops and nothing deploys. That is the reason it is a separate step |
+
+**Why migrate-first is what makes rollback safe.** Migrations run before traffic shifts, so the
+old version serves requests against the new schema for the whole deploy — and under blue/green that
+window is longer than under rolling, because the original task set stays up through the bake.
+
+That is not the risk it appears to be, because of one fact:
+
+> A rollback shifts traffic back to the previous version. **It does not revert the migration — and
+> it must not.**
+
+So the previous image has to run correctly against the migrated schema *regardless*. Migrate-first
+plus additive-only is the only self-consistent combination; deploy-first would require new code to
+tolerate the old schema, which it cannot, since it generally needs the new column.
+
+**Expand/contract, concretely.** Renaming `quotation.notes` to `remarks` is three releases:
+
+| | Migration | Code |
+|---|---|---|
+| R1 — expand | add `remarks`, nullable, backfill | writes both, reads `notes` |
+| R2 | — | writes both, reads `remarks` |
+| R3 — contract | drop `notes` | `remarks` only |
+
+Every release is independently rollback-safe. Two rules follow:
+
+- **New columns are nullable or carry a default.** A `NOT NULL` column with no default breaks every
+  insert from the version still serving traffic.
+- **`SET NOT NULL` ships a release later**, via `ADD CONSTRAINT … NOT VALID` then
+  `VALIDATE CONSTRAINT` — the direct form scans the table under a strong lock.
+
+`ddl-auto: validate` is compatible with this: Hibernate validates that *mapped* columns exist and
+ignores extra ones, so expand is safe. Only contract can crash-loop an old task, which is precisely
+why contract ships late.
+
+**Two Postgres details that cause outages.**
+
+- **`CREATE INDEX CONCURRENTLY` cannot run inside a transaction**, and Flyway wraps migrations in
+  one by default — such a migration needs `-- flyway:executeInTransaction=false`. Without
+  `CONCURRENTLY`, index creation blocks writes for its duration.
+- **Set `lock_timeout` to ~3s and retry.** DDL waiting on `ACCESS EXCLUSIVE` blocks every
+  subsequent query on that table, *including reads*. A migration that waits thirty seconds behind
+  one long query takes the table down for thirty seconds. Failing fast and retrying is strictly
+  better than queueing.
+
+### Deployment pipeline (R10, D13)
+
+```
+pull request
+  ├── build + ALL tests (Testcontainers)          no path filter — the suite is seconds
+  ├── ArchUnit: tenant scoping · platform-may-not-reference-services
+  ├── contract tests: every consumer of a changed provider
+  └── migration lint: naming, and destructive ops require an explicit marker
+
+merge to main
+  ├── changed paths → affected services            (platform/ ⇒ all)
+  ├── image per affected service, tag = git sha, IMMUTABLE, scan on push
+  ├── STAGING
+  │     platform migration → service migrations → blue/green → smoke tests
+  └── manual approval
+        PROD: same four steps
+```
+
+**Path-filter the deploys, not the tests.** The suite is 231 tests in ~12 seconds; filtering tests
+would require computing the transitive Gradle dependency graph correctly, which is a class of bug
+bought for no measurable time. Filtering deploys is a simple, safe rule.
+
+**Blue/green mechanics** (D13): two target groups per service, an `appspec.yaml` per service, and
+CodeDeploy owning the ECS service — which means Terraform must `ignore_changes` on the task
+definition, or the two will fight. The `BeforeAllowTraffic` hook runs smoke tests against the green
+target group **before it receives any traffic**, which is the main thing blue/green buys over
+rolling here. `notification` has no load balancer, so it deploys rolling with the circuit breaker.
+
+**Promotion is gated by a human at production.** Staging deploys on merge and runs smoke tests;
+production waits on an approval. While one person operates this and there is no on-call rotation,
+someone should be awake when revenue infrastructure changes.
+
+Three pipeline properties that are not optional: **immutable ECR tags, never `latest`** (exact
+rollback needs an exact artifact); **GitHub OIDC federation to an AWS role**, so no long-lived AWS
+credentials exist in GitHub; and **`concurrency: deploy-<env>`**, so two migration tasks cannot
+race — Flyway's lock would keep that correct, but the pipeline should not depend on it.
+
+### F17 — blue/green doubles the connection budget, not just the compute
+
+A blue/green deployment runs a complete replacement task set alongside the original until traffic
+shifts and the bake finishes. Every one of those tasks opens its own HikariCP pool.
+
+Sizing pools for steady state and then deploying is how a **deployment** exhausts the database
+connection budget — an outage triggered by the mechanism chosen to make deployments safe, and one
+that only appears when a deploy coincides with a scale-out. F9's table therefore carries an explicit
+`deploy_factor`, and the safe peak is `max_tasks × 2 × pool`, not `max_tasks × pool`.
+
+The second-order effect matters too: a deploy at peak traffic is the worst possible moment, which is
+an argument for deploying against scheduled-minimum capacity rather than merely "outside business
+hours."
 
 ### Graceful shutdown (R6)
 
@@ -920,6 +1052,7 @@ this AWS design.
 | F13 | `document-svc` cannot reach the `sales` data it renders. Resolved by freezing an immutable render payload into its own schema at send time, which also makes the CloudFront cache correct by construction |
 | F14 | Rolling deploys + startup Flyway + `ddl-auto: validate` crash-loop old tasks against a new schema. Migrations move to a pre-deploy task and must be expand/contract |
 | F15 | A CloudFront distribution's WAF web ACL and ACM certificate must live in `us-east-1`, not `ap-south-1` |
+| F17 | Blue/green runs a full replacement task set, so peak database connections are `max_tasks × 2 × pool`. Sizing pools for steady state means the deployment mechanism chosen for safety is what exhausts the connection budget |
 | F16 | Serialising the relay is a decision, not a default. `SKIP LOCKED` scales it, but only hash partitioning preserves per-aggregate ordering. Trigger: sustained outbox lag. And `desiredCount: 1` is not a substitute for the lock — a rolling deploy always runs two |
 
 # Appendix B — To verify before implementation
@@ -935,3 +1068,11 @@ documentation or a spike, not taken on trust:
 5. Fargate and RDS pricing for ap-south-1 (Part 4.1 uses approximations).
 6. ADOT collector support for EMF metric export in the intended configuration (§2.5).
 7. Whether CloudWatch Application Signals renders span links as intended for the async hop (F8).
+8. `max_connections` for `db.t4g.medium` — Part 2.1 assumes ~450 from the RDS default formula and
+   budgets 75% through the Proxy. At 336 projected peak (F9) the margin is thin enough that the real
+   number matters.
+9. CodeDeploy blue/green with ECS: whether `BeforeAllowTraffic` hooks can reach the green target
+   group from within the VPC as assumed, and the Terraform `ignore_changes` shape needed so
+   CodeDeploy and Terraform do not fight over the task definition (D13).
+10. Flyway multi-schema history behaviour — that `flyway.defaultSchema` per service places each
+    history table in its own schema and that the five histories are genuinely independent (D14).
