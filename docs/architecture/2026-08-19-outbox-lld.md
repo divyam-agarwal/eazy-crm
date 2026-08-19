@@ -377,6 +377,107 @@ The second rule is one line and closes a bug that no test would reliably catch.
 
 ---
 
+# Part 7 — Test plan
+
+## 7.1 What is genuinely unit-testable
+
+Most of this pattern is *about* transactional behaviour, so most of its value lives in integration
+tests. Saying so up front prevents a suite full of mocked repositories that prove nothing.
+
+| Test | Asserts |
+|---|---|
+| Envelope round-trip | Serialise → deserialise is lossless. **Money is a JSON string, not a number** — see TB3 |
+| Envelope redaction | `toString()` never emits `payload`. See TB13 |
+| `TraceContextCarrier.capture()` | Valid W3C traceparent with an active span; **null, not a crash, with none** |
+| `TraceContextCarrier.linkTo()` | Produces a span with a *link*, not a parent |
+| **Publisher batching** | 100 events → 10 `PublishBatch` calls of 10 |
+| **Contiguous prefix on partial failure** | Entry 3 of 10 fails → entries 1–2 returned as published, 3–10 not, and publishing **stops** rather than continuing to entry 4 |
+| Empty batch | No SNS call is made at all |
+| `DomainEvent` → envelope mapping | Every metadata field lands in the right place |
+
+The contiguous-prefix test is the highest-value unit test in the suite: pure logic, a subtle
+correctness rule, and a mocked SNS client is enough (OF4).
+
+## 7.2 Integration tests (Testcontainers)
+
+**Setup change:** `IntegrationTest` currently wires two roles — the owner for Flyway and
+`easycrm_app` for the application. The outbox needs a **third**: `relay_app`, with `BYPASSRLS` and
+grants on outbox tables only. Without it, none of the relay tests are testing the real thing.
+
+### Atomicity — the property the pattern exists for
+
+| # | Test |
+|---|---|
+| 1 | **Roll the outer transaction back → assert zero outbox rows.** If only one test is written, this is it |
+| 2 | Commit → exactly one row, correct `tenant_id`, payload, `traceparent`, `published_at IS NULL` |
+| 3 | A listener downstream of `OutboxWriter` throws → **both** the state change and the outbox row roll back |
+
+### Tenant isolation
+
+| # | Test |
+|---|---|
+| 4 | Written under tenant A, read via `easycrm_app` under tenant B → zero rows |
+| 5 | Native insert with a foreign `tenant_id` → rejected by the RLS policy acting as `WITH CHECK` |
+| 6 | **Relay sees across tenants.** Rows under A and B; the relay, as `relay_app`, reads both. The regression test for F12 *and* OF1 |
+| 7 | **The grant boundary holds.** `relay_app` selecting from `quotation` → permission denied. Test 6 without test 7 proves only that a hole exists, not that it is the right size |
+| 8 | Consumer writes land under the envelope's tenant, never the ambient one |
+
+### Ordering
+
+| # | Test |
+|---|---|
+| 9 | Two events for one aggregate in one transaction → published in write order |
+| 10 | Two events for one aggregate in separate transactions → published in commit order |
+| 11 | Identical `occurred_at` → deterministic order by `id`. **If this is flaky, `UuidV7` is not monotonic within a millisecond and that is a finding, not a flake** |
+| 12 | **Interleaved commit (TB7).** Transaction A opens, B opens later and commits first, relay polls, then A commits. Assert the aggregate-level guarantee still holds |
+
+### At-least-once and failure
+
+| # | Test |
+|---|---|
+| 13 | Publish succeeds, the `MARK_PUBLISHED` update fails → next cycle republishes → consumer dedupes |
+| 14 | Entry 3 of 5 fails → 1–2 marked, 3–5 retried next cycle, order preserved |
+| 15 | Same envelope consumed twice → handler invoked **once**, one `processed_event` row |
+| 16 | Handler throws → `processed_event` row **absent** after rollback → redelivery re-processes |
+| 17 | Raced dedupe: two consumers, same envelope. One wins the unique constraint, one no-ops via `DataIntegrityViolationException`. Provable single-threaded, matching the repo's existing pattern for challenge #15 |
+
+### Locking and schema
+
+| # | Test |
+|---|---|
+| 18 | Two relay instances fire together → exactly one publishes |
+| 19 | Lease expiry — holder "dies", another instance may run after `lockAtMostFor` |
+| 20 | Flyway applies both locations cleanly; the `V900` namespace does not collide |
+| 21 | The outbox table has the expected shape **in every service schema** — catches hand-edited drift |
+| 22 | `EXPLAIN` the relay query → index scan on `idx_outbox_unpublished`, not a seq scan |
+| 23 | **Expand/contract:** apply the new migrations to a database seeded at the previous release, then boot the *previous* entity mappings under `ddl-auto: validate`. The regression test for parent F14, and almost nobody builds it |
+
+### Not testable here
+
+Proxy pinning (parent F1/F2) cannot be reproduced in Testcontainers. It belongs in a staging smoke
+test asserting `DatabaseConnectionsCurrentlySessionPinned` stays at zero under load.
+
+## 7.3 Bugs you will hit, and the fix
+
+| # | Symptom | Cause | Fix |
+|---|---|---|---|
+| **TB1** | Events silently stop flowing; outbox lag climbs; no error anywhere | The relay reads through JPA and `@TenantId` filters to zero rows (OF1), or RLS does (F12) | `JdbcTemplate` on the `relay_app` DataSource. **Detection depends entirely on the outbox-lag alarm existing** |
+| **TB2** | Events occasionally missing under load; every test passes | `@TransactionalEventListener` instead of `@EventListener` (OF2). Tests commit, so the dual write never shows | Plain `@EventListener`, plus the ArchUnit ban |
+| **TB3** | Money arrives at the consumer as a JSON **number** and re-acquires `double` rounding error | The outbox `ObjectMapper` is a fresh instance without `BigDecimalStringModule` registered | Inject the **application's** configured mapper, never `new ObjectMapper()`. This quietly undoes challenges #2 and #17 across the whole async surface |
+| **TB4** | `ClassNotFoundException`, or a mapper that ignores every module | Boot 4 ships Jackson under `tools.jackson`, not `com.fasterxml.jackson` (challenge #10) | Import the right package; assert module registration in a test |
+| **TB5** | Throughput does not scale; `DatabaseConnectionsCurrentlySessionPinned` > 0 | `prepareThreshold=0` set on the primary DataSource and **forgotten on the relay's** — it is hand-configured, so it is easy to miss | Set it on both. Assert it in a config test |
+| **TB6** | One task dies and every event in the system stalls for minutes | `lockAtMostFor` copied from the sweep jobs (10m) | 60s for the relay specifically |
+| **TB7** | Events for different aggregates publish out of `occurred_at` order | **Interleaved commits.** Transaction A (earlier `occurred_at`) is still open when B commits; the relay polls and sees only B; A commits afterwards and publishes second. Inherent to *every* polling outbox | **Per-aggregate ordering still holds here, and for a specific reason:** two transactions writing events about the same quotation must both load and modify it, and `@Version` optimistic locking makes the second commit fail with 409 (challenge #26). Concurrent same-aggregate commits cannot both succeed. Cross-aggregate ordering was never guaranteed (F5). The caveat: an event published *without* touching its aggregate under the optimistic lock loses this protection |
+| **TB8** | Ordering test flakes; rare real misordering within a transaction | `UuidV7` may not be monotonic inside one millisecond | Verify the generator has a counter. If not, order by an explicit column rather than `id` |
+| **TB9** | Cross-tenant writes — the worst outcome available | `runAs` called *after* the transaction opens, or `open-in-view` re-enabled | `runAs` before; `spring.jpa.open-in-view: false` stays load-bearing (challenges #9, #29) |
+| **TB10** | A DLQ redrive a week later re-sends WhatsApp messages to real customers | `processed_event` reaped on the outbox's 7-day schedule | Retention ≥ maximum DLQ retention (14 days), not the outbox reaper's |
+| **TB11** | The dedupe `catch` never fires; the whole transaction fails instead | `save()` without `flush()` — the constraint violation surfaces at commit, outside the try/catch | `saveAndFlush` |
+| **TB12** | Phone numbers and GSTINs appear in CloudWatch Logs | A consumer logs the whole envelope on error | `EventEnvelope.toString()` redacts `payload`; log `eventId` and `eventType` only. DPDP, not tidiness |
+| **TB13** | Relay tests pass alone, fail in a suite | Unpublished rows left by earlier tests, on the shared singleton container | Truncate in `@BeforeEach`, and assert on a specific `eventId` rather than "the batch" |
+| **TB14** | Payload stored as a quoted string rather than JSONB | `@JdbcTypeCode(SqlTypes.JSON)` without a Hibernate 7 `FormatMapper` wired to Jackson 3 | Configure the format mapper; assert the column type in a test |
+
+---
+
 # Appendix A — Findings
 
 | # | Finding |
