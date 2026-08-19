@@ -40,6 +40,7 @@ the reasoning later.
 | D9 | **`audit_log` removed** | Keep it synchronous; move it async | User decision. `LOGIN_FAILED` was a real security control and becomes a structured CloudWatch log line with a metric filter and alarm |
 | D10 | **Freeze a buyer snapshot into `QuotationVersion`** | Read the customer live at render time | Fixes a live correctness bug (F11) *and* removes `document-svc`'s synchronous dependency on `master-data` from the cached public render path. Prerequisite of the split |
 | D11 | **RS256 + JWKS** | Keep HS256 | A shared symmetric secret across five services means every service can *mint* tokens, not merely verify them |
+| D12 | **One monorepo, Gradle multi-project, path-filtered CI** | A repository per service | "Independent deploys" is a pipeline property, not a repository property — path filters give them without giving up atomic refactors. `platform` becomes `implementation(project(":platform"))` rather than a published artifact, so a change to it and all five consumers is one commit. Contract tests fail in the same CI run as the change that breaks them, rather than later via a broker. Polyrepo wins on different team cadences, mixed toolchains, or repo scale — none of which apply |
 
 ---
 
@@ -113,8 +114,29 @@ header" workaround is unnecessary.
 | **document** | `sales.pdf`, `share_link`, `render_payload`, `/public/q/*` | `document` | **Bursty, CPU-bound.** The reason a split is defensible at all |
 | **notification** | new | — (uses `sales` events) | Driven by SQS backlog |
 
-Shared `platform` code (tenancy, money, error, security, persistence) becomes a versioned internal
-library. That is a real cost of the split and is called out in Part 4.
+Shared `platform` code (tenancy, money, error, security, persistence) stays a Gradle module inside
+the monorepo (D12), consumed as `implementation(project(":platform"))` — not a published artifact.
+
+The rule that keeps it a platform rather than a junk drawer: **`platform` may contain mechanisms,
+never meanings.** Tenancy is a mechanism; a customer is a meaning. A shared `Quotation` type is how
+a split becomes a distributed monolith, where adding a field forces a five-service release. One
+ArchUnit rule — `platform` may not reference any service package — enforces it.
+
+Repository layout:
+
+```
+easy-crm/
+├── platform/              one module; ArchUnit forbids it referencing any service
+├── services/
+│   ├── identity/          + billing, subscription, webhooks
+│   ├── master-data/
+│   ├── sales/
+│   ├── document/
+│   └── notification/
+├── contracts/             event schemas + OpenAPI, versioned, additive-only
+├── infra/                 terraform
+└── docs/
+```
 
 ## 1.4 Network
 
@@ -377,6 +399,40 @@ unpublished rows in `occurred_at` order, publishing in batches, then stamping `p
 
 Crash between publish and stamp means republish — at-least-once, by design.
 
+### F16 — one relay is a decision, not an assumption
+
+ShedLock serialises the relay to a single runner. That is obviously right for the *sweeps* —
+running quotation expiry twice is wasted work — but the relay is **throughput**, and serialising
+throughput needs defending.
+
+Concurrent relays are standard, using Postgres as a work queue:
+
+```sql
+SELECT * FROM sales.outbox
+ WHERE published_at IS NULL
+ ORDER BY occurred_at
+ LIMIT 100
+ FOR UPDATE SKIP LOCKED;
+```
+
+**What stops it here is ordering.** Per-aggregate ordering comes free from one relay reading in
+`occurred_at` order. With N workers and `SKIP LOCKED`, two events for the same quotation land in
+two workers, and if the second finishes first its event is published ahead of the earlier one. SQS
+FIFO preserves the order it *receives*; it cannot repair an order the producer got wrong.
+
+The fix is to hash-partition rather than race — `hashtext(aggregate_id::text) % N = worker_index` —
+which preserves ordering and scales linearly, at the cost of a fixed N and owning the rebalancing.
+That is consumer-group partitioning, hand-written against your own database.
+
+**Trigger for doing it:** one relay publishing batches of 100 every 2 s is ~50 events/second
+against a workload producing ~0.17 — about 300× headroom. Move to `SKIP LOCKED` with hash
+partitioning when **outbox lag is sustained rather than spiky**, which is already an alarmed
+metric (§2.5).
+
+Note also that `desiredCount: 1` is **not** a substitute for the lock: a rolling deploy runs old
+and new tasks concurrently by design, so a second relay exists during every deployment whether you
+planned for one or not.
+
 **Not `LISTEN/NOTIFY`**, despite being the obvious way to avoid polling: it is session state and
 pins the RDS Proxy connection (F3). Poll, or use a direct connection.
 
@@ -436,7 +492,24 @@ Two consequences, both mandatory:
 
 Rules, all non-optional:
 
-- **ShedLock's `JdbcTemplateLockProvider`**, never an advisory lock (F2).
+- **ShedLock's `JdbcTemplateLockProvider`**, never an advisory lock (F2). ShedLock does not
+  schedule anything — `@Scheduled` still fires on every task, and ShedLock decides which one
+  executes the body, via an `INSERT … ON CONFLICT DO UPDATE … WHERE lock_until <= now()` whose
+  primary key serialises the contenders.
+- **`lockAtMostFor` is a lease, and it is per-job, not global.** It is how long the system waits
+  after a holder dies before anyone else may run. Too short and two runners overlap; too long and a
+  crash silently skips a window — there is no value safe against both, so it is set from each job's
+  cadence:
+
+  | Job | `lockAtMostFor` | Why |
+  |---|---|---|
+  | Outbox relay | **60 s** | Runs every 2 s. A 10-minute lease would stall *every event in the system* for ten minutes after one crash |
+  | Quotation expiry, token cleanup, reconciliation | 10 m | Daily; a missed window is recoverable and the next run catches up |
+  | Follow-up sweep | 5 m | Every 15 min |
+
+- **ShedLock is not a fencing token.** A process that stalls past its lease — long GC, network
+  partition — can resume and keep working while another instance holds the lock. Every job body
+  must be idempotent regardless of the lock.
 - **Every job loops tenants explicitly**: read ids from `shared.tenant` (R2), then
   `TenantContext.runAs(id, …)` with **one transaction per tenant**, so one bad tenant fails alone
   instead of rolling back the sweep.
@@ -767,8 +840,10 @@ tenants. This design needs about **40**.
 - **SNS/SQS and CloudFront are new surfaces where tenant isolation depends on configuration being
   correct rather than on the database refusing** (F4, F10). This codebase's central thesis is that
   isolation must be structural. The split adds two places where it is procedural.
-- The shared `platform` package must become a versioned library, with the release friction that
-  implies.
+- Shared `platform` code needs a boundary discipline (mechanisms, not meanings) that a single
+  codebase never required. Under D12 it does **not** need to become a published, separately
+  versioned library — that cost applies to a repository-per-service split, and is one of the
+  reasons this design does not take one.
 
 ## 4.3 What it genuinely buys
 
@@ -845,6 +920,7 @@ this AWS design.
 | F13 | `document-svc` cannot reach the `sales` data it renders. Resolved by freezing an immutable render payload into its own schema at send time, which also makes the CloudFront cache correct by construction |
 | F14 | Rolling deploys + startup Flyway + `ddl-auto: validate` crash-loop old tasks against a new schema. Migrations move to a pre-deploy task and must be expand/contract |
 | F15 | A CloudFront distribution's WAF web ACL and ACM certificate must live in `us-east-1`, not `ap-south-1` |
+| F16 | Serialising the relay is a decision, not a default. `SKIP LOCKED` scales it, but only hash partitioning preserves per-aggregate ordering. Trigger: sustained outbox lag. And `desiredCount: 1` is not a substitute for the lock — a rolling deploy always runs two |
 
 # Appendix B — To verify before implementation
 
