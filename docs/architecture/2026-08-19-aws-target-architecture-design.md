@@ -637,6 +637,11 @@ Each is independently specifiable and independently shippable. Dependencies note
 observable, properly scaled production deployment of the system that exists today, and every
 argument in Part 4 says to stop there until a trigger in §4.5 fires.
 
+Sub-projects **9–13 (billing, plans and entitlements)** continue this numbering and are specified
+in `../superpowers/specs/2026-08-19-billing-and-entitlements-design.md`. Two of them — user
+invitations and the entitlement layer — are useful product work independent of both billing and
+this AWS design.
+
 ---
 
 # Appendix A — Findings
