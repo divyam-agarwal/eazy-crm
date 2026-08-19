@@ -1031,6 +1031,10 @@ in `../superpowers/specs/2026-08-19-billing-and-entitlements-design.md`. Two of 
 invitations and the entitlement layer — are useful product work independent of both billing and
 this AWS design.
 
+The outbox itself is specified at class level in `2026-08-19-outbox-lld.md` — the shared
+`platform-outbox` module, how each service adopts it, and the full request path from HTTP call to
+consumed message.
+
 ---
 
 # Appendix A — Findings
@@ -1049,6 +1053,7 @@ this AWS design.
 | F10 | The `/api/*` CloudFront cache policy is a tenant-isolation control and must be tested as one |
 | F11 | `QuotationVersion` does not snapshot the buyer, so re-rendering a sent quotation after a customer edit produces a different document. A live bug, independent of this design |
 | F12 | The relay must read across tenants, but RLS returns zero rows to a `@Scheduled` method with no tenant context — silently. Needs a `BYPASSRLS` relay role bounded by grants to `*.outbox` |
+| F12b | `BYPASSRLS` fixes only the *database* layer. Hibernate's `@TenantId` appends its own tenant predicate from the session identifier, which the relay does not have — so a JPA read still returns zero rows. The relay's read path must use `JdbcTemplate` on a separate `relay_app` DataSource. See the outbox LLD, OF1 |
 | F13 | `document-svc` cannot reach the `sales` data it renders. Resolved by freezing an immutable render payload into its own schema at send time, which also makes the CloudFront cache correct by construction |
 | F14 | Rolling deploys + startup Flyway + `ddl-auto: validate` crash-loop old tasks against a new schema. Migrations move to a pre-deploy task and must be expand/contract |
 | F15 | A CloudFront distribution's WAF web ACL and ACM certificate must live in `us-east-1`, not `ap-south-1` |
