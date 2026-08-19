@@ -79,6 +79,24 @@ cross-region replication in this design.
                     schemas: identity · master_data · sales · document
 ```
 
+### ALB routing table (R4)
+
+| Path | Service |
+|---|---|
+| `/api/v1/auth/*`, `/api/v1/users/*`, `/api/v1/subscription`, `/api/v1/plans` | identity |
+| `/api/v1/customers/*`, `/api/v1/products/*`, `/api/v1/price-lists/*`, `/api/v1/contacts/*` | master-data |
+| `/api/v1/enquiries/*`, `/api/v1/quotations/*`, `/api/v1/orders/*` | sales |
+| `/api/v1/documents/*` | document |
+| `/public/q/*` | document |
+| `/public/webhooks/*` | identity |
+
+**This forces an API change.** Today the PDF and share endpoints are
+`GET /api/v1/quotations/{id}/pdf` and `POST /api/v1/quotations/{id}/share` — under the
+`/api/v1/quotations/*` prefix, which belongs to `sales`. Path-based routing cannot split a subtree
+from its parent, so they move to `/api/v1/documents/quotations/{id}/pdf` and `.../share`.
+
+The cost of that change is currently zero: no frontend exists to break. It will not be zero later.
+
 Because CloudFront uses **VPC origins**, the ALB is internal and has no public listener. There is
 no public entry point to the VPC at all, so the usual "lock the ALB to CloudFront with a secret
 header" workaround is unnecessary.
@@ -92,7 +110,7 @@ header" workaround is unnecessary.
 | **identity** | `iam`, `tenant` | `identity` | Flat. Login/refresh only |
 | **master-data** | `catalog`, `crm` | `master_data` | Read-heavy, low volume. Called by sales on every quotation write |
 | **sales** | `sales` (enquiry, quotation, order) | `sales` | The main write path. Diurnal |
-| **document** | `sales.pdf`, `share_link`, `/public/q/*` | `document` | **Bursty, CPU-bound.** The reason a split is defensible at all |
+| **document** | `sales.pdf`, `share_link`, `render_payload`, `/public/q/*` | `document` | **Bursty, CPU-bound.** The reason a split is defensible at all |
 | **notification** | new | — (uses `sales` events) | Driven by SQS backlog |
 
 Shared `platform` code (tenancy, money, error, security, persistence) becomes a versioned internal
@@ -123,12 +141,32 @@ One database. Four schemas. One non-owner role per service with `USAGE` on its o
 
 ```
 rds-proxy
-  ├── identity_app     → schema identity      (tenant, app_user, refresh_token)
+  ├── identity_app     → schema identity      (app_user, refresh_token, subscription, usage_counter)
   ├── master_data_app  → schema master_data   (product, customer, contact, price_list, price_list_item)
   ├── sales_app        → schema sales         (enquiry, quotation, quotation_version, quotation_item,
   │                                            sales_order, document_counter, outbox)
-  └── document_app     → schema document      (share_link)
+  ├── document_app     → schema document      (share_link, render_payload, outbox)
+  ├── relay_app        → BYPASSRLS, SELECT/UPDATE on *.outbox ONLY        (R1)
+  └── every app role   → SELECT on schema shared (tenant, plan)           (R2)
+                         INSERT/UPDATE on shared.shedlock
 ```
+
+### The `shared` schema (R2)
+
+Three tables are genuinely cross-service and cannot live inside one service's schema:
+
+| Table | Written by | Read by |
+|---|---|---|
+| `tenant` | identity | **every service** — scheduled jobs enumerate tenants to loop over |
+| `plan` | identity (seeded) | every service — entitlement limits |
+| `shedlock` | every service | every service |
+
+They live in a `shared` schema with `SELECT` granted to every service role and write access granted
+only to the owner. Without this, §2.4's "every job loops tenants explicitly" is impossible: `tenant`
+would sit in the `identity` schema, which `sales_app` cannot reach.
+
+`shared` is the *only* schema any service may read outside its own. That single exception is
+explicit, enumerable and reviewable — which is the point.
 
 Every existing isolation control survives unchanged: `TenantScopedEntity`, Hibernate `@TenantId`,
 RLS policies keyed on `NULLIF(current_setting('app.current_tenant', true), '')::uuid`, and the
@@ -310,12 +348,32 @@ CREATE TABLE sales.outbox (
 CREATE INDEX ON sales.outbox (published_at) WHERE published_at IS NULL;
 ```
 
-Tenant-scoped and RLS-covered on write, so a service cannot write another tenant's event.
+RLS applies to the **application** roles, so a service cannot write or read another tenant's event
+through normal code paths.
+
+### F12 — the relay cannot run under RLS (R1)
+
+The relay must read unpublished rows **across all tenants**. It is a `@Scheduled` method, so it has
+no tenant context, so an RLS policy returns **zero rows** — and nothing throws. This is precisely
+the silent-success failure §2.4 guards jobs against, and it would stop every event in the system
+without a single error appearing anywhere.
+
+Three ways out, and only one is sound:
+
+| Option | Verdict |
+|---|---|
+| Relay loops tenants with `runAs` | N queries every 2 seconds, scaling with tenant count, to find a handful of rows. Rejected |
+| Drop RLS on `outbox` | Removes the guarantee that a service cannot write another tenant's event. Rejected |
+| **A dedicated `relay_app` role with `BYPASSRLS`, granted `SELECT`/`UPDATE` on `*.outbox` only** | **Chosen.** `BYPASSRLS` is a role-wide attribute, so it is bounded by *grants* instead: the role can reach nothing but outbox tables |
+
+The relay runs as `relay_app` on its own Proxy-registered secret. The application roles keep RLS on
+`outbox`, so the isolation guarantee holds everywhere except the one component that provably needs
+to cross tenants.
 
 ### The relay
 
-A `@Scheduled` poller under ShedLock, every 2 seconds, selecting unpublished rows in
-`occurred_at` order and publishing in batches, then stamping `published_at`.
+A `@Scheduled` poller under ShedLock, every 2 seconds, running as `relay_app` and selecting
+unpublished rows in `occurred_at` order, publishing in batches, then stamping `published_at`.
 
 Crash between publish and stamp means republish — at-least-once, by design.
 
@@ -379,7 +437,7 @@ Two consequences, both mandatory:
 Rules, all non-optional:
 
 - **ShedLock's `JdbcTemplateLockProvider`**, never an advisory lock (F2).
-- **Every job loops tenants explicitly**: read ids from the global `tenant` table, then
+- **Every job loops tenants explicitly**: read ids from `shared.tenant` (R2), then
   `TenantContext.runAs(id, …)` with **one transaction per tenant**, so one bad tenant fails alone
   instead of rolling back the sweep.
 - A `@Scheduled` method carries no JWT. Without `runAs`, RLS returns zero rows and **the job
@@ -496,6 +554,129 @@ Related: caching `/public/q/*` is in direct tension with revoking a share link. 
 outlives revocation until TTL expiry. Resolution is a bounded TTL (~5 minutes) plus an explicit
 invalidation on revoke.
 
+### F13 — `document-svc` cannot reach the data it renders (R3)
+
+Rendering a quotation needs `quotation`, `quotation_version` and `quotation_item`. Those live in
+the `sales` schema, which `document_app` has no privileges on. As first written, the service could
+not read its own inputs.
+
+The wrong fixes are obvious and both bad: grant `document_app` read access into `sales` (which
+destroys the schema-ownership boundary that makes D2 work), or have `document-svc` call `sales-svc`
+synchronously on every render (which puts a cross-service hop on the most exposed, most
+latency-sensitive route in the product).
+
+**The fix: freeze the render payload at send time.** When `sales-svc` freezes a version, its
+`QuotationSent` event carries the complete rendering input — line items, totals, tax split, seller
+letterhead and the buyer snapshot from D10. `document-svc` persists that as an immutable
+`document.render_payload` row keyed by `quotation_version_id`.
+
+The public render then reads **nothing but its own schema**. No cross-service call, no cross-schema
+grant, and the payload is immutable by construction — which is what makes the CloudFront cache
+correct rather than merely convenient.
+
+Scope note: `document-svc` renders **frozen versions only**. Draft preview, which has no frozen
+payload, stays out of scope — as it effectively already is, since the current endpoint defaults to
+the latest `SENT` version.
+
+## 2.8 Deployment, migrations and recovery
+
+### F14 — rolling deploys, Flyway and `ddl-auto: validate` are mutually hostile (R5)
+
+Flyway runs at application startup today. Deployed to ECS that breaks in two ways:
+
+1. **N tasks start at once** and race for the Flyway lock. Flyway serialises them, but every
+   loser waits on a lock during startup, inflating deploy time and health-check windows.
+2. **A rolling deploy runs old and new code against the same schema simultaneously.** With
+   `spring.jpa.hibernate.ddl-auto: validate` — which this codebase relies on — an old task meeting a
+   new schema fails validation and **crash-loops**, and ECS interprets that as a failed deployment
+   of the *new* version.
+
+Two rules follow, and neither is optional:
+
+- **Migrations run as a one-off ECS task before the service deploy**, never at application startup.
+  Flyway is disabled in the service image.
+- **Migrations are expand/contract.** A release may only add. Anything destructive — dropping a
+  column, tightening a constraint, renaming — ships one release *after* the code that stopped using
+  it. This is what makes a rolling deploy survivable, and it is a discipline, not a mechanism, so it
+  belongs in the review checklist.
+
+### Deployment pipeline (R10)
+
+```
+GitHub Actions
+  ├── build + unit/integration tests (Testcontainers)
+  ├── contract tests (consumer-driven, gate the merge)
+  ├── build image → ECR (immutable tag = git sha, scan on push)
+  ├── run migration task (one-off, per service, before deploy)
+  └── ECS rolling deploy
+        deployment circuit breaker ON, rollback on failure
+        minimumHealthyPercent 100, maximumPercent 200
+```
+
+The deployment circuit breaker is what makes a bad deploy self-reverting rather than an incident.
+
+### Graceful shutdown (R6)
+
+Without this, every deploy and every scale-in drops in-flight requests — including PDF renders that
+have already burned their CPU.
+
+| Setting | Value | Why |
+|---|---|---|
+| ALB deregistration delay | 30 s | Stop new traffic before the task dies |
+| `server.shutdown` | `graceful` | Finish in-flight requests |
+| `spring.lifecycle.timeout-per-shutdown-phase` | 25 s | Under the ECS stop timeout |
+| ECS `stopTimeout` | 45 s | SIGTERM → grace → SIGKILL |
+| Readiness vs liveness | separate actuator groups | Readiness fails first so the ALB drains before the container is killed |
+
+### Timeout ordering (R9)
+
+Each layer must time out **after** the layer inside it, so the innermost failure is the one
+reported and the error is attributable:
+
+```
+task request timeout   20 s
+ALB idle timeout       25 s
+CloudFront origin      30 s   (default; raising it needs a quota increase)
+client                 60 s
+```
+
+A PDF render must therefore complete inside 20 s. Anything that cannot — bulk import, for
+instance — must be asynchronous by construction, not merely slow.
+
+### Backup and recovery (R7)
+
+| | |
+|---|---|
+| Automated backups | 30-day retention, PITR enabled |
+| RPO | 5 minutes (PITR granularity) |
+| RTO | 1 hour (restore + task rollout) |
+| Restore test | **Monthly, into a scratch VPC.** An untested backup is a hypothesis |
+| Deletion protection | On, for RDS and the S3 log bucket |
+| Cross-region snapshot copy | Deliberately not enabled — single-region by D-region choice; revisit if RTO tightens |
+
+Note that the DLQs and the outbox are also state: a redrive after a restore can replay events the
+restored database has already applied. Consumer idempotency (`processed_event`) is what makes that
+survivable, which is a second reason it is not optional.
+
+### Environments (R10)
+
+| Env | Shape | Cost |
+|---|---|---|
+| dev | Single-AZ RDS, 1 task per service, no WAF | ~$120/mo |
+| staging | Production-shaped, scaled to 1 task per service | ~$250/mo |
+| prod | As Part 1 | $580–820/mo |
+
+**Part 4.1's figure is production only.** Three environments is roughly $950–1,190/month, and any
+honest comparison against the monolith has to use the same multiplier on both sides.
+
+### F15 — CloudFront's dependencies live in `us-east-1` (R8)
+
+The WAF web ACL for a CloudFront distribution must be created with **`CLOUDFRONT` scope in
+`us-east-1`**, and the ACM certificate for the distribution must also be issued in `us-east-1` —
+even though every other resource in this design is in `ap-south-1`. Terraform needs a second
+aliased provider for that. It fails at apply time rather than silently, but it reliably surprises
+people once.
+
 ---
 
 # Part 3 — Data flows
@@ -524,14 +705,15 @@ invalidation on revoke.
 4. `share_link` (global, RLS-exempt) resolves the token to `(tenant_id, quotation_version_id)`.
 5. `TenantContext.runAs(tenantId, …)` installs the tenant **before** the rendering transaction
    opens. `open-in-view: false` is what makes this correct (challenge #29).
-6. The frozen version is rendered — including the **buyer snapshot** (D10), so no call to
-   `master-data` is made and the document is identical to the one that was sent.
+6. The frozen `document.render_payload` is rendered (F13) — it already contains the line items,
+   totals, tax split, letterhead and the **buyer snapshot** (D10). No call to `master-data`, no call
+   to `sales`, no cross-schema read. The document is byte-identical to the one that was sent.
 7. WAF's rate-based rule caps abuse of the route.
 
 ## 3.3 Quotation auto-expiry
 
 1. `@Scheduled` fires in `sales-svc`; ShedLock's table row admits exactly one task.
-2. Tenant ids read from the global `tenant` table.
+2. Tenant ids read from `shared.tenant` — the one schema every service may read (R2).
 3. Per tenant: `runAs` → one transaction → `SENT` versions past `valid_until` flipped to `EXPIRED`
    → an `QuotationExpired` outbox row per affected quotation.
 4. `rows_affected` and a heartbeat are emitted per run.
@@ -631,7 +813,7 @@ Each is independently specifiable and independently shippable. Dependencies note
 | 5 | **Scheduled jobs** — ShedLock, the seven jobs, per-tenant loops, heartbeats | — for the sweeps; **6** for the jobs that emit events | The sweeps themselves are app-only; auto-expiry cannot publish `QuotationExpired` until the outbox exists |
 | 6 | **Outbox + relay + SNS/SQS + first consumer** | 2 | Notification is the first real consumer |
 | 7 | **Security hardening** — RS256/JWKS, IAM auth to Proxy, WAF rate rules, cache-policy tests | 2 | |
-| 8 | **Service extraction** — `document` first, then `notification`, `master-data`, `identity` | 2, 3, 6 | Needs the contract-test harness before the first extraction, not after |
+| 8 | **Service extraction** — `document` first, then `notification`, `master-data`, `identity` | 2, 3, 6 | Needs the contract-test harness before the first extraction, not after. `document` extraction includes the render-payload freeze (F13) and the `/api/v1/documents/*` route move (R4) |
 
 **Recommended order:** 1 → 2 → 3 → 4, then reassess. Sub-projects 1–4 deliver a properly
 observable, properly scaled production deployment of the system that exists today, and every
@@ -659,6 +841,10 @@ this AWS design.
 | F9 | The autoscaler's real ceiling is `max_tasks × pool ≤ proxy connection budget`. Without it, autoscaling relocates the outage to Postgres |
 | F10 | The `/api/*` CloudFront cache policy is a tenant-isolation control and must be tested as one |
 | F11 | `QuotationVersion` does not snapshot the buyer, so re-rendering a sent quotation after a customer edit produces a different document. A live bug, independent of this design |
+| F12 | The relay must read across tenants, but RLS returns zero rows to a `@Scheduled` method with no tenant context — silently. Needs a `BYPASSRLS` relay role bounded by grants to `*.outbox` |
+| F13 | `document-svc` cannot reach the `sales` data it renders. Resolved by freezing an immutable render payload into its own schema at send time, which also makes the CloudFront cache correct by construction |
+| F14 | Rolling deploys + startup Flyway + `ddl-auto: validate` crash-loop old tasks against a new schema. Migrations move to a pre-deploy task and must be expand/contract |
+| F15 | A CloudFront distribution's WAF web ACL and ACM certificate must live in `us-east-1`, not `ap-south-1` |
 
 # Appendix B — To verify before implementation
 
