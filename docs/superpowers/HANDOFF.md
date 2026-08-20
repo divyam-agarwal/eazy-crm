@@ -1,21 +1,30 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-07-29 (quotation PDF/share slice merged to `main` as `8b6644b`).
+**Last updated:** 2026-08-20 (no code change since `8b6644b`; a **design-only** AWS re-platform
+thread landed 9 docs commits — see §0 and §2 item 25. Earlier whole-system architecture docs under
+`docs/architecture/` remain **untracked, see §3**).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-**Nothing is in flight.** `main` is clean, all work is merged, and the next session begins by
-choosing what to build — there is no half-finished task to rescue.
+**Nothing is in flight.** All code work is merged and the next session begins by choosing what to
+build — there is no half-finished task to rescue. The only uncommitted thing is an untracked
+`docs/architecture/` (docs only, no code — see §3 for what to do with it).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
    then `cd backend && ./gradlew clean test`. Expect **231 tests, 0 failures**. If that number
    differs, stop and reconcile before writing code — everything below assumes it.
-2. **Read §1** (what this product is) and **§7** (non-negotiable working agreements).
-3. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
-4. Then run the standard workflow on a feature branch off `main`:
+2. **Read §1** (what this product is) and **§7** (non-negotiable working agreements). For a
+   whole-system orientation in one sitting — every module, endpoint, state machine and data flow
+   that exists today — read `docs/architecture/2026-07-29-current-architecture.md` instead of
+   reconstructing it from §3 and the per-slice specs.
+3. **If you are here about the AWS re-platform, microservices, billing or the outbox**, read
+   `../architecture/2026-08-20-aws-redesign-handoff.md` instead of §8 — that thread has its own
+   decisions, findings and sub-project ordering, and it is design-only (no code was written).
+4. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
+5. Then run the standard workflow on a feature branch off `main`:
    **brainstorming → (design spec →) writing-plans → subagent-driven-development →
    finishing-a-development-branch.**
 
@@ -65,10 +74,40 @@ All under `docs/superpowers/`:
     the render endpoint, the `share_link` table, the share endpoint, the public endpoint, the
     list-filter fix, this docs wrap-up). Executed in full, every task reviewed clean.
 
+**Not under `docs/superpowers/`** — whole-system architecture, added 2026-07-29 (no code change):
+
+23. **`../architecture/2026-07-29-current-architecture.md`** — HLD, LLD and data flow for **what
+    exists on `main` today**, derived by reading the source at `908d9e6`, not the specs. Module map,
+    the four isolation layers, full ER diagram, the complete REST surface, the error contract, all
+    three state machines, the GST and numbering algorithms, and six end-to-end data flows. Its
+    Part 4 is an explicit inventory of **what is deliberately absent** — read that before planning
+    anything, so you don't assume a feature exists.
+24. **`../architecture/2026-07-29-target-architecture.md`** — the same three views for the system
+    **once every feature on record is built** (P0–P5, import, frontend, and the §8 backlog). Ends
+    in a sized gap ledger, today → target. Everything in it is a target; nothing in it is built
+    unless it also appears in doc 23.
+25. **`../architecture/2026-08-20-aws-redesign-handoff.md`** — handoff for the **AWS re-platform
+    design thread** (2026-08-19/20, docs only, no code). Points to four new docs: the five-service
+    ECS target architecture, the billing/entitlements spec, the outbox LLD with its test plan and
+    bug catalogue, and outbox interview Q&A. **Read it before proposing anything about AWS,
+    microservices, messaging or billing** — those decisions are already made and reasoned, and it
+    lists what remains unverified. It also records three findings about the code *as it stands*,
+    including a live bug: `QuotationVersion` does not snapshot the buyer, so re-rendering a `SENT`
+    quotation after a customer edit produces a different document.
+
 ## 3. Current state
 
-- **Branch:** `main`, working tree clean (quotation PDF/share merged as `8b6644b`; feature branch
+- **Branch:** `main`. **No code has changed since `8b6644b`** (quotation PDF/share; feature branch
   and its worktree deleted). All 10 tasks were reviewed clean, as was the whole-branch review.
+- **Design-only work since then:** 9 commits (`15e9818`…`5d6bfd7`) adding the AWS re-platform
+  design set. **Zero code, zero migrations, zero test impact — the 231-test baseline is untouched.**
+  See §2 item 25.
+- **One untracked directory: `docs/architecture/`** (the two docs at §2 items 23–24). Docs only, no
+  code, no migrations, no test impact — the 231-test baseline is untouched. They were written in a
+  documentation-only session and **left uncommitted deliberately**, for the user to review first.
+  If they're wanted, commit them on `main` (docs-only, no branch needed); if not, delete the
+  directory and strike items 23–24 and the §0 step-2 pointer. Either way, do it before starting a
+  slice, so the tree is clean when you branch.
 - **Merged & done on `main`:** the design docs (including the order-lifecycle slice's
   `specs/2026-07-28-order-lifecycle-design.md` `8a6c9dd` and `plans/2026-07-28-order-lifecycle.md`
   `8c0703f`, both committed directly) + **P0 tenant-isolation foundation** + **P0-auth core** +
