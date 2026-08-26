@@ -5,6 +5,12 @@
 baseline is exactly where it was at `908d9e6`.
 **Start a new chat with:** "Read `docs/architecture/2026-08-20-aws-redesign-handoff.md`."
 
+> **Continued by** [`2026-08-26-platform-modules-handoff.md`](2026-08-26-platform-modules-handoff.md)
+> — the platform-module and service-split thread. It adds detail below these decisions and
+> revises three of them (P4 supersession, `platform-web`'s scope, and R9's timeout ladder).
+> **It also carries three hard blockers on sub-projects listed in §5 below** — S1 blocks
+> sub-project 2, S2 blocks 8, S5 blocks 6. Read it before picking one up from here.
+
 ---
 
 ## 1. What this session produced

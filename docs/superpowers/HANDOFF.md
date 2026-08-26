@@ -1,7 +1,8 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-20 (no code change since `8b6644b`; a **design-only** AWS re-platform
-thread landed 9 docs commits — see §0 and §2 item 25. Earlier whole-system architecture docs under
+**Last updated:** 2026-08-26 (no code change since `8b6644b`. Two **design-only** threads have now
+landed under `docs/architecture/`: the AWS re-platform, then the platform-module/service-split
+thread that continues it — see §0 item 3. Earlier whole-system architecture docs under
 `docs/architecture/` remain **untracked, see §3**).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
@@ -20,9 +21,13 @@ build — there is no half-finished task to rescue. The only uncommitted thing i
    whole-system orientation in one sitting — every module, endpoint, state machine and data flow
    that exists today — read `docs/architecture/2026-07-29-current-architecture.md` instead of
    reconstructing it from §3 and the per-slice specs.
-3. **If you are here about the AWS re-platform, microservices, billing or the outbox**, read
-   `../architecture/2026-08-20-aws-redesign-handoff.md` instead of §8 — that thread has its own
-   decisions, findings and sub-project ordering, and it is design-only (no code was written).
+3. **If you are here about the AWS re-platform, microservices, the platform modules, billing,
+   the outbox or identity**, read `../architecture/2026-08-26-platform-modules-handoff.md`
+   instead of §8 — it is the most recent thread and points back at
+   `../architecture/2026-08-20-aws-redesign-handoff.md`, which it continues. Both are design-only
+   (no code was written in either), and both carry their own decisions, findings and sub-project
+   ordering. **Three hard blockers and two live bugs are listed in that handoff's §5** — read it
+   before starting any AWS sub-project.
 4. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
 5. Then run the standard workflow on a feature branch off `main`:
    **brainstorming → (design spec →) writing-plans → subagent-driven-development →
