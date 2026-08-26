@@ -135,6 +135,44 @@ Three properties worth stating because a reader will assume otherwise:
 - **`toPlainString()` is the point.** `toString()` would emit scientific notation for large or
   small scales, and `"1.25E+3"` is not a number any Indian accountant or Tally import will accept.
 
+### Rejected alternatives
+
+Recorded so this is not re-litigated. All three were evaluated against the code, not in the
+abstract.
+
+**`jackson-datatype-javax-money` (JSR-354).** Available and current — Zalando's module was archived
+in November 2025 and consolidated into FasterXML as `tools.jackson.datatype:jackson-datatype-javax-money`,
+which supports Jackson 3. Compatibility is not the objection; scope is.
+
+`QuotationItem` carries nine `BigDecimal` fields. Six are money (`rate`, `taxableValue`, `cgst`,
+`sgst`, `igst`, `lineTotal`) and **three are not**: `qty` `NUMERIC(18,3)`, `discountPct`
+`NUMERIC(18,4)` and `gstRate` `NUMERIC(18,4)` — the last being the single most frequent
+`BigDecimal` in the codebase. A quantity of `2.5` KG has exactly the IEEE-754 problem money has, so
+adopting `MonetaryAmount` would **not** let us delete this serialiser. We would run both mechanisms.
+
+Three further costs, none of which the benefit covers for a single-currency product:
+
+- Every money field becomes `{"amount":"12.50","currency":"INR"}` — six repetitions of `INR` per
+  line item, carrying no information. Amount serialises as a JSON *number* unless
+  `withQuotedDecimalNumbers()` is configured, which is where we already are.
+- Persistence needs a currency column on every money table, or an `AttributeConverter` that
+  discards the currency — using the type for nothing. Twenty-five migrations currently use plain
+  `NUMERIC`.
+- JavaMoney brings `MonetaryRounding`, a second rounding authority that must be configured to agree
+  with `GstCalculator`'s per-line `HALF_UP` and independently-rounded CGST/SGST, or the two disagree
+  silently. The correctness criterion here is "round exactly the way Tally does"; a rounding
+  framework is risk added, not removed.
+
+**Per-field `@JsonFormat(shape = Shape.STRING)` or `ToStringSerializer`.** Zero custom code, which is
+the right default. Rejected because it is procedural: someone must remember the annotation on every
+new money field, and the failure is silent — the field ships as a JSON number and nothing complains.
+A global serialiser is structural, which is the same argument this codebase makes for tenant
+scoping. Twenty-eight lines is a fair price for "nobody has to remember."
+
+**`SerializationFeature.WRITE_BIGDECIMAL_AS_PLAIN`.** Looks like the fix; is not. It controls
+notation, not type — the value stays a JSON number and JavaScript still parses it as a double.
+Worth naming because it is the first thing a reviewer will suggest.
+
 ## 2.3 The two wires — `EventJson`
 
 **This is the module's one real design decision.**
