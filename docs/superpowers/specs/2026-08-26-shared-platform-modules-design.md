@@ -127,19 +127,28 @@ to 409 — the latter needs its own handler because
 
 ## 2.3 `platform-security`
 
-**Does.** Verifies a token. Hashes a password. Nothing else.
+**Does.** ~~Verifies a token. Hashes a password. Nothing else.~~ **REVISED** → Verifies a token, and
+owns the default-deny filter chain. Nothing else.
 
-**Contents.** `TokenVerifier`, `VerifiedClaims`, `JwtProperties`, `SecurityConfig`,
-`PasswordConfig`.
+**Contents.** ~~`TokenVerifier`, `VerifiedClaims`, `JwtProperties`, `SecurityConfig`,
+`PasswordConfig`.~~ **REVISED** → `TokenVerifier`, `VerifiedClaims`, `SigningKeyResolver`,
+`InvalidTokenException`, `KeyUnavailableException`, `JwtProperties`, `SecurityConfig`,
+`HttpSecurityContribution`. `PasswordConfig` leaves — see PF12.
 
 **Used as.** `TokenVerifier.verify(token) → VerifiedClaims`. `SecurityConfig` auto-configures the
-filter chain behind `@ConditionalOnClass(Servlet.class)`.
+filter chain behind `@ConditionalOnClass(Servlet.class)`; other modules and services reach that
+chain only through `HttpSecurityContribution`, which is applied *before* the chain is sealed
+default-deny (PF11).
 
 **Depends on.** Nothing — **and this is a constraint, not an observation.** `VerifiedClaims` is a
 plain record. `platform-security` must never name a `platform-tenancy` type, or the graph cycles.
-See PF1.
+See PF1. It does not take `platform-primitives` either, which is why it declares its own two
+exception types rather than reusing `UnauthorizedException` (LLD #3, SF3).
 
-**Does not contain.** Token *minting*. `JwtService.mint` moves to `identity-svc` (P6).
+**Does not contain.** Token *minting* — `JwtService.mint` moves to `identity-svc` (P6). Nor password
+hashing — `PasswordConfig` follows it, by P5's rule (PF12). Nor any authorization vocabulary: `role`
+is an opaque `String`, because `Role` lives in `identity-svc` and because the application has exactly
+one authorization check in it today (LLD #3, SD1/SF1).
 
 ## 2.4 `platform-tenancy`
 
@@ -174,7 +183,15 @@ TenantContext.runAs(principal, () -> …);          // anywhere a tenant is alre
 loopRunner.forEachTenant(tenantId -> …);          // one transaction per tenant, per §2.4 of the parent
 ```
 
-**Depends on.** `platform-security`, for token verification only.
+**Depends on.** `platform-security`, for token verification only — and it reaches the filter chain by
+publishing an `HttpSecurityContribution`, never by `SecurityConfig` naming the filter (PF11).
+
+**Constrained by LLD #3.** Two rules land on this module before its own LLD is written: the JWT
+filter must catch `InvalidTokenException` only and let `KeyUnavailableException` propagate to a 503
+(a bare `catch (RuntimeException)`, which is what the code does today, turns a JWKS outage into a
+fleet-wide 401 storm — SR4/SB1); and `TenantPrincipal` should distinguish *provenance* from *role*
+rather than overloading one `String`, since `"SYSTEM"` and `"PUBLIC"` currently share that field with
+real roles (SF2).
 
 **Test support.** A `java-test-fixtures` source set ships `TenantContextTestSupport` in the same
 package, so tests can bind a context without the seal being widened for production code (P9).
@@ -355,7 +372,7 @@ Dependency order, leaves first, so each LLD may assume its dependencies are alre
 |---|---|---|---|
 | 1 | `platform-primitives` | **written** — [`../../architecture/2026-08-26-platform-primitives-lld.md`](../../architecture/2026-08-26-platform-primitives-lld.md) | Settled: an auto-configured `JacksonModule` bean for the HTTP wire, plus a separately-built `EventJson` mapper for the event wire, with an ArchUnit rule forbidding mapper construction anywhere else |
 | 2 | `platform-web` | **written** — [`../../architecture/2026-08-26-platform-web-lld.md`](../../architecture/2026-08-26-platform-web-lld.md) | Settled: the module widens to cover outbound HTTP mechanism (translator, header propagation, timeout budget); typed clients stay in the calling service. PF5's 503 mapping was the easy half — see PF9 |
-| 3 | `platform-security` | new | The `VerifiedClaims` shape, and where the RS256/JWKS seam sits so sub-project 7 is a swap rather than a rewrite. **Added requirement:** the issuer is a configuration input, not a constant — see [`../../architecture/2026-08-26-identity-provider-evaluation.md`](../../architecture/2026-08-26-identity-provider-evaluation.md) I4/I5, which decided against adopting a third-party IdP now but made keeping that reversible an obligation on this module |
+| 3 | `platform-security` | **written** — [`../../architecture/2026-08-26-platform-security-lld.md`](../../architecture/2026-08-26-platform-security-lld.md) | Settled: `VerifiedClaims.role` is an opaque `String` (the app has no RBAC to serve — SF1); the RS256 seam is *two* seams, key resolution and claim set, and the claim set is closed now by minting `iss`/`aud`/`kid` under HS256 from day one, so sub-project 7 swaps one bean. Also revised §2.3 twice — see PF11 and PF12 |
 | 4 | `platform-tenancy` | new — **the large one** | The sealed API, all six adapters, the `@ConditionalOnClass` guards, `TenantPrincipal` gaining entitlements, and the test-fixtures migration |
 | 5 | `platform-outbox` | **revise** (504 lines exist) | Three revisions: declare the `platform-primitives` dependency; align with the sealed API; align `IdempotentConsumer` with adapter #5 rather than duplicating it |
 | 6 | `platform-entitlement` | defer to sub-project 10 | Specify only the annotation and the ArchUnit rule now |
@@ -376,6 +393,9 @@ Dependency order, leaves first, so each LLD may assume its dependencies are alre
 | **PF10** | The timeout ladder (parent R9) stops at the task boundary — `client 60s > CloudFront 30s > ALB 25s > task 20s`. It says nothing about the hop *inside* the task, so an internal call inheriting the same 20s leaves the caller no budget and both time out at the same instant, attributable to neither | LLD #2 extends the ladder inward (3s internal call inside a 20s task budget). Fold into the parent doc's R9 when accepted; the 3s is invented and must be measured — WF1 |
 | **PF8** | `platform/error` is two things in one package: five exception types with zero imports, and one servlet-coupled handler. P4 as written made `platform-money` depend on `platform-web`, which would have dragged the `@RestControllerAdvice` and the servlet stack into `notification-svc` — contradicting this document's own per-service matrix. Found on the first read of the source while writing LLD #1 | Types sink to `platform-primitives`; handler stays in `platform-web`. P4 revised, graph and matrix corrected. Rule R2 in the LLD fails the build if it recurs |
 | **PF7** | Five of six entry points fail silently. The design leans entirely on P1 to close them, and P1 has no test that proves an adapter was used rather than bypassed | Each adapter emits a bound-context metric; alarm on absence, per §2.4 of the parent doc |
+| **PF11** | **PF1's cycle arrives through the back door.** Everyone watches `VerifiedClaims`, but `SecurityConfig` — which §2.3 puts in `platform-security` — takes `JwtAuthenticationFilter` as a constructor parameter today, and P7 moves that filter to `platform-tenancy`. Separately, the current chain is a single hard-coded route list whose rows belong to **three different services** after the split, so a service that adds a public route has nowhere to declare it — S1's bug one layer down. Found on the first read of the source while writing LLD #3 | One seam closes both: `HttpSecurityContribution`, applied before the chain is sealed `.anyRequest().denyAll()`. `platform-tenancy` contributes its filter, so the arrow still points tenancy → security; each service declares its public routes beside the controller that serves them; and a service **cannot** open a route past the seal or forget the seal, because it never writes it. LLD #3 §2.6 |
+| **PF12** | **`PasswordConfig` fails D12's own second test.** It has exactly one consumer — `AuthService` — which is precisely the rule P5 applied to `PdfEngine` and `IndianFormats`: *a mechanism used by exactly one service is not a platform mechanism*. §2.3 listed it as platform contents anyway | `PasswordConfig` follows `JwtService.mint` into `identity-svc`, putting bcrypt strength, signing key and credential flow under one task role. Recorded honestly: the jar-weight half of P5's argument does **not** apply here (`spring-security-crypto` is small and already present), so this rests on meaning alone and is the call most likely to be overridden on review — LLD #3, SD5/SF7. Nothing else depends on it |
+| **PF13** | **`easycrm.jwt.secret` has a committed dev default and no validation** — the same shape as `public-base-url` (backlog 21), with a worse consequence: a deployment that forgets `JWT_SECRET` boots happily and signs every token in the fleet with a secret that is in the repository. Nothing fails and nothing logs. Separately, the app has **no test that an expired token is rejected**, and `JwtAuthenticationFilter` has no test at all | LLD #3's SR3 — fail startup outside `dev` on a known-default or under-length secret — and **land it with backlog 21**, since doing one alone makes the other look deliberate. Test gaps closed by LLD #3 §5.2 |
 
 ---
 
