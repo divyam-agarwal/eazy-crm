@@ -106,10 +106,14 @@ dependency is how that stops being possible to forget.
 
 ## 2.2 `platform-web`
 
-**Does.** One error envelope, one page shape, and the 404-not-403 rule.
+**Does.** This service's HTTP surface in both directions: one error envelope, one page shape,
+the 404-not-403 rule, and the mechanism for calling another service safely.
 
-**Contents.** `ApiExceptionHandler`, `PageResponse`. The exception *types* live in
+**Contents.** Inbound: `ApiExceptionHandler`, `PageResponse`. Outbound: `InternalClients`,
+`DownstreamErrorTranslator`, `ContextPropagatingInterceptor`. The exception *types* live in
 `platform-primitives` — mapping them to status codes is an HTTP concern; being one is not.
+The *typed* clients (`MasterDataClient` and friends) live in the calling service, because a
+customer is a meaning. See [`../../architecture/2026-08-26-platform-web-lld.md`](../../architecture/2026-08-26-platform-web-lld.md).
 
 **Used as.** The `@RestControllerAdvice` auto-registers; services throw the typed exceptions.
 
@@ -350,7 +354,7 @@ Dependency order, leaves first, so each LLD may assume its dependencies are alre
 | # | Module | Status | What its LLD must settle |
 |---|---|---|---|
 | 1 | `platform-primitives` | **written** — [`../../architecture/2026-08-26-platform-primitives-lld.md`](../../architecture/2026-08-26-platform-primitives-lld.md) | Settled: an auto-configured `JacksonModule` bean for the HTTP wire, plus a separately-built `EventJson` mapper for the event wire, with an ArchUnit rule forbidding mapper construction anywhere else |
-| 2 | `platform-web` | new | Whether the 503 mapping for an unavailable downstream lives here or in each service (PF5) |
+| 2 | `platform-web` | **written** — [`../../architecture/2026-08-26-platform-web-lld.md`](../../architecture/2026-08-26-platform-web-lld.md) | Settled: the module widens to cover outbound HTTP mechanism (translator, header propagation, timeout budget); typed clients stay in the calling service. PF5's 503 mapping was the easy half — see PF9 |
 | 3 | `platform-security` | new | The `VerifiedClaims` shape, and where the RS256/JWKS seam sits so sub-project 7 is a swap rather than a rewrite |
 | 4 | `platform-tenancy` | new — **the large one** | The sealed API, all six adapters, the `@ConditionalOnClass` guards, `TenantPrincipal` gaining entitlements, and the test-fixtures migration |
 | 5 | `platform-outbox` | **revise** (504 lines exist) | Three revisions: declare the `platform-primitives` dependency; align with the sealed API; align `IdempotentConsumer` with adapter #5 rather than duplicating it |
@@ -368,6 +372,8 @@ Dependency order, leaves first, so each LLD may assume its dependencies are alre
 | **PF4** | 122 test call sites across 54 files call `set`/`clear` directly | P9 — `java-test-fixtures` |
 | **PF5** | The split introduces an error case that does not exist today: an unavailable downstream must be 503 and must not be swallowed into 404, or `master-data` being down produces a quotation with the wrong tax split | LLD #2 decides where the mapping lives |
 | **PF6** | P5's rule — a mechanism used by one service is not a platform mechanism — has **no automated enforcement**. The D12 ArchUnit rule passes happily for `PdfEngine` | Accepted. It is a review rule. An ArchUnit rule counting consumers would need the full service graph at test time |
+| **PF9** | **No module owned outbound cross-service HTTP**, and there is no HTTP client anywhere in the codebase today — no `RestTemplate`, `WebClient`, `RestClient` or Feign. The plan nevertheless depends on `sales` calling `master-data` on every quotation write. PF5 asked where a 503 mapping lives; the prior question is who distinguishes "downstream said 404" from "downstream is unreachable", since only the caller can, and getting it wrong means master-data being down reads as "customer not found" and produces a quotation with the wrong tax split | `platform-web` widens to own the mechanism; typed clients stay in the calling service. Rule W1 makes a hand-rolled client fail the build |
+| **PF10** | The timeout ladder (parent R9) stops at the task boundary — `client 60s > CloudFront 30s > ALB 25s > task 20s`. It says nothing about the hop *inside* the task, so an internal call inheriting the same 20s leaves the caller no budget and both time out at the same instant, attributable to neither | LLD #2 extends the ladder inward (3s internal call inside a 20s task budget). Fold into the parent doc's R9 when accepted; the 3s is invented and must be measured — WF1 |
 | **PF8** | `platform/error` is two things in one package: five exception types with zero imports, and one servlet-coupled handler. P4 as written made `platform-money` depend on `platform-web`, which would have dragged the `@RestControllerAdvice` and the servlet stack into `notification-svc` — contradicting this document's own per-service matrix. Found on the first read of the source while writing LLD #1 | Types sink to `platform-primitives`; handler stays in `platform-web`. P4 revised, graph and matrix corrected. Rule R2 in the LLD fails the build if it recurs |
 | **PF7** | Five of six entry points fail silently. The design leans entirely on P1 to close them, and P1 has no test that proves an adapter was used rather than bypassed | Each adapter emits a bound-context metric; alarm on absence, per §2.4 of the parent doc |
 
