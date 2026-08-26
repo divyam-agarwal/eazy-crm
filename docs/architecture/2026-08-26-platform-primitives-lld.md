@@ -102,8 +102,10 @@ number with no error anywhere. See MB1 and the test in 5.2 that exists to catch 
 
 ## 2.1 The error vocabulary
 
-Five unchecked exceptions, moved verbatim. `ValidationException` carries a `Map<String, Object>` of
-field errors; the rest carry a message.
+Five unchecked exceptions, moved verbatim. `ValidationException` carries a `Map<String, String>` of
+field errors — `ApiExceptionHandler` widens it to `Map<String, Object>` when building the response
+envelope, which is a rendering concern and stays on that side of the boundary. The rest carry a
+message.
 
 They ship here rather than with the handler because **an exception type is a statement about the
 domain, and mapping it to a status code is a statement about HTTP.** The first is meaningful to an
