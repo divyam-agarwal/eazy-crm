@@ -118,6 +118,12 @@ optimistic-lock violations.
 
 Unchanged. Serialises every `BigDecimal` as a JSON string in plain notation.
 
+**It is a numeric-precision serialiser, not a money serialiser**, and the distinction decides every
+alternative below. `QuotationItem` carries nine `BigDecimal` fields: six are money, and three are
+not — `qty` `NUMERIC(18,3)`, `gstRate` `NUMERIC(18,4)`, `discountPct` `NUMERIC(18,4)`. All nine are
+covered today, because the module keys off the Java type rather than the field's meaning. A quantity
+of `2.5` KG and a rate of `18.0000`% have exactly the IEEE-754 problem money has.
+
 ```java
 gen.writeString(value.toPlainString());
 ```
@@ -168,6 +174,30 @@ the right default. Rejected because it is procedural: someone must remember the 
 new money field, and the failure is silent — the field ships as a JSON number and nothing complains.
 A global serialiser is structural, which is the same argument this codebase makes for tenant
 scoping. Twenty-eight lines is a fair price for "nobody has to remember."
+
+**A datatype module for the non-money fields.** Searched; there is nothing to adopt.
+`jackson-datatypes-misc` contains exactly six modules — `javax-money`, `moneta`, `joda-money`,
+`jsr353`, `jakarta-jsonp`, `json-org` — three money, three JSON-P interop, none for quantities or
+percentages. JSR-385 (units of measurement) has **no official Jackson module**; Indriya issue #203,
+"How to serialize Quantities and Units?", is still an open community question, so that route means
+hand-rolling a serialiser anyway *plus* adopting a units framework.
+
+The one maintained option is `com.raynigon.unit-api:spring-boot-jackson-starter` (JSR-385 with
+Jackson `@JsonUnit`, JPA and springdoc starters). It does not fit: `PCS` and `BOX` are not physical
+units and would need custom dimensionless definitions; `uomSnapshot` is a deliberately frozen
+*string* because a sent quotation must render identically forever, whereas a `Quantity` binds value
+and unit as a live type; one `NUMERIC(18,3)` column becomes value plus unit; `qty × rate` in
+`BigDecimal` becomes `Quantity` arithmetic needing unwrapping at every step; and it still emits
+`{"value": 2.5, "unit": "kg"}`, a JSON number, so the wire problem survives intact.
+
+For `gstRate` and `discountPct` there is nothing at all — no Jackson module and no standard Java
+type for a percentage.
+
+**`JsonWriteFeature.WRITE_NUMBERS_AS_STRINGS`.** The only zero-custom-code option that would cover
+all nine fields: one builder line, moved in Jackson 3 from `JsonGenerator.Feature` into
+`JsonWriteFeature`. Rejected on scope, not capability — it stringifies *every* number, so
+`totalElements`, `versionNo`, page sizes and counts all become strings, the API turns
+stringly-typed, and existing assertions like `jsonPath("$.totalElements").value(1)` break.
 
 **`SerializationFeature.WRITE_BIGDECIMAL_AS_PLAIN`.** Looks like the fix; is not. It controls
 notation, not type — the value stays a JSON number and JavaScript still parses it as a double.
@@ -395,6 +425,11 @@ build time, and `platform-outbox`'s test plan at runtime (TB3).
    differences and state them in `EventJson`, or the "inherits nothing" claim is aspirational.
 4. **ArchUnit's ability to express R1** against a static method on a Jackson 3 type, and that it does
    not false-positive on Boot's own auto-configuration if that is ever on the scanned classpath.
-5. **Whether `api(...)` on jackson-databind leaks more than intended** to the five services, given
+5. **Whether `JsonWriteFeature.WRITE_NUMBERS_AS_STRINGS` is enabled by default in Jackson 3.**
+   One secondary source claims it is, which would mean every number in the API is already a string.
+   The codebase contradicts that — `totalElements` and `versionNo` are asserted as JSON numbers in
+   four test classes — so the claim is recorded as unverified, not repeated. Confirm against the
+   Jackson 3 release notes before relying on either behaviour.
+6. **Whether `api(...)` on jackson-databind leaks more than intended** to the five services, given
    they already receive Jackson through `spring-boot-starter-web`. If it changes nothing, prefer
    `implementation` and expose `EventJson` behind a narrower return type.
