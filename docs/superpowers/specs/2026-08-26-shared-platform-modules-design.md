@@ -27,7 +27,7 @@ out the dependency graph reduced it to six and moved three things out of `platfo
 | P1 | **`platform` owns all six tenant-context entry points** and auto-configures them | Primitives only, each service wiring its own; split by transport | Five of the six fail *silently* — no exception, no log line, no failing test, only a metric that reads zero. A service that never writes an entry point cannot get one wrong. This is the project's "structural, not procedural" thesis applied to the thing the thesis depends on |
 | P2 | **Six modules, split by change cadence** | Three coarse; eight fine-grained | Things that change for the same reason ship together. The RS256 migration must not touch the tenancy primitives, and `platform-outbox` must *declare* its dependency on money serialisation — that declaration is the structural fix for TB3 |
 | P3 | **`TenantContext` sealed: `runAs` public, `set`/`clear` package-private** | Leave as is; migrate to `ScopedValue` (JEP 506) | The compiler enforces it — a service that calls `set()` no longer compiles, so the `finally` is written once in `platform-tenancy` instead of at 125 call sites. `ScopedValue` gives a stronger guarantee but costs the same 122-site migration *plus* a primitive rewrite, for a failure mode P3 already closes |
-| P4 | **`Gstin` and `StateCode` fold into `platform-money`** | Their own module; `platform-web` | A quotation's money *is* GST money — the place-of-supply derivation and the rounded tax split are one concern. The name is imperfect; a seventh module for 74 lines is worse |
+| P4 | ~~**`Gstin` and `StateCode` fold into `platform-money`**~~ **REVISED** → the module is `platform-primitives` and also holds the five exception types | Their own module; `platform-web`; a seventh module for the error vocabulary | Original reasoning stands — a quotation's money *is* GST money. But `Gstin`/`StateCode` import `ValidationException`, so folding them into a module all five services take would drag the servlet stack into `notification-svc`. The five exception *types* have zero imports and sink to the bottom with them; `ApiExceptionHandler` stays in `platform-web`. See PF8 and [`../../architecture/2026-08-26-platform-primitives-lld.md`](../../architecture/2026-08-26-platform-primitives-lld.md) Part 0 |
 | P5 | **`PdfEngine` and `IndianFormats` leave `platform`** → `document-svc` | Leave them | Used by exactly one package (`sales.pdf`). Left in `platform`, all five services inherit an openhtmltopdf dependency. **A mechanism used by exactly one service is not a platform mechanism** — the second test, added to D12 |
 | P6 | **`JwtService.mint` leaves `platform`** → `identity-svc`; `platform-security` verifies only | Keep minting shared | Under D11 (RS256 + JWKS) the signing key must be reachable from one task role, not five. Shipping minting in a module all five import makes BF8 — any service minting itself Enterprise — a classpath accident rather than a hypothetical |
 | P7 | **`JwtAuthenticationFilter` moves to `platform-tenancy`; `TokenVerifier` returns a plain `VerifiedClaims`** | Widen the seal; keep the filter in security | Forced by P3 — see PF1. `platform-security` must never name a tenancy type, or the graph cycles |
@@ -39,23 +39,23 @@ out the dependency graph reduced it to six and moved three things out of `platfo
 # Part 1 — Module map
 
 ```
-platform-security   (no deps)      platform-money  (no deps)      platform-web  (no deps)
-        ▲                                 ▲                              ▲
-        │                                 │                              │
-  platform-tenancy ───────────────────────┤                              │
-        ▲            │                    │                              │
-        │            └── platform-outbox ─┘                              │
-        └────────────────── platform-entitlement ─────────────────────────┘
+platform-security  (no deps)        platform-primitives  (no deps)
+        ▲                                    ▲         ▲
+        │                                    │         │
+  platform-tenancy ──────────────────────────┤    platform-web
+        ▲            │                       │         ▲
+        │            └── platform-outbox ────┘         │
+        └────────────────── platform-entitlement ──────┘
 ```
 
-Three modules depend on nothing. `platform-tenancy` — the load-bearing one — depends on exactly one
+Two modules depend on nothing. `platform-tenancy` — the load-bearing one — depends on exactly one
 thing, and only for token verification. The graph is a DAG two levels deep, which is the point:
 **the crown jewels sit near the bottom, where a change to billing or PDF rendering cannot reach
 them.**
 
 | Module | Imported by | Changes when |
 |---|---|---|
-| `platform-money` | all 5 services + `platform-outbox` | never |
+| `platform-primitives` | all 5 services + `platform-outbox` + `platform-web` | never |
 | `platform-web` | 4 (not notification) | rarely |
 | `platform-security` | 4 (not notification) | sub-project 7 (RS256/JWKS) |
 | `platform-tenancy` | all 5 | never — the crown jewels |
@@ -66,7 +66,7 @@ them.**
 
 ## Per-service imports
 
-| Service | tenancy | security | web | money | outbox | entitlement |
+| Service | tenancy | security | web | primitives | outbox | entitlement |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
 | identity | ● | ● | ● | ● | ● | ● |
 | master-data | ● | ● | ● | ● | ● | ● |
@@ -84,12 +84,14 @@ because every SQS consumer restores tenant context before opening its transactio
 
 Each module answers three questions: what does it do, how do you use it, what does it depend on.
 
-## 2.1 `platform-money`
+## 2.1 `platform-primitives`
 
-**Does.** Makes money and Indian fiscal identifiers impossible to get wrong on any wire.
+**Does.** Makes money, Indian fiscal identifiers and the error vocabulary impossible to get wrong.
+Every zero-dependency primitive in the system, and nothing else.
 
-**Contents.** `BigDecimalStringModule`, `MoneyJacksonConfig`, `Gstin` (checksum validation),
-`StateCode` (derivation from the GSTIN prefix).
+**Contents.** The five exception types (`NotFoundException`, `UnauthorizedException`,
+`ForbiddenException`, `ConflictException`, `ValidationException`), `BigDecimalStringModule`,
+`MoneyAutoConfiguration`, `EventJson`, `Gstin` (checksum + state prefix), `StateCode`.
 
 **Used as.** Auto-configuration registers the Jackson module; `Gstin.parse(s)`,
 `StateCode.of(gstin)` are called directly.
@@ -97,7 +99,7 @@ Each module answers three questions: what does it do, how do you use it, what do
 **Depends on.** Nothing.
 
 **Why it is a module and not a package.** `platform-outbox` must declare
-`implementation(project(":platform:platform-money"))`. TB3 is the bug where a fresh `ObjectMapper`
+`implementation(project(":platform:platform-primitives"))`. TB3 is the bug where a fresh `ObjectMapper`
 inside the outbox writer serialises `BigDecimal` as a JSON **number**, silently undoing challenges
 #2 and #17 — the money reaches SNS as a double after the entire stack avoided one. A declared
 dependency is how that stops being possible to forget.
@@ -106,13 +108,12 @@ dependency is how that stops being possible to forget.
 
 **Does.** One error envelope, one page shape, and the 404-not-403 rule.
 
-**Contents.** `ApiExceptionHandler`, the exception hierarchy (`NotFoundException`,
-`UnauthorizedException`, `ForbiddenException`, `ConflictException`, `ValidationException`),
-`PageResponse`.
+**Contents.** `ApiExceptionHandler`, `PageResponse`. The exception *types* live in
+`platform-primitives` — mapping them to status codes is an HTTP concern; being one is not.
 
 **Used as.** The `@RestControllerAdvice` auto-registers; services throw the typed exceptions.
 
-**Depends on.** Nothing.
+**Depends on.** `platform-primitives`, for the exception types it maps.
 
 **The load-bearing behaviour.** A cross-tenant read surfaces as `NotFoundException` → **404, never
 403**. A 403 confirms the row exists, which is the leak the four isolation layers exist to prevent.
@@ -181,7 +182,7 @@ Already specified at class level in
 Twelve classes, `V900`/`V901` DDL shipped inside the jar, adopted by a service in three steps.
 
 **Depends on.** `platform-tenancy` (`Outbox` is a `TenantScopedEntity`; `IdempotentConsumer` uses
-`runAs`) and `platform-money` (TB3).
+`runAs`) and `platform-primitives` (TB3).
 
 Part 7 lists the three revisions this document forces on it.
 
@@ -309,7 +310,7 @@ Nine properties this design holds, and what enforces each.
 | The tenant is bound before the transaction opens | `runAs` wraps the call; `open-in-view: false` keeps it true for the public route |
 | A query with no tenant matches nothing | `NO_TENANT` = NIL UUID, plus RLS with the GUC unset |
 | A cross-tenant read is indistinguishable from a missing row | `NotFoundException` → 404, never 403 |
-| Money never crosses a wire as a number | `platform-money` on both wires; `platform-outbox` declares the dependency |
+| Money never crosses a wire as a number | `platform-primitives` on both wires; `platform-outbox` declares the dependency; ArchUnit forbids building a mapper elsewhere |
 | A metered endpoint cannot ship unguarded | ArchUnit rule in `platform-entitlement` |
 | `platform` cannot reference a service package | ArchUnit rule (D12) |
 | A mechanism used by one service is not in `platform` | Review rule (P5); no automation — see PF6 |
@@ -348,11 +349,11 @@ Dependency order, leaves first, so each LLD may assume its dependencies are alre
 
 | # | Module | Status | What its LLD must settle |
 |---|---|---|---|
-| 1 | `platform-money` | new | Whether it owns an `ObjectMapper` bean or a `Jackson2ObjectMapperBuilderCustomizer` — `platform-outbox` needs identical config on a mapper Boot does not manage |
+| 1 | `platform-primitives` | **written** — [`../../architecture/2026-08-26-platform-primitives-lld.md`](../../architecture/2026-08-26-platform-primitives-lld.md) | Settled: an auto-configured `JacksonModule` bean for the HTTP wire, plus a separately-built `EventJson` mapper for the event wire, with an ArchUnit rule forbidding mapper construction anywhere else |
 | 2 | `platform-web` | new | Whether the 503 mapping for an unavailable downstream lives here or in each service (PF5) |
 | 3 | `platform-security` | new | The `VerifiedClaims` shape, and where the RS256/JWKS seam sits so sub-project 7 is a swap rather than a rewrite |
 | 4 | `platform-tenancy` | new — **the large one** | The sealed API, all six adapters, the `@ConditionalOnClass` guards, `TenantPrincipal` gaining entitlements, and the test-fixtures migration |
-| 5 | `platform-outbox` | **revise** (504 lines exist) | Three revisions: declare the `platform-money` dependency; align with the sealed API; align `IdempotentConsumer` with adapter #5 rather than duplicating it |
+| 5 | `platform-outbox` | **revise** (504 lines exist) | Three revisions: declare the `platform-primitives` dependency; align with the sealed API; align `IdempotentConsumer` with adapter #5 rather than duplicating it |
 | 6 | `platform-entitlement` | defer to sub-project 10 | Specify only the annotation and the ArchUnit rule now |
 
 ---
@@ -367,6 +368,7 @@ Dependency order, leaves first, so each LLD may assume its dependencies are alre
 | **PF4** | 122 test call sites across 54 files call `set`/`clear` directly | P9 — `java-test-fixtures` |
 | **PF5** | The split introduces an error case that does not exist today: an unavailable downstream must be 503 and must not be swallowed into 404, or `master-data` being down produces a quotation with the wrong tax split | LLD #2 decides where the mapping lives |
 | **PF6** | P5's rule — a mechanism used by one service is not a platform mechanism — has **no automated enforcement**. The D12 ArchUnit rule passes happily for `PdfEngine` | Accepted. It is a review rule. An ArchUnit rule counting consumers would need the full service graph at test time |
+| **PF8** | `platform/error` is two things in one package: five exception types with zero imports, and one servlet-coupled handler. P4 as written made `platform-money` depend on `platform-web`, which would have dragged the `@RestControllerAdvice` and the servlet stack into `notification-svc` — contradicting this document's own per-service matrix. Found on the first read of the source while writing LLD #1 | Types sink to `platform-primitives`; handler stays in `platform-web`. P4 revised, graph and matrix corrected. Rule R2 in the LLD fails the build if it recurs |
 | **PF7** | Five of six entry points fail silently. The design leans entirely on P1 to close them, and P1 has no test that proves an adapter was used rather than bypassed | Each adapter emits a bound-context metric; alarm on absence, per §2.4 of the parent doc |
 
 ---
