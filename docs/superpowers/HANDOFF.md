@@ -2,8 +2,9 @@
 
 **Last updated:** 2026-08-27 (no code change since `8b6644b`. **Three** design-only threads have now
 landed under `docs/architecture/`: the AWS re-platform, the platform-module/service-split thread that
-continues it, and the four remaining module LLDs that close its queue — see §0 item 3. Earlier
-whole-system architecture docs under `docs/architecture/` remain **untracked, see §3**).
+continues it, and the four remaining module LLDs that close its queue — see §0 item 3. The four
+long-untracked `docs/architecture/` docs are now **committed** (`a76e563`, `e9bbd81`); the tree is
+clean apart from two modified files described in §3).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -11,8 +12,8 @@ whole-system architecture docs under `docs/architecture/` remain **untracked, se
 ## 0. Resuming? Start here
 
 **Nothing is in flight.** All code work is merged and the next session begins by choosing what to
-build — there is no half-finished task to rescue. The only uncommitted thing is an untracked
-`docs/architecture/` (docs only, no code — see §3 for what to do with it).
+build — there is no half-finished task to rescue. Two tracked docs carry uncommitted edits that came
+from no recorded thread (§3); nothing else is outstanding.
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
    then `cd backend && ./gradlew clean test`. Expect **231 tests, 0 failures**. If that number
@@ -118,12 +119,19 @@ All under `docs/superpowers/`:
 - **Design-only work since then:** 9 commits (`15e9818`…`5d6bfd7`) adding the AWS re-platform
   design set. **Zero code, zero migrations, zero test impact — the 231-test baseline is untouched.**
   See §2 item 25.
-- **One untracked directory: `docs/architecture/`** (the two docs at §2 items 23–24). Docs only, no
-  code, no migrations, no test impact — the 231-test baseline is untouched. They were written in a
-  documentation-only session and **left uncommitted deliberately**, for the user to review first.
-  If they're wanted, commit them on `main` (docs-only, no branch needed); if not, delete the
-  directory and strike items 23–24 and the §0 step-2 pointer. Either way, do it before starting a
-  slice, so the tree is clean when you branch.
+- **`docs/architecture/` is now fully tracked.** The four docs left uncommitted since 2026-07-29 —
+  the as-built and target architectures (§2 items 23–24) plus two interview briefs — were reviewed
+  and committed on 2026-08-27 as `a76e563` and `e9bbd81`. Docs only; the 231-test baseline is
+  untouched. **One caveat travels with them:**
+  `2026-08-05-interview-challenges-and-aws-kafka.md` walks the system as it would look with Kafka on
+  Amazon MSK, and the later AWS design went the other way — D3 chose a transactional outbox into SNS
+  FIFO and SQS FIFO, D4 rejected Kinesis and DMS CDC outright at this event rate. Keep it as
+  interview prep; do not read it as a plan.
+- **Still uncommitted: two tracked files** —
+  `docs/architecture/2026-08-19-aws-target-architecture-design.md` and
+  `docs/superpowers/engineering-challenges.md` (the latter adding a challenge #31 on head-vs-tail
+  sampling). Neither came from any recorded thread, and three handoffs have now left them alone
+  deliberately. Review them before starting a slice.
 - **Merged & done on `main`:** the design docs (including the order-lifecycle slice's
   `specs/2026-07-28-order-lifecycle-design.md` `8a6c9dd` and `plans/2026-07-28-order-lifecycle.md`
   `8c0703f`, both committed directly) + **P0 tenant-isolation foundation** + **P0-auth core** +

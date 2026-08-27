@@ -172,7 +172,8 @@ number — check the console before anyone plans on it).
   `docs/architecture/2026-08-19-aws-target-architecture-design.md` and
   `docs/superpowers/engineering-challenges.md`. They were left alone deliberately. Review them
   before committing anything else, and do not assume this thread's docs account for their content.
-- **Four files in `docs/architecture/` remain untracked** and predate both design threads:
+- ~~**Four files in `docs/architecture/` remain untracked**~~ — **resolved 2026-08-27**, committed
+  as `a76e563` and `e9bbd81`. Originally recorded here as predating both design threads:
   `2026-07-29-current-architecture.md`, `2026-07-29-target-architecture.md`,
   `2026-08-05-interview-challenges-and-aws-kafka.md`, `interview-qa.md`. Still unresolved, as noted
   in the previous handoff.

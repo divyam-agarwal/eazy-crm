@@ -226,11 +226,11 @@ table), **S2** (`ShareLinkService.whatsappLink()` is a fifth cross-service call 
   `../superpowers/engineering-challenges.md` (the latter adds a challenge #31 on head-vs-tail
   sampling). Left alone deliberately for the third handoff running. Review them before committing
   anything else.
-- **Four files in `docs/architecture/` remain untracked** and predate all three threads:
-  `2026-07-29-current-architecture.md`, `2026-07-29-target-architecture.md`,
-  `2026-08-05-interview-challenges-and-aws-kafka.md`, `interview-qa.md`. **Unresolved across three
-  handoffs now** — commit or delete them before starting a slice, so the tree is clean when you
-  branch.
+- ~~**Four files in `docs/architecture/` remain untracked**~~ — **RESOLVED 2026-08-27.** Reviewed
+  and committed as `a76e563` (the as-built and target architectures) and `e9bbd81` (the two
+  interview briefs). One caveat carried forward: the MSK brief describes a **Kafka variant the AWS
+  design later rejected** — D3 chose an outbox into SNS/SQS FIFO, D4 ruled out Kinesis and DMS CDC.
+  It is prep material, not a plan, and nothing else in the repo says so.
 - **Nothing belongs in `engineering-challenges.md` from this session.** That log records problems
   solved while *building*, and nothing was built.
 
