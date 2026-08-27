@@ -8,6 +8,9 @@ import com.easycrm.iam.web.dto.TokenResponse;
 import com.easycrm.iam.email.EmailSender;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.UnauthorizedException;
+import com.easycrm.platform.error.ValidationException;
+import com.easycrm.platform.gst.Gstin;
+import com.easycrm.platform.gst.StateCode;
 import com.easycrm.platform.security.JwtService;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
@@ -62,6 +65,19 @@ public class AuthService {
         if (tenants.findBySlug(req.slug()).isPresent()) {
             throw new ConflictException("slug already taken");
         }
+        // MF1: a buyer's GSTIN goes through Gstin.parse and StateCode.requireValid in
+        // CustomerService; the seller's went through neither. QuotationService.isInterState
+        // compares tenant.stateCode against the customer's to choose CGST+SGST vs IGST, so an
+        // invalid seller state code silently decides the tax split of every quotation this tenant
+        // ever issues — and the unvalidated GSTIN prints on every PDF letterhead.
+        String stateCode = req.stateCode();
+        if (req.gstin() != null && !req.gstin().isBlank()) {
+            String derived = Gstin.parse(req.gstin()).stateCode();   // 422 on checksum or prefix
+            if (!derived.equals(stateCode)) {
+                throw new ValidationException("stateCode", "must match the GSTIN state code");
+            }
+        }
+        StateCode.requireValid(stateCode);
         Tenant tenant = new Tenant(
             req.slug(), req.businessName(), req.stateCode(), req.gstin(),
             TenantStatus.TRIAL, Instant.now().plus(TRIAL_DAYS, ChronoUnit.DAYS));

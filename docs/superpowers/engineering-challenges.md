@@ -1826,6 +1826,87 @@ polarity requirement depending on which shape the condition takes.
 
 ---
 
+## Challenge 34 — Structural validation on one entity's field does not extend to a "same-shaped" sibling field
+
+**Phase:** Implementation (Task 7, seller GSTIN/state code at signup)
+
+### The problem
+
+`CustomerService.resolveGstinAndState` already ran a buyer's GSTIN through
+`Gstin.parse` (checksum + state prefix) and, when no GSTIN was supplied,
+`StateCode.requireValid` on the bare state code. Nobody had done the same for
+the *seller* — `SignupRequest.stateCode` carried only `@Pattern("\\d{2}")`
+(any two digits pass: `"39"`, `"88"`, `"00"`) and `gstin` was a bare `String`
+that `AuthService.signup` never touched. This shipped and ran clean: no
+exception, no log line, nothing in a test failure — because
+`QuotationService.isInterState` only *compares* `tenant.getStateCode()`
+against the customer's to pick CGST+SGST vs IGST; it never asks whether either
+side is a real GST state code. An invalid seller state code doesn't throw, it
+just silently picks the wrong tax split for every quotation that tenant issues
+from day one, and an unvalidated seller GSTIN prints on every PDF letterhead.
+There is no error to grep for and no test that was failing — the bug is a
+correct-looking computation over a value nobody checked.
+
+### Why it's hard
+
+The buyer and seller GSTIN/state-code pairs look identical in shape (a
+2-digit prefix, an optional 13-character checksum), which invites the
+assumption that validating one validates the pattern for both. But they enter
+the system through two unrelated DTOs (`CustomerRequest` vs `SignupRequest`)
+built at different times by different tasks, and Bean Validation's
+`@Pattern` on `stateCode` gives a false sense of coverage: it enforces *shape*
+("two digits"), which is a strict subset of *validity* ("one of the ~40 real
+GST state codes"), and nothing in the type system or the test suite flags that
+gap — `@Pattern` compiles, runs, and passes for `"39"` exactly as it does for
+`"27"`. The asymmetry is also cross-cutting rather than local: the defect
+isn't in any single method, it's in the *absence* of a call that a reviewer
+would only notice by tracing forward from `SignupRequest` to
+`QuotationService.isInterState` and asking "what guarantees this input is
+real" — a question that doesn't arise from reading `AuthService.signup` in
+isolation, since the method looks complete on its own terms (build entity,
+save, mint tokens).
+
+### The solution
+
+`AuthService.signup` now runs the identical validation shape as
+`CustomerService`, but deliberately narrower: `SignupRequest.stateCode` is
+`@NotBlank`, so — unlike the buyer path, which must derive a state code from
+the GSTIN when the caller left `stateCode` blank — there is never a blank
+`stateCode` to derive, so that branch was not ported. What *was* ported is the
+part that actually matters: if a GSTIN is supplied, `Gstin.parse` validates
+its checksum and state prefix, and the derived state must equal the declared
+`stateCode` (`ValidationException("stateCode", "must match the GSTIN state
+code")`) — the same "one of the two disagreeing inputs must be rejected, not
+silently picked" rule `CustomerService` already enforces for a buyer.
+`StateCode.requireValid(stateCode)` then runs unconditionally, so a seller
+with no GSTIN still can't register with a two-digit non-code. This also
+retired a call that Task 6 had made dead: once `Gstin.parse` validates the
+state prefix itself, `CustomerService`'s follow-up
+`StateCode.requireValid(derived)` on an already-`parse`-validated value can
+never throw — it was deleted, and the comment above it corrected to describe
+what `parse` actually guarantees (charset, checksum, *and* state prefix, not
+just checksum).
+
+### Lesson
+
+Two fields that look structurally identical (same regex, same "2-digit state
+code" description) are not the same guarantee unless the same validation
+function runs on both — copy-pasting a DTO shape without copy-pasting its
+service-layer validation reintroduces the exact bug the original validation
+was written to prevent, just on a different entity. The tell is not a failing
+test (there wasn't one) but a downstream consumer — here,
+`QuotationService.isInterState` — that treats a field as trustworthy without
+itself validating it; that combination (unvalidated input + a decision made
+from it with no error path) is a signal to trace every producer of that field
+back to its entry point, not just the one already known to be validated. It is
+also a reminder that closing a validation gap can retire a validation call
+elsewhere: strengthening `Gstin.parse` to check the state prefix made a
+sibling `StateCode.requireValid(derived)` call unreachable, and unreachable
+defensive code should be removed and its comment corrected, not left to imply
+a weaker guarantee than what now actually holds.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
