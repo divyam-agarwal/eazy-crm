@@ -16,14 +16,18 @@ still in force (D1–D15, B1–B11, F1–F17, P1–P9, I1–I5) and for the thre
 
 ## 1. What this session produced
 
-Four commits on `main`, all documentation:
+Eight commits on `main`, all documentation:
 
 | Commit | What |
 |---|---|
 | `a2959a5` | `platform-security` LLD — the module shrinks and the chain gains a seam |
 | `2dde1ea` | `platform-tenancy` LLD — RLS rests on a role, not on the schema |
 | `9274e79` | `platform-outbox` LLD revised — the relay role loses `BYPASSRLS` |
-| `a73a285` | `platform-entitlement` LLD — the last of the six |
+| `506a1c6` | `platform-entitlement` LLD — the last of the six |
+| `637f022` | this handoff |
+| `8adcd13` | project `HANDOFF.md` points here instead of the previous thread |
+| `a76e563` · `e9bbd81` | the four long-untracked `docs/architecture/` docs, reviewed and committed |
+| `05fcbe3` | the three handoffs corrected to say so |
 
 **Three new documents, one revised in place:**
 
