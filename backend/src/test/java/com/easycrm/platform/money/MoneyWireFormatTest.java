@@ -27,6 +27,11 @@ class MoneyWireFormatTest extends IntegrationTest {
 
     @AfterEach void clear() { TenantContext.clear(); }
 
+    // MF4: this is the only end-to-end proof that BigDecimalStringModule reached the application
+    // ObjectMapper — MoneyModuleWiringTest proves the bean exists, this proves it took effect on
+    // the real HTTP wire. It asserts through ProductController only because a product is the
+    // cheapest thing to create; if that controller is ever removed, move this assertion rather
+    // than deleting it, or MB1 loses its tripwire.
     @Test
     void bigDecimalSerializesAsQuotedString() throws Exception {
         String auth = "Bearer " + tokens.owner(UUID.randomUUID());
