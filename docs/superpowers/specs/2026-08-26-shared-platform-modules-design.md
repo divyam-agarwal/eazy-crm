@@ -1,10 +1,13 @@
 # EasyCRM — Shared Platform Modules (design spec)
 
 **Date:** 2026-08-26
-**Status:** Design only. Zero code changed.
+**Status:** Design, with **module 1 of 6 now built** — see Part 7. The other five remain design only.
 **Code baseline:** `80e74a3` — `platform` is 833 lines of Java across 28 files. 231 tests.
+**Implementation baseline (2026-08-27):** `platform-primitives` extracted into
+`backend/platform/platform-primitives`; the build is now two Gradle projects and the suite is
+**260 tests, 0 failures, 0 errors**.
 **Parent:** [`../../architecture/2026-08-19-aws-target-architecture-design.md`](../../architecture/2026-08-19-aws-target-architecture-design.md) (D12 — `platform` as a Gradle module, mechanisms never meanings)
-**Precursor to:** six module-level LLDs, written in the order given in Part 7.
+**Precursor to:** six module-level LLDs, written in the order given in Part 7. All six are written; **one is built**.
 
 ## How this relates to the other docs
 
@@ -48,7 +51,10 @@ platform-security  (no deps)        platform-primitives  (no deps)
         └────────────────── platform-entitlement ──────┘
 ```
 
-Two modules depend on nothing. `platform-tenancy` — the load-bearing one — depends on exactly one
+Two modules depend on nothing. Reading the arrows: `platform-web → platform-primitives` is the edge
+P4 originally missed and PF8/MF3 added — `ValidationException` and the other four exception types
+sank to `platform-primitives`, so the module that maps them to HTTP status codes now depends on the
+module that defines them. `platform-tenancy` — the load-bearing one — depends on exactly one
 thing, and only for token verification. The graph is a DAG two levels deep, which is the point:
 **the crown jewels sit near the bottom, where a change to billing or PDF rendering cannot reach
 them.**
@@ -372,7 +378,7 @@ Dependency order, leaves first, so each LLD may assume its dependencies are alre
 
 | # | Module | Status | What its LLD must settle |
 |---|---|---|---|
-| 1 | `platform-primitives` | **written** — [`../../architecture/2026-08-26-platform-primitives-lld.md`](../../architecture/2026-08-26-platform-primitives-lld.md) | Settled: an auto-configured `JacksonModule` bean for the HTTP wire, plus a separately-built `EventJson` mapper for the event wire, with an ArchUnit rule forbidding mapper construction anywhere else |
+| 1 | `platform-primitives` | **BUILT** — LLD [`../../architecture/2026-08-26-platform-primitives-lld.md`](../../architecture/2026-08-26-platform-primitives-lld.md), plan [`../plans/2026-08-27-platform-primitives-module.md`](../plans/2026-08-27-platform-primitives-module.md). Eight tasks on branch `platform-primitives-module`, commits `4d43d75`..`0ffc68c` off `main` at `ac4eaca`; **260 tests, 0 failures, 0 errors** across the two Gradle projects. *(The merge commit is deliberately not named here: the branch was not integrated when this row was written. Fill it in when it lands.)* **The first of the six modules to exist as code rather than as a design.** | Settled and built: an auto-configured `JacksonModule` bean for the HTTP wire, plus a separately-built `EventJson` mapper for the event wire, with an ArchUnit rule forbidding mapper construction anywhere else. Implementation answered every Appendix B item of LLD #1 and added MF7–MF10 there; the ones worth reading from here are that the design's own R1 rule sketch could never have failed (challenge #33), and that `com.easycrm..` now spans two build outputs, so any package-scoped classpath scan is no longer a proxy for "code this project compiled" (challenge #36) |
 | 2 | `platform-web` | **written** — [`../../architecture/2026-08-26-platform-web-lld.md`](../../architecture/2026-08-26-platform-web-lld.md) | Settled: the module widens to cover outbound HTTP mechanism (translator, header propagation, timeout budget); typed clients stay in the calling service. PF5's 503 mapping was the easy half — see PF9 |
 | 3 | `platform-security` | **written** — [`../../architecture/2026-08-26-platform-security-lld.md`](../../architecture/2026-08-26-platform-security-lld.md) | Settled: `VerifiedClaims.role` is an opaque `String` (the app has no RBAC to serve — SF1); the RS256 seam is *two* seams, key resolution and claim set, and the claim set is closed now by minting `iss`/`aud`/`kid` under HS256 from day one, so sub-project 7 swaps one bean. Also revised §2.3 twice — see PF11 and PF12 |
 | 4 | `platform-tenancy` | **written** — [`../../architecture/2026-08-27-platform-tenancy-lld.md`](../../architecture/2026-08-27-platform-tenancy-lld.md) | Settled: `TenantPrincipal` becomes a **sealed interface** so provenance is the type and `"SYSTEM"`/`"PUBLIC"` can no longer reach a role check (CD3, riding the seal migration because there is no second sweep of 137 sites); all six adapters specified, three built now and three built with their first consumer (CD1); adapter 5 is a composition, not a class (CD2). Also found PF14–PF16 |

@@ -1907,6 +1907,209 @@ a weaker guarantee than what now actually holds.
 
 ---
 
+## Challenge 35 — An auto-configuration that is also component-scanned: two bean names, one class
+
+**Phase:** Implementation (Task 2, `MoneyAutoConfiguration`)
+
+### The problem
+
+Splitting the money Jackson module out of the monolith turned a component-scanned
+`@Configuration` (`MoneyJacksonConfig`) into an `@AutoConfiguration` named in
+`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+The reason for the change is MB1: a future `sales-svc` whose
+`@SpringBootApplication` sits at `com.easycrm.sales` never scans
+`com.easycrm.platform`, so the bean would simply not exist and the only symptom
+would be money crossing the HTTP wire as a JSON number — no exception, no log
+line, no failing test.
+
+But the class still lives at `com.easycrm.platform.money.MoneyAutoConfiguration`,
+and today's single application still scans from `com.easycrm`. So the class is
+reachable by **two entirely different mechanisms at once**: the `.imports` file
+and component scan. The expectation going in was a
+`BeanDefinitionOverrideException` on refresh, or — worse — two
+`BigDecimalStringModule` beans registered on the mapper. Neither happened. The
+context refreshed cleanly with exactly one module bean.
+
+The interesting part is not that it worked. It is that "it works" is compatible
+with two completely different worlds, and the difference between them is the whole
+point of the change:
+
+- the `.imports` file was read, and the auto-configuration did its job; or
+- the `.imports` file is being ignored (typo in the filename, wrong path, jar
+  packaging that drops `META-INF/spring`), the class was picked up by component
+  scan alone, and the bean exists **for exactly the reason the refactor was
+  meant to stop relying on**.
+
+A test that only asserts "one `BigDecimalStringModule` bean exists" passes
+identically in both worlds. It would have gone green on a build where the
+`.imports` file was a dead file, and the failure would surface years later, in a
+different service, as money silently becoming a JSON number.
+
+### Why it's hard
+
+Nothing in the observable behaviour distinguishes the two worlds. The bean is the
+same instance of the same class contributed by the same `@Bean` method on the same
+configuration class, and `getBeansOfType(JacksonModule.class)` returns one entry
+either way. There is no log line saying which entry point won, and Spring's
+de-duplication is silent by design.
+
+The mechanism only becomes visible one level down, in how Spring *names* the bean
+definition. Spring uses **two different bean-name generators** for the two entry
+points (verified against `spring-context-7.0.2`):
+
+| Entry point | Generator | Name produced |
+|---|---|---|
+| `@ComponentScan` | `componentScanBeanNameGenerator`, an `AnnotationBeanNameGenerator` | decapitalised short name — `moneyAutoConfiguration` |
+| `@Import` / `AutoConfiguration.imports` | a hardcoded `IMPORT_BEAN_NAME_GENERATOR`, a `FullyQualifiedAnnotationBeanNameGenerator` | the FQCN — `com.easycrm.platform.money.MoneyAutoConfiguration` |
+
+The import-side generator is *hardcoded*, not configurable, precisely so that
+imported configuration classes cannot collide by short name with scanned ones. And
+the de-duplication that keeps the double reachability harmless is not a name
+comparison at all: `ConfigurationClassParser` tracks already-processed
+configuration classes by **class identity**, so the second arrival of the same
+class is folded into the first rather than registered twice. That is structural,
+not incidental — which is why no `@ComponentScan` exclusion was needed and adding
+one would have been cargo cult.
+
+It also means the naming asymmetry is the *only* externally visible trace of which
+route the class actually took.
+
+### The solution
+
+`MoneyModuleWiringTest` asserts two separate things, and the second is the one
+that does the real work:
+
+1. `exactlyOneBigDecimalStringModuleBeanIsRegistered` — the count. Guards against
+   a duplicate-definition trap on one side and MB1 on the other.
+2. `theAutoConfigurationIsWhatRegisteredIt` — asserts the bean **definition** name
+   `com.easycrm.platform.money.MoneyAutoConfiguration` is present. Because the
+   FQCN name can only be produced by the import path, this passes if and only if
+   the `.imports` file was actually read.
+
+Delete the `.imports` line and test 1 still passes (component scan still finds the
+class), while test 2 fails — which is exactly the discrimination that was missing.
+The auto-configuration itself stays deliberately plain: `@AutoConfiguration`,
+`@ConditionalOnClass(JacksonModule.class)`, one `@Bean`, no scan exclusion.
+
+Boot's `JacksonAutoConfiguration` (artifact `org.springframework.boot:spring-boot-jackson`,
+class `org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration`)
+injects a `Collection<JacksonModule>` into its mapper-builder customizer, so
+ordering never needed pinning either: the module is collected by type regardless of
+which configuration class declared it.
+
+### Lesson
+
+When one class is reachable by two registration mechanisms, "the context started
+and the bean exists" is not evidence that the mechanism you intended is the one
+that ran — and the mechanism you intended is usually the entire reason for the
+change. Find the observable that differs between the two paths and assert on *that*,
+not on the outcome both paths produce. Here the observable was the bean-definition
+name, because Spring deliberately generates it differently per entry point; in
+other frameworks it will be something else, but the shape of the question is the
+same: *what would still be true if the wiring I just added were completely inert?*
+If the answer is "everything my test asserts," the test is measuring the old
+mechanism.
+
+The corollary is about defensive fixes. The predicted duplicate-registration
+failure never materialised because `ConfigurationClassParser` de-duplicates by class
+identity. Adding a `@ComponentScan` exclusion "to be safe" would have added a second
+thing to keep in sync, hidden the fact that the platform is doing this correctly,
+and — worst of all — would have made the double reachability *look* dangerous to the
+next reader when it is structurally handled.
+
+---
+
+## Challenge 36 — After a module split, a package name no longer identifies whose bytecode you imported
+
+**Phase:** Implementation (Task 5, R1's non-vacuity guard)
+
+### The problem
+
+`PlatformPrimitivesArchTest` (rule R1 — nobody outside `com.easycrm.platform.money`
+constructs a JSON mapper) runs in the **root** project and imports classes with
+`new ClassFileImporter().importPackages("com.easycrm")`. This codebase has already
+been bitten once by an ArchUnit rule that imported zero classes and therefore passed
+while checking nothing (ArchUnit 1.3.0 silently skipping Java 25 bytecode — see
+challenge #30), so every rule here carries a companion non-vacuity test. R1's, as
+first written, was the obvious one:
+
+```java
+assertThat(classes).as("imported classes").isNotEmpty();
+```
+
+That assertion was correct before this branch and is nearly worthless after it.
+Extracting `platform-primitives` into its own Gradle module put ten classes that
+are *also* under `com.easycrm..` into a **jar on the root project's test
+classpath**. `importPackages("com.easycrm")` scans the classpath, not the project,
+so it now sweeps up two independently-built artifacts that happen to share a
+package prefix. If the root project's own bytecode stopped being imported — the
+precise failure mode the guard exists for — `isNotEmpty()` would still pass on the
+jar's ten classes alone, and R1 would go vacuously green while checking none of
+the ~180 classes it is actually about.
+
+So the module split silently converted a working vacuity guard into one that
+cannot detect the vacuity it was written for, and nothing about the guard's source
+changed to signal it.
+
+### Why it's hard
+
+The failure is invisible from the call site. `importPackages("com.easycrm")` reads
+as "my application's classes", and for the entire life of the codebase up to this
+branch that is exactly what it meant, because there was only one place
+`com.easycrm..` bytecode could come from. The split broke the identity between
+*package name* and *compilation unit* without breaking any line of code, and Java's
+package system offers nothing to restore it: a package is not owned by a jar, and
+two artifacts sharing a prefix are indistinguishable to a package-name filter.
+ArchUnit's `ImportOption` vocabulary is about locations and test/main splits, not
+"only classes this Gradle project compiled."
+
+It is also the same defect class as the bug found minutes earlier in the same task
+(challenge #33's inverted condition), one level up: a *check on the check* that
+cannot fail. Both are green rules that assert nothing, and both would be found only
+by asking "what would make this assertion false?" rather than "does this assertion
+pass?" — which is why the second one survived the first sweep.
+
+### The solution
+
+Assert on a class that exists **only** in the project whose bytecode must be
+present, and cannot come from any jar sharing the package prefix:
+
+```java
+assertThat(classes.contain("com.easycrm.EasyCrmApplication"))
+    .as("root project's own bytecode (not just the platform-primitives jar also on "
+      + "this classpath) was imported")
+    .isTrue();
+```
+
+`EasyCrmApplication` is the root project's `@SpringBootApplication` class; the
+primitives jar has no such class and structurally cannot (R2 forbids it any Spring
+dependency at all). So its presence is a witness for "this project's own bytecode
+was parsed," which is the property the rule actually depends on. The
+`isNotEmpty()` assertion is kept above it — it still distinguishes "imported
+nothing at all" from "imported something" — with a comment in place explaining why
+it is insufficient on its own, so a later reader does not delete the stricter line
+as redundant.
+
+The sibling rule R2 needed no equivalent: it runs inside `platform-primitives`
+itself, where `importPackages("com.easycrm")` sees only the module's own classes,
+because the dependency edge is root → subproject and never the reverse.
+
+### Lesson
+
+Splitting a monolith into modules invalidates every piece of tooling that used a
+package name as a proxy for "code I own" — classpath scanners, ArchUnit imports,
+reflection-based registries, coverage filters, `@ComponentScan` bases. None of them
+break loudly; they just start including a second artifact's classes, and any rule
+whose failure mode is *emptiness* becomes unfalsifiable at the same moment. The
+audit to run after a split is not "does everything still pass" (it will) but "which
+assertions were relying on a package prefix identifying exactly one build output?"
+
+The narrower rule for vacuity guards: `isNotEmpty()` is only a real guard while
+there is exactly one possible source for the elements. As soon as there are two,
+name a specific witness that can only originate from the source you care about.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
