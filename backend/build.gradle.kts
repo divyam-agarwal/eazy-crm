@@ -14,6 +14,10 @@ java {
 repositories { mavenCentral() }
 
 dependencies {
+    // The bottom of the platform DAG: exception vocabulary, money wire format, GST value
+    // types. A declared edge rather than a package convention — see LLD #1 and TB3.
+    implementation(project(":platform:platform-primitives"))
+
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-security")
