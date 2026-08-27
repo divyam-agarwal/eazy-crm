@@ -1560,6 +1560,90 @@ needs a forged counterpart before it proves anything.
 
 ---
 
+## Challenge 31 — "10% sampling, errors always sampled" is two different sampling stages
+
+**Phase:** Design
+
+### The problem
+
+The observability section of the AWS target architecture carried a one-line
+claim: *"Head-based sampling at 10%, with errors always sampled."* It reads as
+a single coherent policy, and it is the sentence almost everyone writes. It is
+also self-contradictory, and the same document's own trace-continuity design
+(F8, per-task ADOT sidecars) makes the second half structurally impossible to
+implement.
+
+Head-based sampling runs **in-process, in the SDK, at `startSpan`** — the
+`Sampler` returns `DROP` / `RECORD_ONLY` / `RECORD_AND_SAMPLE` before the
+handler has executed a single line. At that instant nothing knows whether the
+request will call Razorpay, time out, or throw. So a literal 10% head sampler
+drops 90% of errors: precisely the traces anyone would open during an
+incident. "Always sample errors" needs the *outcome*, which only exists after
+the span ends.
+
+### Why it's hard
+
+The naive fix — "so use tail sampling" — collides with a decision made
+elsewhere in the same design. Tail sampling buffers every span of a trace for
+a decision window and then evaluates policies against the completed trace,
+which requires **all spans of one trace to reach the same collector process**.
+The design runs ADOT as a **per-task sidecar** (`essential: false`,
+`dependsOn: START`, cheap, no extra service to operate). A sidecar sees only
+its own task's spans. It is not that tail sampling is unconfigured there — a
+sidecar *structurally cannot* tail-sample, no matter what its config says.
+Moving to a central collector service means trace-ID-aware load balancing, a
+stateful buffer sized to peak trace volume, and a new ECS service on the
+critical path of observability.
+
+The second, quieter trap: once errors are retained at 100% and successes at
+10%, the surviving traces are **no longer a representative sample**. Counting
+them to derive an error rate inflates it by roughly the inverse of the sample
+rate — a system failing 1% of the time reports something near 50%. The bias is
+invisible because each individual trace is perfectly real.
+
+### The solution
+
+Split the sentence into the two stages it actually describes, and say which
+one exists today.
+
+- **Now (head, in the SDK):** `parentbased_traceidratio`. `ParentBased` means
+  only a *root* span consults the sampler; children obey the `sampled` bit in
+  the inbound `traceparent`, so a trace is kept or dropped **as a unit**
+  instead of 10% of the spans in every trace. `traceidratio` hashes the trace
+  ID against a threshold rather than flipping a coin, so every service in the
+  trace — any language, no coordination — computes the same verdict.
+  Per-route rates come from X-Ray's centralized rules (reservoir + rate),
+  fetched at runtime, so changing them needs no redeploy; the flat 10% is only
+  the catch-all rule.
+- **Later (tail, in a central collector):** the `tail_sampling` processor with
+  OR-ed policies — `status_code = ERROR`, latency over threshold, and a 10%
+  probabilistic baseline. This is what actually delivers "errors always
+  sampled," and it arrives with the central collector service, not before.
+- **In the interim:** errors falling outside the 10% are covered by structured
+  logs and the error-rate metric, not by traces. That gap is the real,
+  stated price of staying on sidecars — not a detail to leave implied.
+- **Independently of both:** RED metrics come from the `spanmetrics`
+  connector, which sits **before** the sampler and therefore sees 100% of
+  spans. Traces answer "what happened in this one request"; metrics answer
+  "how often." Sampling is the seam where those two get conflated.
+
+### Lesson
+
+A sampling policy is not one setting — it is a decision made at a specific
+point in the pipeline, and the point determines what information is available
+to decide with. Head sampling is cheap because it decides before doing the
+work, which is exactly why it cannot condition on the result of the work; tail
+sampling can condition on the outcome only because it pays to buffer and
+therefore needs the whole trace in one process. Any requirement phrased as
+"sample X%, but always keep the interesting ones" is really two
+requirements at two stages, and writing it as one line hides a deployment
+topology decision (sidecar vs central collector) inside what looks like a
+config value. Related: the moment sampling stops being uniform, sampled data
+stops being countable — derive rates from a pre-sampling source, or derive
+them wrong.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

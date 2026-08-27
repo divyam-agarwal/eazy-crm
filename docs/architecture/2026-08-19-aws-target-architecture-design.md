@@ -544,7 +544,24 @@ Application Signals and X-Ray. Auto-instruments Spring MVC, JDBC, HikariCP and t
 CloudFront's `X-Amz-Cf-Id` and the ALB's `X-Amzn-Trace-Id` are attached as root-span attributes for
 correlation with access logs.
 
-Head-based sampling at 10%, with errors always sampled.
+**Sampling — head-based now, tail-based later.** The SDK sampler
+(`parentbased_traceidratio`) decides at the **root span** and propagates the verdict in the
+`traceparent` sampled flag, so a trace is kept or dropped as a whole rather than 10% of the spans
+in every trace. Rates come from X-Ray's centralized rules (reservoir + rate per route), which are
+fetched at runtime and so change without a redeploy; the flat 10% is only the `Everything else`
+rule.
+
+"Errors always sampled" is **not achievable at the head** — the decision is made at `startSpan`,
+before the request has failed — and not achievable in a **sidecar** either, since a per-task
+collector never sees a whole trace. It arrives with the central collector ECS service and its
+`tail_sampling` processor, whose policies OR together: keep on `status_code = ERROR`, keep on
+latency over a threshold, plus a 10% probabilistic baseline. Until then, errors that fall outside
+the sample are covered by logs and the error-rate metric, not by traces — which is the real cost of
+staying on sidecars.
+
+Either way, RED metrics come from the `spanmetrics` connector, which sits **before** the sampler and
+sees 100% of spans. Once errors are kept preferentially the surviving traces are a biased
+population, and counting them yields an error rate that is wrong by more than an order of magnitude.
 
 ### F8 — the outbox breaks trace continuity
 
