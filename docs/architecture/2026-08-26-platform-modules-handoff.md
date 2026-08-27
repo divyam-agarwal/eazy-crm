@@ -43,29 +43,28 @@ https://claude.ai/code/artifact/7db6d17f-9618-4ac5-87b5-c156453bfa6f
 
 ## 2. Where to pick up
 
-**LLD #3, `platform-security`.** The queue, in dependency order — each LLD may assume its
-dependencies are already specified:
+**All six LLDs are written** as of 2026-08-27. Nothing in the queue below is outstanding; the next
+step is `writing-plans`, which this thread has still never reached.
 
 | # | Module | Status |
 |---|---|---|
 | 1 | `platform-primitives` | **done** |
 | 2 | `platform-web` | **done** |
-| 3 | **`platform-security`** | **next** |
-| 4 | `platform-tenancy` | not started — the large one |
-| 5 | `platform-outbox` | **revise** the existing 504-line LLD, do not rewrite |
-| 6 | `platform-entitlement` | defer to sub-project 10 |
+| 3 | `platform-security` | **done** — `2026-08-26-platform-security-lld.md` |
+| 4 | `platform-tenancy` | **done** — `2026-08-27-platform-tenancy-lld.md` |
+| 5 | `platform-outbox` | **done** — revised in place, see its Part 0 |
+| 6 | `platform-entitlement` | **done** — `2026-08-27-platform-entitlement-lld.md` (still *built* in sub-project 10) |
 
-**What LLD #3 must settle:**
+**Read this before planning any of it:** the four later LLDs found three things that outrank the
+module work itself — PF14 (RLS is `ENABLE`d and never `FORCE`d, so isolation rests on a role
+assignment), PF17 (`BYPASSRLS` on the outbox relay could not be constrained by that fix, now replaced
+by per-table policies), and PF19 (the metric set does not respect the create/read boundary, and
+`/public/q/{token}` is a metered route with nowhere to put a check). All three are in the parent
+spec's Appendix A.
 
-1. The `VerifiedClaims` shape. It must be a plain record — `platform-security` may **never** name a
-   `platform-tenancy` type, or the module graph cycles. This is PF1 and it is already decided; the
-   LLD specifies it, it does not reopen it.
-2. Where the RS256/JWKS seam sits, so sub-project 7 is a swap rather than a rewrite.
-3. **Added by the IdP evaluation (I4/I5): the token issuer is a configuration input, not a
-   constant.** Verification against a published JWKS does not care who signed the token. Draw the
-   seam properly and adopting Cognito later is configuration plus a signup saga, not a rewrite.
-4. That `JwtService.mint` **leaves** this module for `identity-svc` (P6). Under RS256 the signing key
-   must be reachable from one task role, not five — otherwise BF8 becomes a classpath accident.
+All four questions this section originally set for LLD #3 are answered in that document: the
+`VerifiedClaims` shape, both halves of the RS256 seam, the issuer as a configuration input (I4/I5),
+and `JwtService.mint` leaving for `identity-svc`.
 
 **How this thread has been working**, and it has worked well: read the actual source first, let it
 falsify the parent spec, ask the user the one or two genuinely material questions, write the LLD,
