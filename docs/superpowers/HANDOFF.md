@@ -1,9 +1,9 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-26 (no code change since `8b6644b`. Two **design-only** threads have now
-landed under `docs/architecture/`: the AWS re-platform, then the platform-module/service-split
-thread that continues it — see §0 item 3. Earlier whole-system architecture docs under
-`docs/architecture/` remain **untracked, see §3**).
+**Last updated:** 2026-08-27 (no code change since `8b6644b`. **Three** design-only threads have now
+landed under `docs/architecture/`: the AWS re-platform, the platform-module/service-split thread that
+continues it, and the four remaining module LLDs that close its queue — see §0 item 3. Earlier
+whole-system architecture docs under `docs/architecture/` remain **untracked, see §3**).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -22,12 +22,15 @@ build — there is no half-finished task to rescue. The only uncommitted thing i
    that exists today — read `docs/architecture/2026-07-29-current-architecture.md` instead of
    reconstructing it from §3 and the per-slice specs.
 3. **If you are here about the AWS re-platform, microservices, the platform modules, billing,
-   the outbox or identity**, read `../architecture/2026-08-26-platform-modules-handoff.md`
-   instead of §8 — it is the most recent thread and points back at
-   `../architecture/2026-08-20-aws-redesign-handoff.md`, which it continues. Both are design-only
-   (no code was written in either), and both carry their own decisions, findings and sub-project
-   ordering. **Three hard blockers and two live bugs are listed in that handoff's §5** — read it
-   before starting any AWS sub-project.
+   the outbox or identity**, read `../architecture/2026-08-27-platform-llds-handoff.md` instead of
+   §8 — it is the most recent thread and chains back through
+   `../architecture/2026-08-26-platform-modules-handoff.md` to
+   `../architecture/2026-08-20-aws-redesign-handoff.md`. All three are design-only (no code was
+   written in any of them), and each carries its own decisions, findings and ordering. **All six
+   platform modules now have a low-level design; no implementation plan exists for any of them.**
+   Read that handoff's §3 before planning anything: three findings there outrank the module work,
+   and two of them describe code running today — RLS is `ENABLE`d and never `FORCE`d, so tenant
+   isolation currently rests on which database role a deployment happens to connect with.
 4. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
 5. Then run the standard workflow on a feature branch off `main`:
    **brainstorming → (design spec →) writing-plans → subagent-driven-development →
@@ -99,6 +102,14 @@ All under `docs/superpowers/`:
     lists what remains unverified. It also records three findings about the code *as it stands*,
     including a live bug: `QuotationVersion` does not snapshot the buyer, so re-rendering a `SENT`
     quotation after a customer edit produces a different document.
+
+26. **`../architecture/2026-08-27-platform-llds-handoff.md`** — handoff for the **platform-module LLD
+    thread** (2026-08-26/27, docs only, no code), which closes the six-module queue. The four LLDs it
+    produced — `platform-security`, `platform-tenancy`, the revised `platform-outbox`, and
+    `platform-entitlement` — sit beside it in `docs/architecture/`, and the parent spec they amend is
+    `specs/2026-08-26-shared-platform-modules-design.md`. **Read its §3 before anything else in this
+    area**: PF14/PF15 are about tenant isolation as it works on `main` today, not about the future
+    split.
 
 ## 3. Current state
 
