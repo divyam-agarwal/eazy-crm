@@ -16,9 +16,10 @@ rather than merely designed (§8).
 
 ## 0. Resuming? Start here
 
-**Nothing is in flight.** The `platform-primitives` slice ran to completion and **merged to `main`
-as `210545e`**; the feature branch is deleted. All code work is merged and the next session begins
-by choosing what to build — there is no half-finished task to rescue.
+**Nothing is in flight.** The `rls-force-and-guard` slice ran to completion and **merged to `main`
+as `3c239d1`** (commits `cfc8928`..`b8b2ecb`); the feature branch is deleted, as was
+`platform-primitives-module` before it (merged as `210545e`). All code work is merged and the next
+session begins by choosing what to build — there is no half-finished task to rescue.
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
    then `cd backend && ./gradlew clean test`. Expect **264 tests, 0 failures, 0 errors** — 241 in
@@ -155,8 +156,9 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: RLS forced on all fourteen tenant tables, with a layer-3 guard** —
-  branch `rls-force-and-guard`, closing **PF14 and PF15**. `V26__force_rls.sql` adds
+- **Latest code work: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
+  to `main` as `3c239d1`**. Branch `rls-force-and-guard`, commits `cfc8928`..`b8b2ecb` off `main`
+  at `455c237`, closing **PF14 and PF15**. `V26__force_rls.sql` adds
   `FORCE ROW LEVEL SECURITY` to every tenant table (previously all fourteen were `ENABLE`d and
   none forced, so the owner role bypassed every policy silently), and
   `RlsCoverageIntegrationTest` is the guard layer 3 never had: it reads `pg_class` for every
