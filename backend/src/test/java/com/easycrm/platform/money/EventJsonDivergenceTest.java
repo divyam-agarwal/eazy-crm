@@ -36,9 +36,17 @@ class EventJsonDivergenceTest extends IntegrationTest {
 
     @Test
     void theEventWireIsNotDownstreamOfApiShapingDecisions() {
-        // Whatever the application mapper is configured to do with nulls, the event wire keeps
-        // them. If someone sets spring.jackson.default-property-inclusion=non_null tomorrow, the
-        // app assertion below may change; the EventJson one must not.
+        // The application-mapper assertion is a CANARY, not an invariant: it records what Boot
+        // does with nulls TODAY (writes them). The day someone sets
+        // spring.jackson.default-property-inclusion=non_null to slim an API response, this line
+        // will fail and need updating to match the new behaviour — that update is the moment a
+        // human must confirm the line below still holds, instead of finding out from a consumer.
+        assertThat(applicationMapper.writeValueAsString(SAMPLE)).contains("\"absent\":null");
+
+        // The EventJson assertion is the INVARIANT: whatever the application mapper is configured
+        // to do with nulls, the event wire keeps them, unconditionally. This line must never
+        // change no matter what happens to API shaping — that is the entire reason this class
+        // exists (see EventJson's class Javadoc).
         assertThat(EventJson.mapper().writeValueAsString(SAMPLE)).contains("\"absent\":null");
     }
 
