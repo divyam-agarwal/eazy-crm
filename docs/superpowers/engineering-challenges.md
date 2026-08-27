@@ -2110,6 +2110,83 @@ name a specific witness that can only originate from the source you care about.
 
 ---
 
+## Challenge 37 — The test harness structurally cannot reproduce the isolation failure it is guarding against
+
+**Phase:** Implementation
+
+### The problem
+
+Row-Level Security was `ENABLE`d on all fourteen tenant tables and `FORCE`d on none.
+`ENABLE` does not bind a table's **owner**: PostgreSQL exempts the owner from its own
+policies unless the table is additionally forced. So layer 3 of the four-layer
+isolation was, in practice, resting on layer 3.5 — the fact that the application
+happens to connect as the non-owner `easycrm_app` role. One deployment, one set of
+credentials, and it holds. Issue any second process the owner role and tenant
+isolation disappears with no error, no log line and no failing test.
+
+The `ALTER TABLE ... FORCE` is trivial. The hard part is the guard that stops the
+next table from shipping half-installed, and the guard ran straight into a wall:
+**the failure cannot be reproduced in the test harness at all.** Testcontainers
+creates the container's user (here `owner`) as a PostgreSQL **superuser**, and
+superusers ignore `FORCE ROW LEVEL SECURITY` unconditionally — it is not a policy
+decision, it is a privilege check that never runs. A behavioural test of the form
+"connect as owner, expect zero cross-tenant rows" therefore fails **before** the fix
+and fails **after** it, for a reason that has nothing to do with the fix. There is no
+arrangement of `SET ROLE` that rescues it either: `FORCE` is evaluated against the
+table's owner, and the tables are owned by the superuser that ran Flyway.
+
+The deeper trap is that this is invisible unless you go looking. Write the obvious
+behavioural test, watch it fail, and the natural conclusion is "the migration didn't
+work" — when in fact the migration is correct and the harness is lying.
+
+### The solution
+
+Assert the **catalog**, not the behaviour, and then prove the assertion can fail.
+
+`RlsCoverageIntegrationTest` asks `pg_class` for every base table in `public` carrying
+a live `tenant_id` column and requires three facts of each: `relrowsecurity`,
+`relforcerowsecurity`, and at least one row in `pg_policy`. The trigger is the
+**column**, not the `@TenantId` annotation, which is what makes it a genuine layer-3
+guard rather than a second reading of layer 2 — the exact gap being closed is a table
+that has the annotation and lacks the SQL. Violations accumulate into one message that
+names each offending table and the statement that fixes it, so a future failure reads
+as an instruction instead of `expected true, was false`.
+
+A catalog assertion buys correctness at the cost of falsifiability: a query that
+silently matched nothing would pass forever. Two things keep it honest. A witness
+assertion requires `product` — a table present since V9 — to appear in the result set,
+distinguishing "everything passed" from "nothing was checked". And a second test
+creates a throwaway `rls_guard_probe(tenant_id uuid)` with no RLS at all, runs the
+guard's own query against it, and asserts all three checks trip. That one needs DDL,
+which the app role cannot do (`USAGE` on the schema, no `CREATE`), so `IntegrationTest`
+grew an `ownerConnection()` helper rather than leaking the container credentials to
+callers.
+
+The allowlist deliberately mirrors `TenantScopingArchTest.GLOBAL_TABLES` name for name.
+`refresh_token` and `share_link` both carry a `tenant_id` and both are pre-auth tables
+that resolve a tenant rather than being scoped by one; `tenant` needs no exemption at
+all, because it has no such column and the query never sees it. A third assertion
+fails if an allowlisted table stops existing, so a stale exemption surfaces instead of
+quietly exempting nothing.
+
+### Lesson
+
+Before writing a security test, ask what privilege the **test harness** runs with —
+convenience defaults in test infrastructure are chosen to make setup easy, and "easy"
+usually means "privileged". Testcontainers' superuser, an in-memory database with no
+role system, a test fixture wired to an admin API key: each of them silently exempts
+the code under test from the exact mechanism being verified. The test does not fail
+loudly; it becomes unfalsifiable, in whichever direction its assertion happens to point.
+
+When the mechanism genuinely cannot be exercised, asserting on declared state is a
+legitimate substitute — but only if you separately prove the assertion can go red.
+State assertions fail open by nature: a query matching zero rows and a system that is
+perfectly configured are indistinguishable in the passing case. Pair every one with a
+deliberately broken input (here, a probe table) or a named witness that must appear.
+Both were cheap; without them the guard would have been decoration.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

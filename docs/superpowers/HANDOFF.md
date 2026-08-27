@@ -1,12 +1,15 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-27 — **the first code change since `8b6644b`.** `platform-primitives` has
-been extracted into its own Gradle module, so **the build is no longer one project under `backend/`**:
-it is `backend` plus `backend/platform/platform-primitives`, and every test-counting and
-test-filtering habit in this document changed with it (§0 item 1). Three design-only threads still
-sit under `docs/architecture/` — the AWS re-platform, the platform-module/service-split thread that
-continues it, and the four remaining module LLDs that close its queue (§0 item 3) — and the first of
-the six modules those LLDs describe is now built rather than merely designed (§8).
+**Last updated:** 2026-08-27 — **RLS is now `FORCE`d on all fourteen tenant tables, and layer 3
+has a guard.** That closes PF14 and PF15, the two findings §8 flagged as describing a real isolation
+gap in code that was running; PF19 is the one that remains. Earlier the same day,
+`platform-primitives` was extracted into its own Gradle module, so **the build is no longer one
+project under `backend/`**: it is `backend` plus `backend/platform/platform-primitives`, and every
+test-counting and test-filtering habit in this document changed with it (§0 item 1). Three
+design-only threads still sit under `docs/architecture/` — the AWS re-platform, the
+platform-module/service-split thread that continues it, and the four remaining module LLDs that
+close its queue (§0 item 3) — and the first of the six modules those LLDs describe is now built
+rather than merely designed (§8).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
@@ -18,7 +21,7 @@ as `210545e`**; the feature branch is deleted. All code work is merged and the n
 by choosing what to build — there is no half-finished task to rescue.
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. Expect **262 tests, 0 failures, 0 errors** — 239 in
+   then `cd backend && ./gradlew clean test`. Expect **264 tests, 0 failures, 0 errors** — 241 in
    the root project and 23 in `platform-primitives`. Gradle prints no total for a multi-project
    build, so count it yourself:
 
@@ -152,7 +155,21 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: `platform-primitives` extracted into its own Gradle module** — **merged to
+- **Latest code work: RLS forced on all fourteen tenant tables, with a layer-3 guard** —
+  branch `rls-force-and-guard`, closing **PF14 and PF15**. `V26__force_rls.sql` adds
+  `FORCE ROW LEVEL SECURITY` to every tenant table (previously all fourteen were `ENABLE`d and
+  none forced, so the owner role bypassed every policy silently), and
+  `RlsCoverageIntegrationTest` is the guard layer 3 never had: it reads `pg_class` for every
+  table carrying a `tenant_id` column and requires RLS enabled, forced and policied, allowlisting
+  `refresh_token` and `share_link` in step with `TenantScopingArchTest.GLOBAL_TABLES`. A second
+  test creates an un-forced probe table and asserts the guard trips on it — necessary because
+  **Testcontainers' owner user is a superuser, so the failure being defended against cannot be
+  reproduced behaviourally in this harness at all** (challenge #37). Forcing was behaviourally
+  inert: no migration does DML and no test writes as owner. **264 tests, 0 failures, 0 errors.**
+  Note this closes the gap *in the schema* — a deployment must still connect as `easycrm_app`;
+  forcing removes the silent-failure mode, not the requirement.
+
+- **Previous code work: `platform-primitives` extracted into its own Gradle module** — **merged to
   `main` as `210545e`**. Branch `platform-primitives-module`, eight tasks, commits
   `4d43d75`..`6c255d4` off `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took
   one fix round; Task 7 returned zero findings at any severity), and the whole-branch review found
@@ -330,7 +347,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 262 tests run in ~12s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 264 tests run in ~12s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -390,17 +407,19 @@ having built one module makes the queue urgent — read the next paragraph befor
 
 **What still outranks the module queue.** The platform-LLD thread's own handoff
 (`../architecture/2026-08-27-platform-llds-handoff.md` §3) records three findings that describe
-code running **today**, not the future split, and building module 1 changed none of them:
+code running **today**, not the future split. **Two of the three are now closed** — the
+`rls-force-and-guard` slice took PF14 and PF15 (§3); PF19 remains open:
 
-- **PF14** — Row-Level Security is `ENABLE`d on all fourteen tables and **`FORCE`d on none**. In
-  Postgres a table's owner is exempt from its own policies unless the table is forced, so layer 3
-  of the four-layer isolation currently rests entirely on the application connecting as the
-  non-owner `easycrm_app`. Safe with one deployment; with five services holding five sets of
-  credentials, one service issued the owner role loses tenant isolation **silently** — no error, no
-  log, no failing test. That handoff calls it the most serious finding in any of the four LLDs.
-- **PF15** — **ArchUnit guards layer 2; nothing guards layer 3.** A new table that declares
-  `@TenantId` and omits its two RLS lines passes the entire suite, because Hibernate filters it and
-  behaviour looks correct — and ships with one of the four isolation layers simply absent.
+- ~~**PF14** — RLS `ENABLE`d on all fourteen tables and `FORCE`d on none.~~ **DONE** —
+  `V26__force_rls.sql` forces all fourteen. Read the caveat in §3: this removes the *silent*
+  failure mode, but a deployment still has to connect as `easycrm_app` for layers 3 to do
+  anything; forcing means a wrong role now fails loudly instead of leaking quietly.
+- ~~**PF15** — ArchUnit guards layer 2; nothing guards layer 3.~~ **DONE** —
+  `RlsCoverageIntegrationTest` is the layer-3 twin, keyed on the `tenant_id` **column** rather
+  than the `@TenantId` annotation (which is what makes it a real second layer and not a re-read of
+  the first). Its allowlist must be extended in step with `TenantScopingArchTest.GLOBAL_TABLES`.
+  One residual gap, noted rather than fixed: the guard keys on a column *named* `tenant_id`, so a
+  tenant table naming it something else would slip past. Nothing in the repo does that today.
 - **PF19** — the entitlement metric set does not respect the create/read boundary, and
   `/public/q/{token}` renders a PDF with no JWT, so there is structurally nowhere to put an
   entitlement check on the app's most expensive uncapped operation.
@@ -408,12 +427,13 @@ code running **today**, not the future split, and building module 1 changed none
 **PF19 is also a second, independent argument for #3's rate-limiting half** — arriving from
 billing/COGS rather than from security, which is what makes it worth weighing.
 
-**Suggested default:** no single obvious next step this time. **#1 (activity/follow-up)** is the
-next spec-scoped product surface; **#3's rate-limiting half** now has two independent arguments
-behind it (the only unauthenticated route in the app is uncapped, and PF19 says it is also the most
-expensive metered one); and **PF14/PF15** are the two items that describe a real isolation gap in
-code that is running. `platform-web` is the next module by dependency order, but "next in the queue"
-is the weakest of these claims. Confirm with the user rather than assuming.
+**Suggested default:** with PF14/PF15 closed, the field narrows to two real contenders.
+**#3's rate-limiting half** has two independent arguments behind it (the only unauthenticated route
+in the app is uncapped, and PF19 says it is also the most expensive metered one), and it is the
+natural continuation of the hardening thread the RLS slice started. **#1 (activity/follow-up)** is
+the next spec-scoped product surface, and the right pick if product progress outranks hardening.
+`platform-web` is next by dependency order, but "next in the queue" remains the weakest of these
+claims. Confirm with the user rather than assuming.
 
 ### Smaller deferred-Minor backlog
 
