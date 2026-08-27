@@ -13,15 +13,12 @@ the six modules those LLDs describe is now built rather than merely designed (§
 
 ## 0. Resuming? Start here
 
-**Nothing is half-finished.** The `platform-primitives` slice ran to completion — all eight tasks
-built, reviewed and committed on branch `platform-primitives-module` (`4d43d75`..the docs commit),
-suite green. If `git branch --show-current` says `main`, it merged; if it still says
-`platform-primitives-module`, the only thing outstanding is integrating the branch
-(**superpowers:finishing-a-development-branch**), not writing code. Either way the next session
-begins by choosing what to build.
+**Nothing is in flight.** The `platform-primitives` slice ran to completion and **merged to `main`
+as `210545e`**; the feature branch is deleted. All code work is merged and the next session begins
+by choosing what to build — there is no half-finished task to rescue.
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. Expect **260 tests, 0 failures, 0 errors** — 237 in
+   then `cd backend && ./gradlew clean test`. Expect **262 tests, 0 failures, 0 errors** — 239 in
    the root project and 23 in `platform-primitives`. Gradle prints no total for a multi-project
    build, so count it yourself:
 
@@ -155,13 +152,14 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: `platform-primitives` extracted into its own Gradle module** — branch
-  `platform-primitives-module`, eight tasks, commits `4d43d75`..`0ffc68c` plus this docs commit, off
-  `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took one fix round; Task 7
-  returned zero findings at any severity). **260 tests, 0 failures, 0 errors** from a clean build —
-  237 in the root project, 23 in the new module — up from the 231-test PDF/share baseline (+29).
-  *If this branch has not been merged when you read this, integrating it is the one outstanding
-  action; see §0.*
+- **Latest code work: `platform-primitives` extracted into its own Gradle module** — **merged to
+  `main` as `210545e`**. Branch `platform-primitives-module`, eight tasks, commits
+  `4d43d75`..`6c255d4` off `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took
+  one fix round; Task 7 returned zero findings at any severity), and the whole-branch review found
+  one more: the MF1 fix had made seller GSTIN *validation* symmetric with the buyer path but not
+  *normalisation*, so a lowercase GSTIN was stored lowercase and printed that way on every PDF
+  letterhead. Fixed in `6c255d4`. **262 tests, 0 failures, 0 errors** from a clean build — 239 in
+  the root project, 23 in the new module — up from the 231-test PDF/share baseline (+31).
 
   **What it delivered.** `backend/platform/platform-primitives`, a plain `java-library` jar with
   **no runtime Spring dependency at all** (Spring is `compileOnly`), holding every zero-dependency
@@ -225,7 +223,7 @@ All under `docs/superpowers/`:
   + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`) +
   **enquiry→quotation conversion** (merge commit `06e6014`) + **sales hardening** (merge commit
   `abc2bd3`) + **order lifecycle** (merge commit `8247579`).
-- **Last feature slice merged to `main`: quotation PDF + `wa.me` share** (merge commit `8b6644b`). **231 tests was the baseline at that time; it is 260 now** — see the `platform-primitives` bullet above. 10 tasks
+- **Last feature slice merged to `main`: quotation PDF + `wa.me` share** (merge commit `8b6644b`). **231 tests was the baseline at that time; it is 262 now** — see the `platform-primitives` bullet above. 10 tasks
   (PDF engine spike + determinism, Indian digit-grouping money
   formatting, seller-profile columns on `Tenant`, a Thymeleaf quotation template, the
   authenticated PDF render endpoint, the global `share_link` table, the idempotent share
@@ -268,7 +266,7 @@ All under `docs/superpowers/`:
 Read it before extending any of the areas it describes, so you don't rebuild something that
 exists or assume something that doesn't.
 
-**The quotation PDF/share slice is DONE and merged to `main` (`8b6644b`).** Every test count in this subsection is the count *at that time*; the current baseline is 260. 10
+**The quotation PDF/share slice is DONE and merged to `main` (`8b6644b`).** Every test count in this subsection is the count *at that time*; the current baseline is 262. 10
 tasks, every review clean: (1) a PDF-engine spike proving openhtmltopdf 1.0.10 renders on JDK 25
 and can be made byte-deterministic (challenge #28 — a PDFBox writer branch silently ignores
 `setDocumentId()` when the trailer already carries an inherited `/ID`); (2) Indian digit-grouping
@@ -332,7 +330,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 260 tests run in ~12s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 262 tests run in ~12s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it

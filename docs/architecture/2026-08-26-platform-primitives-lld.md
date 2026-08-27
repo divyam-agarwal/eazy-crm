@@ -1,13 +1,12 @@
 # `platform-primitives` — Low-Level Design
 
 **Date:** 2026-08-26 (implementation status updated 2026-08-27)
-**Status:** **IMPLEMENTED.** Built on branch `platform-primitives-module` as commits
-`4d43d75`..`0ffc68c` (nine commits: seven task commits plus two review-fix commits — the eighth
-task commit, `d6a0859`, the docs wrap-up, falls outside this range), verified at **260 tests, 0
-failures, 0 errors** across both Gradle projects. Design-time status was "Design only; zero code
-changed" at baseline `80e74a3`; the branch was cut from `main` at `ac4eaca`. **The merge commit is
-not recorded here because the branch had not been integrated when this line was written** — fill it
-in when it lands rather than assuming one exists.
+**Status:** **IMPLEMENTED AND MERGED** to `main` as merge commit `210545e`. Built on branch
+`platform-primitives-module` as commits `4d43d75`..`6c255d4` — eleven commits: eight task commits,
+two task-review fix commits, and one final whole-branch-review fix commit — verified at **262 tests,
+0 failures, 0 errors** across both Gradle projects, re-run on the merged result. Design-time status
+was "Design only; zero code changed" at baseline `80e74a3`; the branch was cut from `main` at
+`ac4eaca`.
 **Code baseline:** `80e74a3` (design); `ac4eaca` (implementation branch point)
 **Parent:** [`../superpowers/specs/2026-08-26-shared-platform-modules-design.md`](../superpowers/specs/2026-08-26-shared-platform-modules-design.md)
 **Sibling:** [`2026-08-19-outbox-lld.md`](2026-08-19-outbox-lld.md) — the module that consumes this one
@@ -413,7 +412,7 @@ not exist when this document was written.
 
 | # | Finding | Severity / status after implementation |
 |---|---|---|
-| **MF1** | **The seller's GSTIN is never validated, and the seller's state code is validated only as "two digits."** `SignupRequest` declares `@Pattern("\\d{2}")` on `stateCode` and a bare `String gstin` — no `Gstin.parse`, no `StateCode.requireValid`. A buyer's GSTIN goes through both in `CustomerService`. The asymmetry matters because `QuotationService.isInterState` compares `tenant.getStateCode()` against the customer's to choose **CGST+SGST vs IGST**, so an invalid seller state code silently decides the tax split of every quotation the tenant ever issues, and the unvalidated seller GSTIN prints on every PDF | **Live bug.** **FIXED (Task 7, commit `0ffc68c`).** `AuthService.signup` now runs `Gstin.parse` on a supplied seller GSTIN, requires the derived state to equal the declared `stateCode`, and runs `StateCode.requireValid(stateCode)` unconditionally — four new tests. Logged as challenge #34 |
+| **MF1** | **The seller's GSTIN is never validated, and the seller's state code is validated only as "two digits."** `SignupRequest` declares `@Pattern("\\d{2}")` on `stateCode` and a bare `String gstin` — no `Gstin.parse`, no `StateCode.requireValid`. A buyer's GSTIN goes through both in `CustomerService`. The asymmetry matters because `QuotationService.isInterState` compares `tenant.getStateCode()` against the customer's to choose **CGST+SGST vs IGST**, so an invalid seller state code silently decides the tax split of every quotation the tenant ever issues, and the unvalidated seller GSTIN prints on every PDF | **Live bug.** **FIXED, in two parts.** Task 7 (`0ffc68c`) made *validation* symmetric: `AuthService.signup` runs `Gstin.parse` on a supplied seller GSTIN, requires the derived state to equal the declared `stateCode`, and runs `StateCode.requireValid(stateCode)` unconditionally — four new tests. The whole-branch review then found *normalisation* still asymmetric — `CustomerService` persists `g.value()` while signup persisted the raw request string, so `27aapfu0939f1zv` was stored lowercase and printed that way on every PDF letterhead, and a copy-paste-padded 17-char GSTIN surfaced as a spurious 409 from the `VARCHAR(15)` constraint rather than a 422 naming the field. Closed in `6c255d4` by persisting `parsed.value()`, with two more tests. Logged as challenge #34. **The lesson is the two-part shape itself: making two paths agree on whether a value is *valid* does not make them agree on what they *store*.** |
 | **MF2** | Folding `StateCode.requireValid` into `Gstin.parse` (2.4) is correct going forward but says nothing about rows already stored. Whether any existing `customer.gstin` or `tenant.gstin` has an invalid state prefix is unknown | **CLOSED for now (Task 7).** The audit was run and there was nothing to audit: **no `easycrm` database exists anywhere in this development environment** (nothing publishes 5432 but an unrelated `langfuse-postgres-1` container; every integration test uses a throwaway Testcontainers instance). No migration was written. This closes the question *for this environment only* — it is not evidence that no such row exists anywhere. The audit query is preserved in the plan and in Task 7's brief so nobody re-derives it: **re-run it against any environment that has persisted data, and before the first production deployment.** "There is no data yet" is a property of today, not a resolution |
 | **MF3** | `platform-web` must now depend on `platform-primitives`, which the parent spec's graph does not show. The parent's Part 1 diagram and per-service matrix need the edge added | **DONE.** Verified 2026-08-27 against the parent spec: the Part 1 diagram already draws `platform-entitlement → platform-web → platform-primitives`, and the module table's `platform-primitives` row reads "all 5 services + `platform-outbox` + `platform-web`". No further edit needed |
 | **MF4** | `MoneyWireFormatTest` is the only proof the Jackson module is wired, and it asserts through the product endpoint — so deleting or refactoring `ProductController` would silently remove the tripwire for MB1 | **RECORDED IN THE TEST (Task 2).** The dependency is now stated in `MoneyWireFormatTest` itself rather than only here — the second option, taken deliberately: a dedicated endpoint would be a *new* surface asserting the wiring, whereas the value of this test is that it goes through a real controller. `MoneyModuleWiringTest` (Task 2) is now a second, endpoint-independent proof of the same wiring, so deleting `ProductController` no longer removes the only tripwire |
@@ -531,7 +530,7 @@ genuinely doing the work for money, and nothing else on the wire is being string
 back.
 
 The suite corroborates this — `PageResponse.totalElements` and `QuotationVersion.versionNo` are
-asserted as JSON numbers (`jsonPath("$.totalElements").value(1)`) across seven test classes and all 260
+asserted as JSON numbers (`jsonPath("$.totalElements").value(1)`) across seven test classes and all 262
 tests pass — but **that corroboration is weaker than it looks and should not be relied on alone.**
 Spring's `JsonPathExpectationsHelper` re-evaluates the path using the *expected* value's type when
 the actual type differs, so `.value(1)` against a JSON `"1"` can coerce and pass. This is the same
