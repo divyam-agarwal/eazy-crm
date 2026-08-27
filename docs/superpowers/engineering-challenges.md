@@ -1742,6 +1742,76 @@ than a web search would have taken.
 
 ---
 
+## Challenge 33 — `noClasses().should(customCondition)` inverts the condition's own events
+
+**Phase:** Implementation (Task 5, ArchUnit rules R1/R2)
+
+### The problem
+
+R1's brief (verbatim) wrote a hand-rolled `ArchCondition<JavaClass>` that calls
+`events.add(SimpleConditionEvent.violated(item, ...))` for a class that
+constructs a JSON mapper, and wired it up as
+`noClasses().that().resideOutsideOfPackage("com.easycrm.platform.money..").should(constructAJsonMapper())`.
+It compiled cleanly, and — this is the trap — it *passed* on the first run,
+exactly as the brief predicted "both rules will pass on their very first run."
+The brief's own required step (Step 6: deliberately add a `JsonMapper.builder()`
+call to `CustomerService` and confirm the rule fails) is what caught it: the
+rule stayed green with the violation sitting right there in the source. A rule
+that cannot fail is indistinguishable from one that imports zero classes — the
+exact ArchUnit 1.3.0/Java 25 failure mode this whole task exists to guard
+against — except this time the vacuousness was in the condition's polarity, not
+the class import.
+
+### Why it's hard
+
+The built-in DSL conditions (`.should().dependOnClassesThat().resideInAnyPackage(...)`,
+used by R2) work correctly under both `classes()` and `noClasses()` without the
+author ever thinking about polarity, which trains the reasonable expectation
+that a hand-rolled `ArchCondition` will too. It doesn't. Decompiling
+`SimpleConditionEvent` (`javap -p -c`, no source jar available) shows the actual
+mechanism: `noClasses().should(condition)` evaluates by calling `.invert()` on
+every `ConditionEvent` the condition emits before deciding what counts as a
+rule violation — `invert()` just flips the `conditionSatisfied` boolean and
+keeps the same message. Emitting `violated(item, ...)` for the offending class,
+the natural-reading choice ("this thing happened, and it's bad — call it a
+violation"), gets flipped by that inversion into a *satisfied* event, and the
+rule reports no failure — for every class, regardless of what it does. This was
+confirmed empirically by evaluating four variants side by side: `classes().should(condition)`
+with `violated()` correctly named both offending classes; `noClasses().should(condition)`
+with `violated()` reported zero violations against the identical import; and
+`noClasses().should(condition)` with `satisfied()` correctly named only the one
+class outside `platform.money`. The fix is counter-intuitive by name — the
+"bad" case is reported via `SimpleConditionEvent.satisfied(...)`, not
+`.violated(...)` — precisely because `noClasses()` is going to invert it back.
+
+### The solution
+
+`PlatformPrimitivesArchTest.constructAJsonMapper()` emits
+`SimpleConditionEvent.satisfied(item, call.getDescription())` for both the
+method-call and constructor-call branches, with a comment at the call site and
+a class-level Javadoc paragraph explaining the inversion so a future reader
+doesn't "fix" it back to `violated()`. R2 was unaffected — both of its rules are
+built entirely from the fluent DSL (`noClasses().should().dependOnClassesThat()...`),
+which is why its Step 3 deliberate-violation check failed correctly on the
+first attempt with the brief's code exactly as given.
+
+### Lesson
+
+A hand-rolled `ArchCondition` combined with `noClasses()` does not mean "no
+class should satisfy this predicate" in the way `violated()`/`satisfied()`
+naming suggests — `noClasses()` inverts whatever the condition emits, so the
+condition must be written already accounting for that inversion, event by
+event. This is invisible from reading the DSL call site and only shows up at
+runtime, which is exactly why the brief's Step 6 ("prove R1 can fail") is not
+optional ceremony: it is the only thing that would have caught this before
+trusting the rule. The general lesson generalizes past ArchUnit — any
+API that lets you plug a custom predicate/condition into a "positive" and a
+"negated" entry point should be treated as two different contracts until
+proven otherwise by making the negated one fail on a known-bad input, not
+assumed identical by symmetry of the surrounding DSL.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
