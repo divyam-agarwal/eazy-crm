@@ -1,23 +1,46 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-27 (no code change since `8b6644b`. **Three** design-only threads have now
-landed under `docs/architecture/`: the AWS re-platform, the platform-module/service-split thread that
-continues it, and the four remaining module LLDs that close its queue — see §0 item 3. The four
-long-untracked `docs/architecture/` docs are now **committed** (`a76e563`, `e9bbd81`); the tree is
-clean apart from two modified files described in §3).
+**Last updated:** 2026-08-27 — **the first code change since `8b6644b`.** `platform-primitives` has
+been extracted into its own Gradle module, so **the build is no longer one project under `backend/`**:
+it is `backend` plus `backend/platform/platform-primitives`, and every test-counting and
+test-filtering habit in this document changed with it (§0 item 1). Three design-only threads still
+sit under `docs/architecture/` — the AWS re-platform, the platform-module/service-split thread that
+continues it, and the four remaining module LLDs that close its queue (§0 item 3) — and the first of
+the six modules those LLDs describe is now built rather than merely designed (§8).
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-**Nothing is in flight.** All code work is merged and the next session begins by choosing what to
-build — there is no half-finished task to rescue. Two tracked docs carry uncommitted edits that came
-from no recorded thread (§3); nothing else is outstanding.
+**Nothing is half-finished.** The `platform-primitives` slice ran to completion — all eight tasks
+built, reviewed and committed on branch `platform-primitives-module` (`4d43d75`..the docs commit),
+suite green. If `git branch --show-current` says `main`, it merged; if it still says
+`platform-primitives-module`, the only thing outstanding is integrating the branch
+(**superpowers:finishing-a-development-branch**), not writing code. Either way the next session
+begins by choosing what to build.
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. Expect **231 tests, 0 failures**. If that number
-   differs, stop and reconcile before writing code — everything below assumes it.
+   then `cd backend && ./gradlew clean test`. Expect **260 tests, 0 failures, 0 errors** — 237 in
+   the root project and 23 in `platform-primitives`. Gradle prints no total for a multi-project
+   build, so count it yourself:
+
+   ```bash
+   cd backend && ./gradlew clean test
+   find . -path '*/build/test-results/test/*.xml' -exec grep -ho 'tests="[0-9]*"' {} + \
+     | sed 's/[^0-9]//g' | awk '{s+=$1} END {print "tests:", s}'
+   find . -path '*/build/test-results/test/*.xml' -exec grep -ho 'failures="[0-9]*"' {} + \
+     | sed 's/[^0-9]//g' | awk '{s+=$1} END {print "failures:", s}'
+   ```
+
+   If that number differs, stop and reconcile before writing code — everything below assumes it.
+
+   **A filtered run must now be project-qualified.** Unqualified `./gradlew clean test` deliberately
+   spans both projects, but `./gradlew test --tests '<filter>'` applies the filter to *every*
+   project and then **fails on whichever project has no match**. Use `./gradlew :test --tests '…'`
+   for a root-project test and `./gradlew :platform:platform-primitives:test --tests '…'` for a
+   module test. This tripped an implementer on the branch that introduced the split; it will trip
+   you too if you copy a `--tests` command out of any pre-2026-08-27 doc.
 2. **Read §1** (what this product is) and **§7** (non-negotiable working agreements). For a
    whole-system orientation in one sitting — every module, endpoint, state machine and data flow
    that exists today — read `docs/architecture/2026-07-29-current-architecture.md` instead of
@@ -28,10 +51,14 @@ from no recorded thread (§3); nothing else is outstanding.
    `../architecture/2026-08-26-platform-modules-handoff.md` to
    `../architecture/2026-08-20-aws-redesign-handoff.md`. All three are design-only (no code was
    written in any of them), and each carries its own decisions, findings and ordering. **All six
-   platform modules now have a low-level design; no implementation plan exists for any of them.**
+   platform modules now have a low-level design.** Those handoffs say no implementation plan exists
+   for any of them; as of 2026-08-27 that is half false — **module 1, `platform-primitives`, has a
+   plan (`plans/2026-08-27-platform-primitives-module.md`) and is built** (§8). The other five are
+   still design only.
    Read that handoff's §3 before planning anything: three findings there outrank the module work,
    and two of them describe code running today — RLS is `ENABLE`d and never `FORCE`d, so tenant
-   isolation currently rests on which database role a deployment happens to connect with.
+   isolation currently rests on which database role a deployment happens to connect with. Building
+   one module did not change that ordering.
 4. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
 5. Then run the standard workflow on a feature branch off `main`:
    **brainstorming → (design spec →) writing-plans → subagent-driven-development →
@@ -70,7 +97,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (30 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (36 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -112,26 +139,85 @@ All under `docs/superpowers/`:
     area**: PF14/PF15 are about tenant isolation as it works on `main` today, not about the future
     split.
 
+**The first module built from that LLD queue** — the only entries below that changed code:
+
+27. **`../architecture/2026-08-26-platform-primitives-lld.md`** — LLD #1 of 6, and the only one that
+    is **IMPLEMENTED**. Read its **Appendix B** rather than re-deriving it: it now carries the
+    verified answers (the Boot 4 Jackson auto-config artifact, how a `JacksonModule` bean is
+    discovered, which of `EventJson`'s pinned settings actually change behaviour today, whether
+    ArchUnit can express R1, the `WRITE_NUMBERS_AS_STRINGS` default, and what `api(...)` on
+    jackson-databind actually pulls in). Its Appendix A now carries the outcome of MF1–MF6 plus four
+    new findings MF7–MF10, and a new Appendix C lists what the implementation added that the design
+    did not specify.
+28. **`plans/2026-08-27-platform-primitives-module.md`** — the eight-task implementation plan for it
+    (**DONE** — see §3). Task 5's brief is the one worth reading even if you never touch this
+    module: its mandatory prove-it-can-fail step is the only reason challenge #33 was caught.
+
 ## 3. Current state
 
-- **Branch:** `main`. **No code has changed since `8b6644b`** (quotation PDF/share; feature branch
-  and its worktree deleted). All 10 tasks were reviewed clean, as was the whole-branch review.
-- **Design-only work since then:** 9 commits (`15e9818`…`5d6bfd7`) adding the AWS re-platform
-  design set. **Zero code, zero migrations, zero test impact — the 231-test baseline is untouched.**
-  See §2 item 25.
+- **Latest code work: `platform-primitives` extracted into its own Gradle module** — branch
+  `platform-primitives-module`, eight tasks, commits `4d43d75`..`0ffc68c` plus this docs commit, off
+  `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took one fix round; Task 7
+  returned zero findings at any severity). **260 tests, 0 failures, 0 errors** from a clean build —
+  237 in the root project, 23 in the new module — up from the 231-test PDF/share baseline (+29).
+  *If this branch has not been merged when you read this, integrating it is the one outstanding
+  action; see §0.*
+
+  **What it delivered.** `backend/platform/platform-primitives`, a plain `java-library` jar with
+  **no runtime Spring dependency at all** (Spring is `compileOnly`), holding every zero-dependency
+  primitive: the five exception *types* moved down out of `platform-web` (the handler stayed),
+  `BigDecimalStringModule`, `Gstin`, `StateCode`, and a new `EventJson`. Specifically:
+  - **The build is now two Gradle projects.** `settings.gradle.kts` includes
+    `:platform:platform-primitives`; the root project takes it as `implementation(project(...))`.
+    Ten files moved as pure renames, 0 lines changed. The Boot BOM is the single version source
+    in both projects; the Spring Boot Gradle plugin is deliberately *not* applied to the module.
+  - **`MoneyJacksonConfig` → `MoneyAutoConfiguration`**, registered through
+    `AutoConfiguration.imports` rather than component scan, so the money wire format reaches a
+    future `sales-svc` that scans from `com.easycrm.sales` and never sees `com.easycrm.platform`.
+    `MoneyModuleWiringTest` proves the `.imports` file was actually read, not merely that the bean
+    exists — the two are not the same thing (challenge #35).
+  - **`EventJson`** — a second, separately-built `JsonMapper` for anything persisted or published
+    (outbox JSONB, SNS, SQS), deliberately **not** the application `ObjectMapper`, so that slimming
+    an API response with `spring.jackson.default-property-inclusion=non_null` cannot silently start
+    dropping null fields from every event (challenge #32). Its settings are pinned explicitly even
+    where they match today's Jackson 3 defaults; the LLD's Appendix B item 3 says exactly which is
+    which, and the source says why they stay.
+  - **Two ArchUnit rules.** R1: nothing outside the module may construct a JSON mapper. R2: the
+    module may depend on nothing but `java..`, Jackson, its own packages, and `org.springframework..`
+    wholesale (the last because `MoneyAutoConfiguration` legitimately needs it, and the rule covers
+    every class in the module) — written as an allowlist closure, not an enumeration. The separate
+    `carriesNoRuntimeSpringDependency` test is what actually confines Spring usage to the
+    auto-configuration.
+  - **Two live-bug fixes on the way through.** `Gstin.parse` now validates the state prefix, not
+    just the checksum; and `AuthService.signup` now validates the *seller's* GSTIN and state code,
+    which it never did — an invalid seller state code silently decides CGST+SGST vs IGST on every
+    quotation that tenant ever issues (challenge #34, LLD finding MF1).
+  - **New challenges #32–#36**; new annotations-reference rows for `@AutoConfiguration` and
+    `@ConditionalOnClass`.
+
+  **Two things not to overstate.** `EventJsonDivergenceTest` found **no** divergence between the
+  application mapper and `EventJson` today — it is a tripwire for the future, most likely to fire
+  the day someone sets `spring.jackson.default-property-inclusion=non_null`, and it has caught
+  nothing. And this is **one module of six**: see §8 for why that does not make the module queue the
+  next thing to do.
+- **Prior branch:** `main` at `8b6644b` (quotation PDF/share; feature branch and its worktree
+  deleted). All 10 tasks were reviewed clean, as was the whole-branch review.
+- **Design-only work between them:** 9 commits (`15e9818`…`5d6bfd7`) adding the AWS re-platform
+  design set. **Zero code, zero migrations, zero test impact — the 231-test baseline was untouched
+  at that point.** See §2 item 25.
 - **`docs/architecture/` is now fully tracked.** The four docs left uncommitted since 2026-07-29 —
   the as-built and target architectures (§2 items 23–24) plus two interview briefs — were reviewed
-  and committed on 2026-08-27 as `a76e563` and `e9bbd81`. Docs only; the 231-test baseline is
-  untouched. **One caveat travels with them:**
+  and committed on 2026-08-27 as `a76e563` and `e9bbd81`. Docs only; the then-current 231-test
+  baseline was untouched. **One caveat travels with them:**
   `2026-08-05-interview-challenges-and-aws-kafka.md` walks the system as it would look with Kafka on
   Amazon MSK, and the later AWS design went the other way — D3 chose a transactional outbox into SNS
   FIFO and SQS FIFO, D4 rejected Kinesis and DMS CDC outright at this event rate. Keep it as
   interview prep; do not read it as a plan.
-- **Still uncommitted: two tracked files** —
+- **The two long-uncommitted tracked files are gone from the outstanding list.**
   `docs/architecture/2026-08-19-aws-target-architecture-design.md` and
-  `docs/superpowers/engineering-challenges.md` (the latter adding a challenge #31 on head-vs-tail
-  sampling). Neither came from any recorded thread, and three handoffs have now left them alone
-  deliberately. Review them before starting a slice.
+  `docs/superpowers/engineering-challenges.md` (challenge #31, head-vs-tail sampling) — flagged as
+  uncommitted by three successive handoffs — were reviewed and committed as `ac4eaca`, immediately
+  before the `platform-primitives` branch was cut from it. Nothing is uncommitted now.
 - **Merged & done on `main`:** the design docs (including the order-lifecycle slice's
   `specs/2026-07-28-order-lifecycle-design.md` `8a6c9dd` and `plans/2026-07-28-order-lifecycle.md`
   `8c0703f`, both committed directly) + **P0 tenant-isolation foundation** + **P0-auth core** +
@@ -139,7 +225,7 @@ All under `docs/superpowers/`:
   + **order + accept** (merge commit `ea11d3f`) + **enquiry** (merge commit `a68035d`) +
   **enquiry→quotation conversion** (merge commit `06e6014`) + **sales hardening** (merge commit
   `abc2bd3`) + **order lifecycle** (merge commit `8247579`).
-- **Latest merged: quotation PDF + `wa.me` share** (merge commit `8b6644b`). 10 tasks
+- **Last feature slice merged to `main`: quotation PDF + `wa.me` share** (merge commit `8b6644b`). **231 tests was the baseline at that time; it is 260 now** — see the `platform-primitives` bullet above. 10 tasks
   (PDF engine spike + determinism, Indian digit-grouping money
   formatting, seller-profile columns on `Tenant`, a Thymeleaf quotation template, the
   authenticated PDF render endpoint, the global `share_link` table, the idempotent share
@@ -182,7 +268,7 @@ All under `docs/superpowers/`:
 Read it before extending any of the areas it describes, so you don't rebuild something that
 exists or assume something that doesn't.
 
-**The quotation PDF/share slice is DONE and merged to `main` (`8b6644b`).** 10
+**The quotation PDF/share slice is DONE and merged to `main` (`8b6644b`).** Every test count in this subsection is the count *at that time*; the current baseline is 260. 10
 tasks, every review clean: (1) a PDF-engine spike proving openhtmltopdf 1.0.10 renders on JDK 25
 and can be made byte-deterministic (challenge #28 — a PDFBox writer branch silently ignores
 `setDocumentId()` when the trailer already carries an inherited `/ID`); (2) Indian digit-grouping
@@ -246,14 +332,21 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 231 tests run in ~12s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 260 tests run in ~12s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
+  `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
+  every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
+  with the `find`/`awk` snippet in §0 item 1. **A `--tests` filter must be project-qualified**
+  (`./gradlew :test --tests '…'` or `./gradlew :platform:platform-primitives:test --tests '…'`) —
+  unqualified, Gradle applies the filter to both projects and fails on the one with no match.
 - **Sandbox note:** in this harness, network + Docker operations may need the Bash tool's sandbox disabled (`dangerouslyDisableSandbox: true`). SDKMAN's reachability check is blocked by the sandbox even when network works.
 
 ## 6. Stack quirks already discovered (see challenges log for detail)
 
 This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
-- **Spring Boot 4 split auto-config into per-integration modules.** `flyway-core` alone doesn't bring `FlywayAutoConfiguration` → use `spring-boot-starter-flyway`. `@AutoConfigureMockMvc` moved to `org.springframework.boot.webmvc.test.autoconfigure` (module `spring-boot-webmvc-test`). `HibernatePropertiesCustomizer` moved to `org.springframework.boot.hibernate.autoconfigure`. **If an import "does not exist," search the resolved jars for the class's new package** rather than assuming the plan is wrong.
-- **ArchUnit 1.4.1** (not 1.3.0) — 1.3.0 silently skips Java 25 bytecode.
+- **Spring Boot 4 split auto-config into per-integration modules.** `flyway-core` alone doesn't bring `FlywayAutoConfiguration` → use `spring-boot-starter-flyway`. `@AutoConfigureMockMvc` moved to `org.springframework.boot.webmvc.test.autoconfigure` (module `spring-boot-webmvc-test`). `HibernatePropertiesCustomizer` moved to `org.springframework.boot.hibernate.autoconfigure`. Jackson's auto-configuration is `org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration` in artifact `spring-boot-jackson` (transitive via `spring-boot-starter-web`); `spring-boot-autoconfigure` remains the right `compileOnly` coordinate for `@AutoConfiguration`/`@ConditionalOnClass`. **If an import "does not exist," search the resolved jars for the class's new package** rather than assuming the plan is wrong.
+- **ArchUnit 1.4.1** (not 1.3.0) — 1.3.0 silently skips Java 25 bytecode. Two further traps, both hit in one afternoon and both producing a rule that passes while checking nothing: (a) **`noClasses().should(customCondition)` inverts every event the condition emits**, so a hand-rolled condition must emit `SimpleConditionEvent.satisfied(...)` for the case it forbids — challenge #33; (b) **`importPackages("com.easycrm")` now spans two build outputs**, since the `platform-primitives` jar shares the prefix, so an `isNotEmpty()` vacuity guard no longer proves the root project's own bytecode was read — challenge #36. **Never add an ArchUnit rule without deliberately introducing a violation and watching it fail.**
+- **Jackson 3 moved the date/timestamp serialization switches.** `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS` and `WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` **do not exist**; they are now on `tools.jackson.databind.cfg.DateTimeFeature` (a `DatatypeFeature`), reached via `disable(DatatypeFeature...)`. `JsonWriteFeature.WRITE_NUMBERS_AS_STRINGS` is **off** by default (verified directly against `jackson-core-3.1.4`), whatever secondary sources claim.
 - **Testcontainers BOM pinned to 1.21.3** (Boot 4 BOM doesn't manage those versions).
 - **RLS + custom GUC:** a referenced custom GUC resets to `''` not NULL, so policies use `NULLIF(current_setting('app.current_tenant', true), '')::uuid`. An RLS `USING` clause also acts as `WITH CHECK` for inserts.
 - **Two DB roles:** Flyway runs as the **owner** (Testcontainers superuser); the app connects as **`easycrm_app`** (non-owner, no BYPASSRLS) — this is what makes RLS real. `IntegrationTest` wires both datasources.
@@ -266,7 +359,7 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Log engineering challenges:** when a task surfaces a non-obvious problem, append to `engineering-challenges.md` (Problem → why hard → Solution → Lesson) in the same change.
 - **Keep the annotations reference current:** add a row when a new annotation appears.
 - **TDD:** failing test → run-to-confirm-fail → minimal code → run-to-pass → commit. One task per commit.
-- **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string.
+- **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string. **Since 2026-08-27** that class lives in the `platform-primitives` Gradle module (same package, `com.easycrm.platform.money`) and is registered by `MoneyAutoConfiguration` through `AutoConfiguration.imports`, not component scan. **The event wire is a separate mapper on purpose:** use `EventJson.mapper()` for anything persisted or published, and inject Boot's `ObjectMapper` for HTTP — an ArchUnit rule fails the build if you construct your own anywhere else (challenge #32).
 - **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces).
 
 ## 8. The next chunk — pick one with the user
@@ -290,10 +383,39 @@ the workflow from §0 step 4.
 4. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
    `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
 
-**Suggested default:** no single obvious next step this time — **#1 (activity/follow-up)** is the
-next spec-scoped product surface, but **#3's rate-limiting half** has gone from "on the backlog"
-to "the only unauthenticated route in the app is uncapped," which is a real argument for pulling
-it forward. Confirm with the user rather than assuming.
+**A fifth candidate now exists, and it is deliberately not in the numbered list above:
+continuing the platform-module track.** `platform-primitives` (LLD #1) is built; the next module by
+**dependency order** is `platform-web` (LLD #2,
+`docs/architecture/2026-08-26-platform-web-lld.md`), which now depends on `platform-primitives` for
+the exception types that sank into it. Dependency order is not priority order, and nothing about
+having built one module makes the queue urgent — read the next paragraph before proposing it.
+
+**What still outranks the module queue.** The platform-LLD thread's own handoff
+(`../architecture/2026-08-27-platform-llds-handoff.md` §3) records three findings that describe
+code running **today**, not the future split, and building module 1 changed none of them:
+
+- **PF14** — Row-Level Security is `ENABLE`d on all fourteen tables and **`FORCE`d on none**. In
+  Postgres a table's owner is exempt from its own policies unless the table is forced, so layer 3
+  of the four-layer isolation currently rests entirely on the application connecting as the
+  non-owner `easycrm_app`. Safe with one deployment; with five services holding five sets of
+  credentials, one service issued the owner role loses tenant isolation **silently** — no error, no
+  log, no failing test. That handoff calls it the most serious finding in any of the four LLDs.
+- **PF15** — **ArchUnit guards layer 2; nothing guards layer 3.** A new table that declares
+  `@TenantId` and omits its two RLS lines passes the entire suite, because Hibernate filters it and
+  behaviour looks correct — and ships with one of the four isolation layers simply absent.
+- **PF19** — the entitlement metric set does not respect the create/read boundary, and
+  `/public/q/{token}` renders a PDF with no JWT, so there is structurally nowhere to put an
+  entitlement check on the app's most expensive uncapped operation.
+
+**PF19 is also a second, independent argument for #3's rate-limiting half** — arriving from
+billing/COGS rather than from security, which is what makes it worth weighing.
+
+**Suggested default:** no single obvious next step this time. **#1 (activity/follow-up)** is the
+next spec-scoped product surface; **#3's rate-limiting half** now has two independent arguments
+behind it (the only unauthenticated route in the app is uncapped, and PF19 says it is also the most
+expensive metered one); and **PF14/PF15** are the two items that describe a real isolation gap in
+code that is running. `platform-web` is the next module by dependency order, but "next in the queue"
+is the weakest of these claims. Confirm with the user rather than assuming.
 
 ### Smaller deferred-Minor backlog
 

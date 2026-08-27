@@ -1644,6 +1644,472 @@ them wrong.
 
 ---
 
+## Challenge 32 — TB3: money crosses a second wire, and it must not share a mapper with the first
+
+**Phase:** Design & Implementation (`platform-primitives`, Task 4)
+
+### The problem
+
+Challenge #17 fixed money on the **HTTP** wire: a `BigDecimalStringModule`
+registered as a Spring bean, picked up by Boot's Jackson auto-configuration onto
+the one application `ObjectMapper`. That fix is invisible to a second wire that
+does not exist yet: the outbox `payload` JSONB column, published to SNS/SQS. TB3
+is what happens when a future outbox writer builds its own `ObjectMapper` ad hoc
+(`new ObjectMapper()` inside the writer, the obvious thing to type) — it does not
+carry `BigDecimalStringModule`, so money reaches SNS as an IEEE-754 double after
+the entire rest of the stack was built specifically to avoid that.
+
+The obvious fix — inject the application mapper into the outbox writer — is
+worse than the bug it fixes, and only fails months later. HTTP responses and
+event payloads are versioned by different owners on different cadences. The day
+someone sets `spring.jackson.default-property-inclusion=non_null` to slim an API
+response, every subsequent outbox event silently drops its null fields too,
+because it is the same mapper instance. A consumer reading that event later has
+no way to tell "field absent because the producer predates this field" from
+"field present and explicitly null" — exactly the ambiguity an additive-only
+contract exists to prevent. The bug is not in the code at the time it's
+introduced; it's in the coupling that makes an unrelated, reasonable-looking API
+change silently rewrite a wire contract that has to stay readable for years.
+
+### Why it's hard
+
+Two further things made this harder than "write a second `ObjectMapper`":
+
+1. **The fix has to be a separate, independently-owned object, not a shared one
+   behind a flag.** `rebuild()`-ing the application mapper with different
+   settings still carries the coupling one step later — it would still change
+   the instant Boot's defaults change underneath it. The only fix that actually
+   removes the dependency is a mapper built from `JsonMapper.builder()` with
+   every relevant setting stated explicitly, so a change to Boot's Jackson
+   configuration has no path to reach it at all.
+
+2. **Jackson 3 relocated the specific settings this contract depends on.**
+   `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS` and
+   `.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` — the Jackson-2-era spellings for
+   "timestamps as ISO-8601 strings, not epoch numbers" — no longer exist on
+   `SerializationFeature` in Jackson 3.1.4; `javap -p
+   tools/jackson/databind/SerializationFeature.class` lists 17 members and
+   neither is among them. Both moved to a new, java.time-specific enum,
+   `tools.jackson.databind.cfg.DateTimeFeature` (itself a `DatatypeFeature`,
+   configured via the builder's `disable(DatatypeFeature...)` overload rather
+   than `disable(SerializationFeature...)`). The bytecode for
+   `DateTimeFeature`'s static initializer also shows `WRITE_DATES_AS_TIMESTAMPS`
+   defaults to `false` and `WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` defaults to
+   `true` in Jackson 3 — so the ISO-8601 behaviour this contract needs is
+   already Jackson 3's default, which made it tempting to drop the calls
+   entirely. They stayed in, explicit, for the same reason the whole class
+   exists: a *future* Jackson or Boot default is exactly what this mapper must
+   not silently inherit.
+
+### The solution
+
+`EventJson` (`platform.money`) exposes one `public static JsonMapper mapper()`
+built once from `JsonMapper.builder()` with every setting stated: the same
+`BigDecimalStringModule` as the HTTP wire (challenge #17, so the one property
+that must never diverge doesn't), `DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS`
+and `.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` disabled explicitly,
+`changeDefaultPropertyInclusion(...Include.ALWAYS)` so nulls are always written,
+and `DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES` disabled so a newer
+producer's additive field doesn't break an older consumer. Jackson 3 mappers are
+immutable and thread-safe post-`build()`, so a single `static final` instance is
+correct — no synchronization, no per-call construction.
+
+The design's own open question — "does `JsonMapper.builder()`'s defaults
+actually differ from what Boot configures?" — was answered with a test instead
+of prose (`EventJsonDivergenceTest`, root project, the only place a
+Boot-configured application `ObjectMapper` exists to compare against). All three
+assertions passed unchanged: on this codebase, today, the two mappers already
+agree that money is a string and timestamps are ISO-8601, and only diverge (by
+design) on whether `EventJson` keeps nulls regardless of what
+`default-property-inclusion` becomes. Written as an executable test rather than
+a comment, a future change to Boot's Jackson configuration that quietly closes
+that gap turns the test red instead of leaving the LLD's claim stale.
+
+### Lesson
+
+When two consumers of the same value have different owners and different
+change cadences, giving them a shared configurable object — even one that
+starts out behaving identically — reintroduces the coupling you built the
+second object to remove; the divergence only shows up later, as a silent
+side effect of an unrelated, well-intentioned change. And a "the brief's builder
+spelling might be wrong" warning is worth taking literally against a major
+version bump: Jackson 3 didn't just rename `com.fasterxml.jackson.*` to
+`tools.jackson.*` (challenge #10) — it also moved specific enum constants
+(`SerializationFeature` → `DateTimeFeature`) to a differently-typed sibling enum,
+which no amount of guessing the new package name would have caught. `javap` on
+the resolved jar found both the real location and its default, in less time
+than a web search would have taken.
+
+---
+
+## Challenge 33 — `noClasses().should(customCondition)` inverts the condition's own events
+
+**Phase:** Implementation (Task 5, ArchUnit rules R1/R2)
+
+### The problem
+
+R1's brief (verbatim) wrote a hand-rolled `ArchCondition<JavaClass>` that calls
+`events.add(SimpleConditionEvent.violated(item, ...))` for a class that
+constructs a JSON mapper, and wired it up as
+`noClasses().that().resideOutsideOfPackage("com.easycrm.platform.money..").should(constructAJsonMapper())`.
+It compiled cleanly, and — this is the trap — it *passed* on the first run,
+exactly as the brief predicted "both rules will pass on their very first run."
+The brief's own required step (Step 6: deliberately add a `JsonMapper.builder()`
+call to `CustomerService` and confirm the rule fails) is what caught it: the
+rule stayed green with the violation sitting right there in the source. A rule
+that cannot fail is indistinguishable from one that imports zero classes — the
+exact ArchUnit 1.3.0/Java 25 failure mode this whole task exists to guard
+against — except this time the vacuousness was in the condition's polarity, not
+the class import.
+
+### Why it's hard
+
+The built-in DSL conditions (`.should().dependOnClassesThat().resideInAnyPackage(...)`,
+used by R2) work correctly under both `classes()` and `noClasses()` without the
+author ever thinking about polarity, which trains the reasonable expectation
+that a hand-rolled `ArchCondition` will too. It doesn't. `archunit-1.4.1-sources.jar`
+**is** present in the Gradle cache, and reading it names the actual mechanism:
+`ArchRuleDefinition.noClasses()` builds its rule through a private
+`negateCondition()` helper — `condition -> never(condition).as(condition.getDescription())`
+— where `never(...)` constructs a package-private `NeverCondition` (`com.tngtech.archunit.lang.conditions`).
+`NeverCondition.check(item, events)` delegates to the wrapped condition with an
+`InvertingConditionEvents` in place of the real `ConditionEvents`; that class's
+`add(ConditionEvent event)` calls `delegate.add(event.invert())` — `invert()` on
+`SimpleConditionEvent` just flips the `conditionSatisfied` boolean and keeps the
+same message. So every event a hand-rolled condition emits under `noClasses()`
+is flipped before it reaches the real rule evaluation. Emitting `violated(item, ...)`
+for the offending class, the natural-reading choice ("this thing happened, and
+it's bad — call it a violation"), gets inverted into a *satisfied* event, and
+the rule reports no failure — for every class, regardless of what it does. This
+was confirmed empirically by evaluating four variants side by side:
+`classes().should(condition)` with `violated()` correctly named both offending
+classes; `noClasses().should(condition)` with `violated()` reported zero
+violations against the identical import; and `noClasses().should(condition)`
+with `satisfied()` correctly named only the one class outside `platform.money`.
+The fix is counter-intuitive by name — the "bad" case is reported via
+`SimpleConditionEvent.satisfied(...)`, not `.violated(...)` — precisely because
+`noClasses()` is going to invert it back.
+
+### The solution
+
+`PlatformPrimitivesArchTest.constructAJsonMapper()` emits
+`SimpleConditionEvent.satisfied(item, call.getDescription())` for both the
+method-call and constructor-call branches, with a comment at the call site and
+a class-level Javadoc paragraph explaining the inversion so a future reader
+doesn't "fix" it back to `violated()`. R2 was unaffected — both of its rules are
+built entirely from the fluent DSL (`noClasses().should().dependOnClassesThat()...`),
+which is why its Step 3 deliberate-violation check failed correctly on the
+first attempt with the brief's code exactly as given.
+
+### Lesson
+
+A hand-rolled `ArchCondition` combined with `noClasses()` does not mean "no
+class should satisfy this predicate" in the way `violated()`/`satisfied()`
+naming suggests — `noClasses()` inverts whatever the condition emits, so the
+condition must be written already accounting for that inversion, event by
+event. This is invisible from reading the DSL call site and only shows up at
+runtime, which is exactly why the brief's Step 6 ("prove R1 can fail") is not
+optional ceremony: it is the only thing that would have caught this before
+trusting the rule. The general lesson generalizes past ArchUnit — any
+API that lets you plug a custom predicate/condition into a "positive" and a
+"negated" entry point should be treated as two different contracts until
+proven otherwise by making the negated one fail on a known-bad input, not
+assumed identical by symmetry of the surrounding DSL. It also isn't confined to
+hand-rolled conditions: when R2 was later reworked from an enumeration to a
+closure (`onlyDependOnClassesThat(allowedPackages)`), the same experiment —
+evaluating it under both `classes()` and `noClasses()` — showed `noClasses()`
+inverts that built-in condition too (it fires on every *permitted* dependency
+instead of every forbidden one), which is why that rule was written with
+`classes()`, not `noClasses()`, even though it lives beside a sibling rule that
+correctly uses `noClasses()` for an enumeration. Same DSL, same file, opposite
+polarity requirement depending on which shape the condition takes.
+
+---
+
+## Challenge 34 — Structural validation on one entity's field does not extend to a "same-shaped" sibling field
+
+**Phase:** Implementation (Task 7, seller GSTIN/state code at signup)
+
+### The problem
+
+`CustomerService.resolveGstinAndState` already ran a buyer's GSTIN through
+`Gstin.parse` (checksum + state prefix) and, when no GSTIN was supplied,
+`StateCode.requireValid` on the bare state code. Nobody had done the same for
+the *seller* — `SignupRequest.stateCode` carried only `@Pattern("\\d{2}")`
+(any two digits pass: `"39"`, `"88"`, `"00"`) and `gstin` was a bare `String`
+that `AuthService.signup` never touched. This shipped and ran clean: no
+exception, no log line, nothing in a test failure — because
+`QuotationService.isInterState` only *compares* `tenant.getStateCode()`
+against the customer's to pick CGST+SGST vs IGST; it never asks whether either
+side is a real GST state code. An invalid seller state code doesn't throw, it
+just silently picks the wrong tax split for every quotation that tenant issues
+from day one, and an unvalidated seller GSTIN prints on every PDF letterhead.
+There is no error to grep for and no test that was failing — the bug is a
+correct-looking computation over a value nobody checked.
+
+### Why it's hard
+
+The buyer and seller GSTIN/state-code pairs look identical in shape (a
+2-digit prefix, an optional 13-character checksum), which invites the
+assumption that validating one validates the pattern for both. But they enter
+the system through two unrelated DTOs (`CustomerRequest` vs `SignupRequest`)
+built at different times by different tasks, and Bean Validation's
+`@Pattern` on `stateCode` gives a false sense of coverage: it enforces *shape*
+("two digits"), which is a strict subset of *validity* ("one of the ~40 real
+GST state codes"), and nothing in the type system or the test suite flags that
+gap — `@Pattern` compiles, runs, and passes for `"39"` exactly as it does for
+`"27"`. The asymmetry is also cross-cutting rather than local: the defect
+isn't in any single method, it's in the *absence* of a call that a reviewer
+would only notice by tracing forward from `SignupRequest` to
+`QuotationService.isInterState` and asking "what guarantees this input is
+real" — a question that doesn't arise from reading `AuthService.signup` in
+isolation, since the method looks complete on its own terms (build entity,
+save, mint tokens).
+
+### The solution
+
+`AuthService.signup` now runs the identical validation shape as
+`CustomerService`, but deliberately narrower: `SignupRequest.stateCode` is
+`@NotBlank`, so — unlike the buyer path, which must derive a state code from
+the GSTIN when the caller left `stateCode` blank — there is never a blank
+`stateCode` to derive, so that branch was not ported. What *was* ported is the
+part that actually matters: if a GSTIN is supplied, `Gstin.parse` validates
+its checksum and state prefix, and the derived state must equal the declared
+`stateCode` (`ValidationException("stateCode", "must match the GSTIN state
+code")`) — the same "one of the two disagreeing inputs must be rejected, not
+silently picked" rule `CustomerService` already enforces for a buyer.
+`StateCode.requireValid(stateCode)` then runs unconditionally, so a seller
+with no GSTIN still can't register with a two-digit non-code. This also
+retired a call that Task 6 had made dead: once `Gstin.parse` validates the
+state prefix itself, `CustomerService`'s follow-up
+`StateCode.requireValid(derived)` on an already-`parse`-validated value can
+never throw — it was deleted, and the comment above it corrected to describe
+what `parse` actually guarantees (charset, checksum, *and* state prefix, not
+just checksum).
+
+### Lesson
+
+Two fields that look structurally identical (same regex, same "2-digit state
+code" description) are not the same guarantee unless the same validation
+function runs on both — copy-pasting a DTO shape without copy-pasting its
+service-layer validation reintroduces the exact bug the original validation
+was written to prevent, just on a different entity. The tell is not a failing
+test (there wasn't one) but a downstream consumer — here,
+`QuotationService.isInterState` — that treats a field as trustworthy without
+itself validating it; that combination (unvalidated input + a decision made
+from it with no error path) is a signal to trace every producer of that field
+back to its entry point, not just the one already known to be validated. It is
+also a reminder that closing a validation gap can retire a validation call
+elsewhere: strengthening `Gstin.parse` to check the state prefix made a
+sibling `StateCode.requireValid(derived)` call unreachable, and unreachable
+defensive code should be removed and its comment corrected, not left to imply
+a weaker guarantee than what now actually holds.
+
+---
+
+## Challenge 35 — An auto-configuration that is also component-scanned: two bean names, one class
+
+**Phase:** Implementation (Task 2, `MoneyAutoConfiguration`)
+
+### The problem
+
+Splitting the money Jackson module out of the monolith turned a component-scanned
+`@Configuration` (`MoneyJacksonConfig`) into an `@AutoConfiguration` named in
+`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+The reason for the change is MB1: a future `sales-svc` whose
+`@SpringBootApplication` sits at `com.easycrm.sales` never scans
+`com.easycrm.platform`, so the bean would simply not exist and the only symptom
+would be money crossing the HTTP wire as a JSON number — no exception, no log
+line, no failing test.
+
+But the class still lives at `com.easycrm.platform.money.MoneyAutoConfiguration`,
+and today's single application still scans from `com.easycrm`. So the class is
+reachable by **two entirely different mechanisms at once**: the `.imports` file
+and component scan. The expectation going in was a
+`BeanDefinitionOverrideException` on refresh, or — worse — two
+`BigDecimalStringModule` beans registered on the mapper. Neither happened. The
+context refreshed cleanly with exactly one module bean.
+
+The interesting part is not that it worked. It is that "it works" is compatible
+with two completely different worlds, and the difference between them is the whole
+point of the change:
+
+- the `.imports` file was read, and the auto-configuration did its job; or
+- the `.imports` file is being ignored (typo in the filename, wrong path, jar
+  packaging that drops `META-INF/spring`), the class was picked up by component
+  scan alone, and the bean exists **for exactly the reason the refactor was
+  meant to stop relying on**.
+
+A test that only asserts "one `BigDecimalStringModule` bean exists" passes
+identically in both worlds. It would have gone green on a build where the
+`.imports` file was a dead file, and the failure would surface years later, in a
+different service, as money silently becoming a JSON number.
+
+### Why it's hard
+
+Nothing in the observable behaviour distinguishes the two worlds. The bean is the
+same instance of the same class contributed by the same `@Bean` method on the same
+configuration class, and `getBeansOfType(JacksonModule.class)` returns one entry
+either way. There is no log line saying which entry point won, and Spring's
+de-duplication is silent by design.
+
+The mechanism only becomes visible one level down, in how Spring *names* the bean
+definition. Spring uses **two different bean-name generators** for the two entry
+points (verified against `spring-context-7.0.2`):
+
+| Entry point | Generator | Name produced |
+|---|---|---|
+| `@ComponentScan` | `componentScanBeanNameGenerator`, an `AnnotationBeanNameGenerator` | decapitalised short name — `moneyAutoConfiguration` |
+| `@Import` / `AutoConfiguration.imports` | a hardcoded `IMPORT_BEAN_NAME_GENERATOR`, a `FullyQualifiedAnnotationBeanNameGenerator` | the FQCN — `com.easycrm.platform.money.MoneyAutoConfiguration` |
+
+The import-side generator is *hardcoded*, not configurable, precisely so that
+imported configuration classes cannot collide by short name with scanned ones. And
+the de-duplication that keeps the double reachability harmless is not a name
+comparison at all: `ConfigurationClassParser` tracks already-processed
+configuration classes by **class identity**, so the second arrival of the same
+class is folded into the first rather than registered twice. That is structural,
+not incidental — which is why no `@ComponentScan` exclusion was needed and adding
+one would have been cargo cult.
+
+It also means the naming asymmetry is the *only* externally visible trace of which
+route the class actually took.
+
+### The solution
+
+`MoneyModuleWiringTest` asserts two separate things, and the second is the one
+that does the real work:
+
+1. `exactlyOneBigDecimalStringModuleBeanIsRegistered` — the count. Guards against
+   a duplicate-definition trap on one side and MB1 on the other.
+2. `theAutoConfigurationIsWhatRegisteredIt` — asserts the bean **definition** name
+   `com.easycrm.platform.money.MoneyAutoConfiguration` is present. Because the
+   FQCN name can only be produced by the import path, this passes if and only if
+   the `.imports` file was actually read.
+
+Delete the `.imports` line and test 1 still passes (component scan still finds the
+class), while test 2 fails — which is exactly the discrimination that was missing.
+The auto-configuration itself stays deliberately plain: `@AutoConfiguration`,
+`@ConditionalOnClass(JacksonModule.class)`, one `@Bean`, no scan exclusion.
+
+Boot's `JacksonAutoConfiguration` (artifact `org.springframework.boot:spring-boot-jackson`,
+class `org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration`)
+injects a `Collection<JacksonModule>` into its mapper-builder customizer, so
+ordering never needed pinning either: the module is collected by type regardless of
+which configuration class declared it.
+
+### Lesson
+
+When one class is reachable by two registration mechanisms, "the context started
+and the bean exists" is not evidence that the mechanism you intended is the one
+that ran — and the mechanism you intended is usually the entire reason for the
+change. Find the observable that differs between the two paths and assert on *that*,
+not on the outcome both paths produce. Here the observable was the bean-definition
+name, because Spring deliberately generates it differently per entry point; in
+other frameworks it will be something else, but the shape of the question is the
+same: *what would still be true if the wiring I just added were completely inert?*
+If the answer is "everything my test asserts," the test is measuring the old
+mechanism.
+
+The corollary is about defensive fixes. The predicted duplicate-registration
+failure never materialised because `ConfigurationClassParser` de-duplicates by class
+identity. Adding a `@ComponentScan` exclusion "to be safe" would have added a second
+thing to keep in sync, hidden the fact that the platform is doing this correctly,
+and — worst of all — would have made the double reachability *look* dangerous to the
+next reader when it is structurally handled.
+
+---
+
+## Challenge 36 — After a module split, a package name no longer identifies whose bytecode you imported
+
+**Phase:** Implementation (Task 5, R1's non-vacuity guard)
+
+### The problem
+
+`PlatformPrimitivesArchTest` (rule R1 — nobody outside `com.easycrm.platform.money`
+constructs a JSON mapper) runs in the **root** project and imports classes with
+`new ClassFileImporter().importPackages("com.easycrm")`. This codebase has already
+been bitten once by an ArchUnit rule that imported zero classes and therefore passed
+while checking nothing (ArchUnit 1.3.0 silently skipping Java 25 bytecode — see
+challenge #30), so every rule here carries a companion non-vacuity test. R1's, as
+first written, was the obvious one:
+
+```java
+assertThat(classes).as("imported classes").isNotEmpty();
+```
+
+That assertion was correct before this branch and is nearly worthless after it.
+Extracting `platform-primitives` into its own Gradle module put ten classes that
+are *also* under `com.easycrm..` into a **jar on the root project's test
+classpath**. `importPackages("com.easycrm")` scans the classpath, not the project,
+so it now sweeps up two independently-built artifacts that happen to share a
+package prefix. If the root project's own bytecode stopped being imported — the
+precise failure mode the guard exists for — `isNotEmpty()` would still pass on the
+jar's ten classes alone, and R1 would go vacuously green while checking none of
+the ~180 classes it is actually about.
+
+So the module split silently converted a working vacuity guard into one that
+cannot detect the vacuity it was written for, and nothing about the guard's source
+changed to signal it.
+
+### Why it's hard
+
+The failure is invisible from the call site. `importPackages("com.easycrm")` reads
+as "my application's classes", and for the entire life of the codebase up to this
+branch that is exactly what it meant, because there was only one place
+`com.easycrm..` bytecode could come from. The split broke the identity between
+*package name* and *compilation unit* without breaking any line of code, and Java's
+package system offers nothing to restore it: a package is not owned by a jar, and
+two artifacts sharing a prefix are indistinguishable to a package-name filter.
+ArchUnit's `ImportOption` vocabulary is about locations and test/main splits, not
+"only classes this Gradle project compiled."
+
+It is also the same defect class as the bug found minutes earlier in the same task
+(challenge #33's inverted condition), one level up: a *check on the check* that
+cannot fail. Both are green rules that assert nothing, and both would be found only
+by asking "what would make this assertion false?" rather than "does this assertion
+pass?" — which is why the second one survived the first sweep.
+
+### The solution
+
+Assert on a class that exists **only** in the project whose bytecode must be
+present, and cannot come from any jar sharing the package prefix:
+
+```java
+assertThat(classes.contain("com.easycrm.EasyCrmApplication"))
+    .as("root project's own bytecode (not just the platform-primitives jar also on "
+      + "this classpath) was imported")
+    .isTrue();
+```
+
+`EasyCrmApplication` is the root project's `@SpringBootApplication` class; the
+primitives jar has no such class and structurally cannot (R2 forbids it any Spring
+dependency at all). So its presence is a witness for "this project's own bytecode
+was parsed," which is the property the rule actually depends on. The
+`isNotEmpty()` assertion is kept above it — it still distinguishes "imported
+nothing at all" from "imported something" — with a comment in place explaining why
+it is insufficient on its own, so a later reader does not delete the stricter line
+as redundant.
+
+The sibling rule R2 needed no equivalent: it runs inside `platform-primitives`
+itself, where `importPackages("com.easycrm")` sees only the module's own classes,
+because the dependency edge is root → subproject and never the reverse.
+
+### Lesson
+
+Splitting a monolith into modules invalidates every piece of tooling that used a
+package name as a proxy for "code I own" — classpath scanners, ArchUnit imports,
+reflection-based registries, coverage filters, `@ComponentScan` bases. None of them
+break loudly; they just start including a second artifact's classes, and any rule
+whose failure mode is *emptiness* becomes unfalsifiable at the same moment. The
+audit to run after a split is not "does everything still pass" (it will) but "which
+assertions were relying on a package prefix identifying exactly one build output?"
+
+The narrower rule for vacuity guards: `isNotEmpty()` is only a real guard while
+there is exactly one possible source for the elements. As soon as there are two,
+name a specific witness that can only originate from the source you care about.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>

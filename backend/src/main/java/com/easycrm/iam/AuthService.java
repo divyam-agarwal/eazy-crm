@@ -8,6 +8,9 @@ import com.easycrm.iam.web.dto.TokenResponse;
 import com.easycrm.iam.email.EmailSender;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.UnauthorizedException;
+import com.easycrm.platform.error.ValidationException;
+import com.easycrm.platform.gst.Gstin;
+import com.easycrm.platform.gst.StateCode;
 import com.easycrm.platform.security.JwtService;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
@@ -62,8 +65,26 @@ public class AuthService {
         if (tenants.findBySlug(req.slug()).isPresent()) {
             throw new ConflictException("slug already taken");
         }
+        // MF1: a buyer's GSTIN goes through Gstin.parse and StateCode.requireValid in
+        // CustomerService; the seller's went through neither. QuotationService.isInterState
+        // compares tenant.stateCode against the customer's to choose CGST+SGST vs IGST, so an
+        // invalid seller state code silently decides the tax split of every quotation this tenant
+        // ever issues — and the unvalidated GSTIN prints on every PDF letterhead.
+        String stateCode = req.stateCode();
+        String gstin = null;
+        if (req.gstin() != null && !req.gstin().isBlank()) {
+            Gstin parsed = Gstin.parse(req.gstin());          // 422 on charset, checksum or state prefix
+            if (!parsed.stateCode().equals(stateCode)) {
+                throw new ValidationException("stateCode", "must match the GSTIN state code");
+            }
+            // Persist the parsed form, not the raw input: CustomerService already stores g.value(),
+            // and an un-normalised seller GSTIN prints on every PDF letterhead and defeats exact-match
+            // against a customer's.
+            gstin = parsed.value();
+        }
+        StateCode.requireValid(stateCode);
         Tenant tenant = new Tenant(
-            req.slug(), req.businessName(), req.stateCode(), req.gstin(),
+            req.slug(), req.businessName(), stateCode, gstin,
             TenantStatus.TRIAL, Instant.now().plus(TRIAL_DAYS, ChronoUnit.DAYS));
 
         TenantContext.set(new TenantContext.TenantPrincipal(tenant.getId(), null, "SYSTEM"));

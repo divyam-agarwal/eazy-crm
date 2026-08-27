@@ -1,8 +1,14 @@
 # `platform-primitives` — Low-Level Design
 
-**Date:** 2026-08-26
-**Status:** Design only. Zero code changed.
-**Code baseline:** `80e74a3`
+**Date:** 2026-08-26 (implementation status updated 2026-08-27)
+**Status:** **IMPLEMENTED.** Built on branch `platform-primitives-module` as commits
+`4d43d75`..`0ffc68c` (nine commits: seven task commits plus two review-fix commits — the eighth
+task commit, `d6a0859`, the docs wrap-up, falls outside this range), verified at **260 tests, 0
+failures, 0 errors** across both Gradle projects. Design-time status was "Design only; zero code
+changed" at baseline `80e74a3`; the branch was cut from `main` at `ac4eaca`. **The merge commit is
+not recorded here because the branch had not been integrated when this line was written** — fill it
+in when it lands rather than assuming one exists.
+**Code baseline:** `80e74a3` (design); `ac4eaca` (implementation branch point)
 **Parent:** [`../superpowers/specs/2026-08-26-shared-platform-modules-design.md`](../superpowers/specs/2026-08-26-shared-platform-modules-design.md)
 **Sibling:** [`2026-08-19-outbox-lld.md`](2026-08-19-outbox-lld.md) — the module that consumes this one
 **LLD #1 of 6.** Written first because it is the only module with no dependencies.
@@ -401,37 +407,179 @@ build time, and `platform-outbox`'s test plan at runtime (TB3).
 
 # Appendix A — Findings
 
-| # | Finding | Severity |
+**Updated 2026-08-27, after implementation.** MF1–MF6 were written at design time; the third column
+now carries what actually happened to each. MF7–MF10 were found while building the module and did
+not exist when this document was written.
+
+| # | Finding | Severity / status after implementation |
 |---|---|---|
-| **MF1** | **The seller's GSTIN is never validated, and the seller's state code is validated only as "two digits."** `SignupRequest` declares `@Pattern("\\d{2}")` on `stateCode` and a bare `String gstin` — no `Gstin.parse`, no `StateCode.requireValid`. A buyer's GSTIN goes through both in `CustomerService`. The asymmetry matters because `QuotationService.isInterState` compares `tenant.getStateCode()` against the customer's to choose **CGST+SGST vs IGST**, so an invalid seller state code silently decides the tax split of every quotation the tenant ever issues, and the unvalidated seller GSTIN prints on every PDF | **Live bug.** Independent of all module work |
-| **MF2** | Folding `StateCode.requireValid` into `Gstin.parse` (2.4) is correct going forward but says nothing about rows already stored. Whether any existing `customer.gstin` or `tenant.gstin` has an invalid state prefix is unknown | Decide before implementing: a read-only audit query first, then a migration only if it finds anything |
-| **MF3** | `platform-web` must now depend on `platform-primitives`, which the parent spec's graph does not show. The parent's Part 1 diagram and per-service matrix need the edge added | Documentation; fixed when this LLD is accepted |
-| **MF4** | `MoneyWireFormatTest` is the only proof the Jackson module is wired, and it asserts through the product endpoint — so deleting or refactoring `ProductController` would silently remove the tripwire for MB1 | Move the assertion to a dedicated endpoint-agnostic test, or note the dependency in the test itself |
-| **MF5** | There is no unit test of `BigDecimalStringModule` at all today — only the integration test. A change to the serialiser fails one heavyweight Spring test with an opaque message | 5.2 adds them |
-| **MF6** | `Gstin.parse` throws `ValidationException("gstin", …)` with a hard-coded field name, so a request carrying two GSTINs (buyer and consignee, once that exists) cannot report which one failed | Accept for now; revisit if a second GSTIN field appears |
+| **MF1** | **The seller's GSTIN is never validated, and the seller's state code is validated only as "two digits."** `SignupRequest` declares `@Pattern("\\d{2}")` on `stateCode` and a bare `String gstin` — no `Gstin.parse`, no `StateCode.requireValid`. A buyer's GSTIN goes through both in `CustomerService`. The asymmetry matters because `QuotationService.isInterState` compares `tenant.getStateCode()` against the customer's to choose **CGST+SGST vs IGST**, so an invalid seller state code silently decides the tax split of every quotation the tenant ever issues, and the unvalidated seller GSTIN prints on every PDF | **Live bug.** **FIXED (Task 7, commit `0ffc68c`).** `AuthService.signup` now runs `Gstin.parse` on a supplied seller GSTIN, requires the derived state to equal the declared `stateCode`, and runs `StateCode.requireValid(stateCode)` unconditionally — four new tests. Logged as challenge #34 |
+| **MF2** | Folding `StateCode.requireValid` into `Gstin.parse` (2.4) is correct going forward but says nothing about rows already stored. Whether any existing `customer.gstin` or `tenant.gstin` has an invalid state prefix is unknown | **CLOSED for now (Task 7).** The audit was run and there was nothing to audit: **no `easycrm` database exists anywhere in this development environment** (nothing publishes 5432 but an unrelated `langfuse-postgres-1` container; every integration test uses a throwaway Testcontainers instance). No migration was written. This closes the question *for this environment only* — it is not evidence that no such row exists anywhere. The audit query is preserved in the plan and in Task 7's brief so nobody re-derives it: **re-run it against any environment that has persisted data, and before the first production deployment.** "There is no data yet" is a property of today, not a resolution |
+| **MF3** | `platform-web` must now depend on `platform-primitives`, which the parent spec's graph does not show. The parent's Part 1 diagram and per-service matrix need the edge added | **DONE.** Verified 2026-08-27 against the parent spec: the Part 1 diagram already draws `platform-entitlement → platform-web → platform-primitives`, and the module table's `platform-primitives` row reads "all 5 services + `platform-outbox` + `platform-web`". No further edit needed |
+| **MF4** | `MoneyWireFormatTest` is the only proof the Jackson module is wired, and it asserts through the product endpoint — so deleting or refactoring `ProductController` would silently remove the tripwire for MB1 | **RECORDED IN THE TEST (Task 2).** The dependency is now stated in `MoneyWireFormatTest` itself rather than only here — the second option, taken deliberately: a dedicated endpoint would be a *new* surface asserting the wiring, whereas the value of this test is that it goes through a real controller. `MoneyModuleWiringTest` (Task 2) is now a second, endpoint-independent proof of the same wiring, so deleting `ProductController` no longer removes the only tripwire |
+| **MF5** | There is no unit test of `BigDecimalStringModule` at all today — only the integration test. A change to the serialiser fails one heavyweight Spring test with an opaque message | **CLOSED (Task 3, commit `bbc136b`).** Six unit tests in `BigDecimalStringModuleTest`, mutation-checked: replacing `gen.writeString(value.toPlainString())` with `gen.writeNumber(value)` killed 5 of the 6. The sixth (`deserialisationStillAcceptsBothStringAndNumber`) correctly survived, because it exercises the read path the module does not touch |
+| **MF6** | `Gstin.parse` throws `ValidationException("gstin", …)` with a hard-coded field name, so a request carrying two GSTINs (buyer and consignee, once that exists) cannot report which one failed | **STILL ACCEPTED AS-IS.** Unchanged by this branch. Task 7 added a *second* GSTIN entry point (`SignupRequest`), but it carries one GSTIN, so the ambiguity MF6 describes still has no way to arise. Revisit when one request body carries two GSTINs (buyer + consignee) |
+| **MF7** | **R1 as sketched in Part 4 above is not what shipped, and could not have.** The fluent form `should().callMethod(JsonMapper.class, "builder")` matches one *signature*, and `JsonMapper.builder()` is overloaded — so the rule would have covered the no-arg overload only and silently ignored the others: a vacuous pass with a different cause. It was replaced by a hand-written `ArchCondition` matching **any** call named `builder` on `ObjectMapper`, `JsonMapper` or `JsonMapper$Builder`, plus any constructor call on those types. The Part 4 snippet is kept as written because it is what the design said; read it as intent, not as the shipped rule. See `PlatformPrimitivesArchTest` | Discovered in Task 5 |
+| **MF8** | **A hand-written `ArchCondition` under `noClasses()` has its polarity inverted**, so the natural `SimpleConditionEvent.violated(...)` for the offending class becomes a *passing* event and the rule can never fail. The plan's R1 code had exactly this bug and passed on its first run with a deliberate violation sitting in `CustomerService`. Fixed by emitting `.satisfied(...)`; proven in both directions. **This is the most valuable thing the implementation of this LLD learned** | Challenge #33. The only reason it was caught is that the plan mandated a prove-it-can-fail step; treat that step as mandatory for every future ArchUnit rule |
+| **MF9** | **After the split, `importPackages("com.easycrm")` in the root project also imports the `platform-primitives` jar**, whose ten classes share the prefix. R1's non-vacuity guard was `assertThat(classes).isNotEmpty()`, which would still pass on the jar's classes alone if the root project's own bytecode stopped being imported — the exact ArchUnit 1.3.0/Java 25 failure this codebase already suffered | Fixed in Task 5: the guard now asserts `classes.contain("com.easycrm.EasyCrmApplication")`, a class that can only come from the root project. Challenge #36 |
+| **MF10** | **`EventJsonDivergenceTest` found no divergence.** All three of its assertions passed unmodified on first run: today the application mapper and `EventJson` agree on money-as-string, null inclusion and ISO-8601 timestamps. Its value is entirely as a **future tripwire**, not as evidence of a present problem — do not cite it as having caught anything | Accepted and documented in the test. Its most likely trigger is someone setting `spring.jackson.default-property-inclusion=non_null`; that was verified by temporarily setting the property, at which point the application-mapper half of the test goes red and the `EventJson` half holds independently (Task 4 fix round 1) |
 
 ---
 
-# Appendix B — To verify before implementation
+# Appendix B — Verified during implementation
 
-1. **The Boot 4 artifact and package for Jackson auto-configuration.** Boot 4 split auto-config into
-   per-integration modules — `HibernatePropertiesCustomizer` now lives in
-   `org.springframework.boot.hibernate.autoconfigure`, and `flyway-core` alone no longer brings
-   `FlywayAutoConfiguration`. Confirm which artifact carries the Jackson auto-configuration and
-   whether `spring-boot-autoconfigure` is still the right `compileOnly` coordinate.
-2. **That a `JacksonModule` bean contributed by an auto-configuration is still discovered** the way
-   one contributed by a component-scanned `@Configuration` is, and that ordering against Boot's own
-   Jackson auto-configuration is correct.
-3. **`JsonMapper.builder()` defaults in Jackson 3** — specifically whether any default differs from
-   the application mapper Boot configures, since 2.3 deliberately inherits nothing. Enumerate the
-   differences and state them in `EventJson`, or the "inherits nothing" claim is aspirational.
-4. **ArchUnit's ability to express R1** against a static method on a Jackson 3 type, and that it does
-   not false-positive on Boot's own auto-configuration if that is ever on the scanned classpath.
-5. **Whether `JsonWriteFeature.WRITE_NUMBERS_AS_STRINGS` is enabled by default in Jackson 3.**
-   One secondary source claims it is, which would mean every number in the API is already a string.
-   The codebase contradicts that — `totalElements` and `versionNo` are asserted as JSON numbers in
-   four test classes — so the claim is recorded as unverified, not repeated. Confirm against the
-   Jackson 3 release notes before relying on either behaviour.
-6. **Whether `api(...)` on jackson-databind leaks more than intended** to the five services, given
-   they already receive Jackson through `spring-boot-starter-web`. If it changes nothing, prefer
-   `implementation` and expose `EventJson` behind a narrower return type.
+**Updated 2026-08-27.** Every item below was written before any code existed. Each now carries the
+answer this branch actually produced, with how it was determined. Nothing here has been quietly
+dropped: an item that was **not** settled says so.
+
+### 1. The Boot 4 artifact and package for Jackson auto-configuration — **ANSWERED**
+
+The artifact is **`org.springframework.boot:spring-boot-jackson`**; the class is
+**`org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration`**, and it is the sole
+line in that jar's `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+It arrives transitively with `spring-boot-starter-web` (→ `spring-boot-starter-jackson` →
+`spring-boot-jackson`), so no service that serves HTTP has to name it.
+
+**`spring-boot-autoconfigure` *is* still the correct `compileOnly` coordinate** — it is what carries
+`@AutoConfiguration` and `@ConditionalOnClass`, and the module compiles against it and nothing else
+from Boot. One Gradle wrinkle that cost a build: `compileOnly` is **non-transitive**, so
+`org.springframework:spring-context` must be named separately even though `spring-boot-autoconfigure`
+depends on it. Both are `compileOnly`, which is the point of the module — `notification-svc` takes
+this jar with no Spring on its runtime classpath at all.
+
+### 2. That an auto-configured `JacksonModule` bean is discovered like a component-scanned one — **ANSWERED: yes**
+
+`JacksonAutoConfiguration$AbstractMapperBuilderCustomizer`'s constructor takes a
+`(JacksonProperties, Collection<JacksonModule>, AutowireCapableBeanFactory)` — verified by `javap`
+against `spring-boot-jackson-4.1.0.jar`. The modules are collected **by type**, so a `JacksonModule`
+bean is registered on the application mapper regardless of which configuration class declared it,
+and **no `@AutoConfigureBefore`/`@AutoConfigureAfter` ordering was needed**. `MoneyWireFormatTest`
+(money as a quoted string through the real HTTP stack) is the end-to-end proof.
+
+The related trap is worth reading before touching this: `MoneyAutoConfiguration` is named in the
+`.imports` file **and** sits inside the `com.easycrm` range `EasyCrmApplication` component-scans, so
+it is reachable twice. No `BeanDefinitionOverrideException`, no duplicate bean — Spring's
+`ConfigurationClassParser` de-duplicates by **class identity**, structurally. But that means "one
+bean exists" is *not* evidence the `.imports` file was read: component scan alone would produce the
+same bean. The discriminator is the bean-definition **name**, because Spring uses two different
+generators — `AnnotationBeanNameGenerator` (decapitalised short name) for scanned classes, and a
+hardcoded `FullyQualifiedAnnotationBeanNameGenerator` (the FQCN) for classes reached via
+`@Import`/`AutoConfiguration.imports`. `MoneyModuleWiringTest.theAutoConfigurationIsWhatRegisteredIt`
+asserts on the FQCN for exactly that reason. See challenge #35.
+
+### 3. `JsonMapper.builder()` defaults in Jackson 3 versus Boot's configured mapper — **ANSWERED, and it is the item with the most substance**
+
+Determined empirically by building a bare `JsonMapper.builder().build()` against the same
+`jackson-databind-3.1.4` jars with none of `EventJson`'s calls present, and re-checking each
+feature's `enabledByDefault`.
+
+**Only the `BigDecimalStringModule` line changes `EventJson`'s behaviour today.** Jackson 3 already:
+
+| Setting `EventJson` pins | Jackson 3 default | Load-bearing today? |
+|---|---|---|
+| `addModule(new BigDecimalStringModule())` | absent | **Yes** — remove it and `serialisesBigDecimalAsAString` fails |
+| `disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS)` | already disabled (ISO-8601) | No |
+| `disable(DateTimeFeature.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS)` | already disabled | No |
+| `disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)` | `enabledByDefault = false` | No |
+| default property inclusion `ALWAYS` | `ConfigOverrides` default is `JsonInclude.Value.of(USE_DEFAULTS, USE_DEFAULTS)`, which resolves to `ALWAYS` for a plain field at write time | No |
+
+**They are pinned explicitly anyway, deliberately.** §2.3's "inherits nothing" is the module's whole
+thesis: an event contract read for years must not rest on a library default, and "matches today's
+default" is not a statement about tomorrow's. The risk this creates is that a later reader deletes
+them as dead config, so the reasoning is written into `EventJson`'s Javadoc at the call sites, not
+only here. Do not read "currently redundant" as "safe to delete."
+
+**Separately — an API break the design did not anticipate.** `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS`
+and `SerializationFeature.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` **do not exist in Jackson 3**. They
+moved to `tools.jackson.databind.cfg.DateTimeFeature`, a `DatatypeFeature`, reached through
+`disable(DatatypeFeature...)`. Confirmed by `javap` against `jackson-databind-3.1.4`. Everything else
+in the design's builder chain compiled as written.
+
+### 4. ArchUnit's ability to express R1 — **ANSWERED: yes, but the first two attempts were both vacuous**
+
+It can be expressed, and it is (`PlatformPrimitivesArchTest`). Getting there found the two things
+worth carrying forward, both recorded as MF7/MF8 above:
+
+- The fluent sketch in Part 4 (`should().callMethod(JsonMapper.class, "builder")`) matches a single
+  *signature*, and `JsonMapper.builder()` is overloaded — so it would have covered one overload and
+  silently ignored the rest. Replaced by a hand-written `ArchCondition` matching any call named
+  `builder` on `ObjectMapper`/`JsonMapper`/`JsonMapper$Builder`, plus any constructor call on those.
+- **`noClasses().should(customCondition)` inverts every event the condition emits.** The natural
+  `SimpleConditionEvent.violated(...)` for an offending class is flipped to *satisfied*, and the rule
+  passes unconditionally. The plan's R1 code had this bug and went green with a deliberate
+  `JsonMapper.builder()` sitting in `CustomerService`. The condition must emit `.satisfied(...)` for
+  the case it forbids. `noClasses()` inverts the built-in `onlyDependOnClassesThat` too, which is why
+  R2's allowlist form uses `classes()`, not `noClasses()`. **Challenge #33 — the most valuable thing
+  this branch learned, and it was caught only because a prove-it-can-fail step was mandatory.**
+
+On the second half of the original question — false-positives against Boot's own auto-configuration —
+it does not arise: R1 imports `com.easycrm` only, and Boot's classes are not in that package. What
+*did* arise instead is MF9: after the split, `com.easycrm` spans two build outputs, so the rule's
+non-vacuity guard had to be re-scoped to a witness class the primitives jar cannot contain.
+
+### 5. Whether `JsonWriteFeature.WRITE_NUMBERS_AS_STRINGS` is on by default in Jackson 3 — **ANSWERED: no**
+
+Settled directly against `jackson-core-3.1.4`, which is the only evidence that actually settles it:
+
+```
+JsonWriteFeature.WRITE_NUMBERS_AS_STRINGS.enabledByDefault() = false
+JsonMapper.builder().build().writeValueAsString(Map.of("n", 1))  ->  {"n":1}
+```
+
+The secondary source that claimed otherwise was wrong. `BigDecimalStringModule` is therefore
+genuinely doing the work for money, and nothing else on the wire is being stringified behind its
+back.
+
+The suite corroborates this — `PageResponse.totalElements` and `QuotationVersion.versionNo` are
+asserted as JSON numbers (`jsonPath("$.totalElements").value(1)`) across seven test classes and all 260
+tests pass — but **that corroboration is weaker than it looks and should not be relied on alone.**
+Spring's `JsonPathExpectationsHelper` re-evaluates the path using the *expected* value's type when
+the actual type differs, so `.value(1)` against a JSON `"1"` can coerce and pass. This is the same
+coercion §5.1 already cites as the reason `MoneyWireFormatTest` asserts on the raw response body
+rather than through JsonPath. Two independent checks were needed because neither the money tests nor
+the JsonPath number assertions distinguish a stringify-everything default on their own.
+
+### 6. Whether `api(...)` on jackson-databind leaks more than intended — **ANSWERED: it adds an edge, not an artifact**
+
+Kept as `api`, and here is what was actually observed. `EventJson.mapper()` returns a
+`tools.jackson.databind.json.JsonMapper`, which `platform-outbox` must be able to name, so the type
+has to be on consumers' compile classpath — `implementation` would force every consumer to re-declare
+jackson-databind or force `EventJson` behind a narrower return type that does not exist.
+
+`./gradlew dependencyInsight --configuration compileClasspath --dependency jackson-databind` on the
+root project resolves **`tools.jackson.core:jackson-databind:3.1.4`, one node**, reached by three
+independent paths: `spring-boot-starter-web` → `spring-boot-starter-jackson` → `spring-boot-jackson`;
+`org.flywaydb:flyway-core`; and this module's `api`. Same version from all three, no conflict, no
+version forced by the module (the Boot BOM governs). So the `api` edge widens nobody's classpath in
+practice — it only removes the possibility that a consumer *without* the web starter (the
+`notification-svc` case the module exists for) cannot see the return type.
+
+**One caveat that was not tested and cannot be, yet:** the "leaks nothing" claim rests on every
+consumer already pulling jackson-databind. That is true of the single application today and of the
+four servlet services on paper, and it is *why* `api` is safe rather than merely convenient. If a
+future consumer takes this jar with no Jackson at all, the `api` edge is what puts Jackson on its
+classpath — which is intended, since `EventJson` does not work without it, but it should be a
+decision rather than a surprise.
+
+---
+
+# Appendix C — What the implementation added that this design did not specify
+
+Recorded so the gap between the document and the code is visible rather than inferred.
+
+- **`MoneyModuleWiringTest`** (Task 2) — two tests proving the module bean exists exactly once *and*
+  that auto-configuration, not component scan, registered it. Appendix B item 2 explains why the
+  second assertion is not redundant.
+- **`EventJsonDivergenceTest`** (Task 4) — three tests comparing the injected application mapper
+  against `EventJson`. It found **no** divergence; see MF10 before citing it.
+- **`PrimitivesModuleArchTest`** (Task 5) — R2, reworked from the design's enumeration of forbidden
+  packages into an **allowlist** (`classes().should().onlyDependOnClassesThat(...)`), which is a
+  closure rather than a list and so cannot be escaped by a package nobody thought of. The allowlist
+  is `java..`, `tools.jackson..`, `com.fasterxml.jackson.annotation..`, and
+  `com.easycrm.platform.{error,money,gst}..`; each entry was confirmed load-bearing by removing it,
+  except `gst..` (the module's own package, not yet cross-referenced internally).
+- **The two-project build changes how you run a filtered test.** An unqualified
+  `./gradlew clean test` still spans both projects and is what every verification step relies on. A
+  **filtered** run must be project-qualified — `./gradlew :test --tests '…'` or
+  `./gradlew :platform:platform-primitives:test --tests '…'` — because an unqualified `--tests`
+  applies the filter to every project and then fails on whichever project has no match.
