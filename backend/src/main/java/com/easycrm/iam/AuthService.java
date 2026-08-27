@@ -71,15 +71,20 @@ public class AuthService {
         // invalid seller state code silently decides the tax split of every quotation this tenant
         // ever issues — and the unvalidated GSTIN prints on every PDF letterhead.
         String stateCode = req.stateCode();
+        String gstin = null;
         if (req.gstin() != null && !req.gstin().isBlank()) {
-            String derived = Gstin.parse(req.gstin()).stateCode();   // 422 on checksum or prefix
-            if (!derived.equals(stateCode)) {
+            Gstin parsed = Gstin.parse(req.gstin());          // 422 on charset, checksum or state prefix
+            if (!parsed.stateCode().equals(stateCode)) {
                 throw new ValidationException("stateCode", "must match the GSTIN state code");
             }
+            // Persist the parsed form, not the raw input: CustomerService already stores g.value(),
+            // and an un-normalised seller GSTIN prints on every PDF letterhead and defeats exact-match
+            // against a customer's.
+            gstin = parsed.value();
         }
         StateCode.requireValid(stateCode);
         Tenant tenant = new Tenant(
-            req.slug(), req.businessName(), req.stateCode(), req.gstin(),
+            req.slug(), req.businessName(), stateCode, gstin,
             TenantStatus.TRIAL, Instant.now().plus(TRIAL_DAYS, ChronoUnit.DAYS));
 
         TenantContext.set(new TenantContext.TenantPrincipal(tenant.getId(), null, "SYSTEM"));

@@ -169,7 +169,7 @@ All under `docs/superpowers/`:
   `BigDecimalStringModule`, `Gstin`, `StateCode`, and a new `EventJson`. Specifically:
   - **The build is now two Gradle projects.** `settings.gradle.kts` includes
     `:platform:platform-primitives`; the root project takes it as `implementation(project(...))`.
-    Eight files moved as pure renames, 0 lines changed. The Boot BOM is the single version source
+    Ten files moved as pure renames, 0 lines changed. The Boot BOM is the single version source
     in both projects; the Spring Boot Gradle plugin is deliberately *not* applied to the module.
   - **`MoneyJacksonConfig` → `MoneyAutoConfiguration`**, registered through
     `AutoConfiguration.imports` rather than component scan, so the money wire format reaches a
@@ -183,8 +183,11 @@ All under `docs/superpowers/`:
     where they match today's Jackson 3 defaults; the LLD's Appendix B item 3 says exactly which is
     which, and the source says why they stay.
   - **Two ArchUnit rules.** R1: nothing outside the module may construct a JSON mapper. R2: the
-    module may depend on nothing but `java..`, Jackson, and its own packages — written as an
-    allowlist closure, not an enumeration.
+    module may depend on nothing but `java..`, Jackson, its own packages, and `org.springframework..`
+    wholesale (the last because `MoneyAutoConfiguration` legitimately needs it, and the rule covers
+    every class in the module) — written as an allowlist closure, not an enumeration. The separate
+    `carriesNoRuntimeSpringDependency` test is what actually confines Spring usage to the
+    auto-configuration.
   - **Two live-bug fixes on the way through.** `Gstin.parse` now validates the state prefix, not
     just the checksum; and `AuthService.signup` now validates the *seller's* GSTIN and state code,
     which it never did — an invalid seller state code silently decides CGST+SGST vs IGST on every

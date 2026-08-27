@@ -96,4 +96,36 @@ class AuthServiceSignupTest extends IntegrationTest {
 
         assertNotNull(auth.signup(req).tenantId());
     }
+
+    @Test
+    void aLowercaseSellerGstinIsPersistedUppercase() {
+        // MF1's fix validated the seller's GSTIN but kept persisting the raw input, not the
+        // parsed (trimmed, uppercased) form. A buyer's GSTIN is normalised by CustomerService;
+        // the seller's was not — this is the test that would have caught that asymmetry.
+        String slug = "lower-gstin-" + UUID.randomUUID();
+        SignupRequest req = new SignupRequest(
+            slug, "Acme Traders", "27", "27aapfu0939f1zv",
+            "lower-gstin-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+
+        auth.signup(req);
+
+        Tenant t = tenants.findBySlug(slug).orElseThrow();
+        assertEquals("27AAPFU0939F1ZV", t.getGstin());
+    }
+
+    @Test
+    void aPaddedSellerGstinIsAcceptedAndStoredTrimmed() {
+        // Ordinary copy-paste padding. Gstin.parse trims and accepts it, but until the parsed
+        // (not raw) value is persisted, the untrimmed 17-char string overflows tenant.gstin
+        // VARCHAR(15) and surfaces as a spurious 409 rather than succeeding.
+        String slug = "padded-gstin-" + UUID.randomUUID();
+        SignupRequest req = new SignupRequest(
+            slug, "Acme Traders", "27", " 27AAPFU0939F1ZV ",
+            "padded-gstin-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+
+        auth.signup(req);
+
+        Tenant t = tenants.findBySlug(slug).orElseThrow();
+        assertEquals("27AAPFU0939F1ZV", t.getGstin());
+    }
 }

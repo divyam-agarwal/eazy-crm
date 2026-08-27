@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-26 (implementation status updated 2026-08-27)
 **Status:** **IMPLEMENTED.** Built on branch `platform-primitives-module` as commits
-`4d43d75`..`0ffc68c` (eight task commits plus two review-fix commits), verified at **260 tests, 0
+`4d43d75`..`0ffc68c` (nine commits: seven task commits plus two review-fix commits — the eighth
+task commit, `d6a0859`, the docs wrap-up, falls outside this range), verified at **260 tests, 0
 failures, 0 errors** across both Gradle projects. Design-time status was "Design only; zero code
 changed" at baseline `80e74a3`; the branch was cut from `main` at `ac4eaca`. **The merge commit is
 not recorded here because the branch had not been integrated when this line was written** — fill it
