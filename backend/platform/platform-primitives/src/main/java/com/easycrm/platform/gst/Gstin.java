@@ -25,6 +25,11 @@ public final class Gstin {
         }
         if (checkChar(g.substring(0, 14)) != g.charAt(14))
             throw new ValidationException("gstin", "GSTIN checksum is invalid");
+        // The state prefix is part of what makes a GSTIN a GSTIN. Validating it here rather than
+        // leaving it to the caller closes MF1: CustomerService remembered the second step and the
+        // signup path did not, and an invalid seller state code silently decides CGST+SGST vs IGST
+        // on every quotation the tenant ever issues.
+        StateCode.requireValid(g.substring(0, 2));
         return new Gstin(g);
     }
 
