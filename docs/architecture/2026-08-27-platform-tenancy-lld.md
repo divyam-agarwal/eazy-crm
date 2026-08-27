@@ -48,6 +48,14 @@ specified here as contracts and built alongside the consumer that first needs th
 `platform-outbox` (sub-project 6), the scheduled loop with the first scheduled job, `@Async` with the
 first `@Async` method.
 
+**Amended 2026-08-27, by LLD #5's OF8.** "The first scheduled job" is the **outbox relay**, and it is
+the one job in the system that must deliberately *not* bind a tenant — it reads across all of them by
+design. So `TenantLoopRunner` is **not** built with the first `@Scheduled` job after all; it is built
+with the first *tenant-scoped* one. The relay and the outbox reaper are named, permanent exemptions,
+and the ArchUnit rule that every other `@Scheduled` method goes through the loop runner lives in
+`platform-outbox`'s LLD Part 6, so any further exemption is something a reviewer has to approve
+rather than something a developer can quietly assume.
+
 The reason is not economy, it is provability. An adapter whose only exercise is a test written to
 exercise it proves that the adapter runs, never that the *real* path goes through it — and PF7 already
 records that no test proves an adapter was used rather than bypassed. Building adapter 5 now is
@@ -289,7 +297,7 @@ What differs is where the tenant comes from and what happens when it is absent.
 | 1 | `JwtAuthenticationFilter` | `TokenVerifier.verify` → `VerifiedClaims` | `UserPrincipal` | unauthenticated → 401 (**loud**) | build now |
 | 2 | `PublicTokenEntryPoint` | the global `share_link` row | `PublicPrincipal` | 404, uniform (**loud**) | build now |
 | 3 | `CredentialBoundScope` | resolved by slug, before a token exists | `SystemPrincipal` | 401, generic | build now |
-| 4 | `TenantLoopRunner` | iterates the `tenant` table | `SystemPrincipal` | **silent** — job processes nothing | with first job |
+| 4 | `TenantLoopRunner` | iterates the `tenant` table | `SystemPrincipal` | **silent** — job processes nothing | with first *tenant-scoped* job — **not** the outbox relay (OF8) |
 | 5 | *(composition, not a class)* | the event envelope | `SystemPrincipal` | **silent** — handler sees no rows | with `platform-outbox` |
 | 6 | `TenantAwareTaskDecorator` | captured from the submitting thread | inherited | **silent** — task sees no rows | with first `@Async` |
 
@@ -537,7 +545,7 @@ suite proves RLS is switched on; it does not prove RLS isolates.
 | **CF5** | CR2 cannot see a `runAs` more than one frame below a `@Transactional` method, so it catches the common case and not the general one | Accepted, and stated. The general case needs runtime instrumentation; the common case is where the bug actually gets written |
 | **CF6** | Three of six entry points have no consumer, so P1 — which was written before that was visible — sits against P5. CD1 resolves the schedule without reopening the ownership | Watch for drift: a specified-but-unbuilt adapter is a contract nobody is compiling against. Re-read 2.4 when each consumer arrives |
 | **CF7** | `AsyncConfig` today defines a `taskExecutor` bean with `@EnableAsync` that nothing submits to. It is dead wiring, and it also silently becomes Boot's default executor for anything that later adds `@Async` | Harmless now. Under CD1 it is built with its first consumer, so the dead bean goes away rather than being inherited into five services |
-| **CF8** | `Entitlements` is specified with no content, because sub-project 10 defines it. A placeholder on the crown-jewel type is a small debt with a large blast radius if its shape turns out wrong | Keep it opaque — a record the entitlement module reads and this module only carries. If it ever grows a method this module calls, that is the signal the boundary moved |
+| **CF8** | `Entitlements` is specified with no content, because sub-project 10 defines it. A placeholder on the crown-jewel type is a small debt with a large blast radius if its shape turns out wrong | Keep it opaque — a record the entitlement module reads and this module only carries. If it ever grows a method this module calls, that is the signal the boundary moved. **Extended by LLD #5's OF9:** putting `entitlements()` on the *interface* means every construction site must supply them, and an event consumer restoring context from a message cannot — so the type needs an `Entitlements.unresolved()`, and "unresolved" must not read as "none" |
 | **CF9** | `TenantAwareTransactionManager` is `@Primary`. A service that later adds a second `DataSource` — the outbox relay is the named candidate — gets two transaction managers, one of which must **not** be tenant-aware | Parent Appendix B item 4, still open. It becomes real in sub-project 6, not before |
 
 ---

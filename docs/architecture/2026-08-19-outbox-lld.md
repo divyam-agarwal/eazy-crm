@@ -1,12 +1,36 @@
 # Transactional Outbox — Low-Level Design
 
-**Date:** 2026-08-19
+**Date:** 2026-08-19 · **revised 2026-08-27** (LLD #5 of 6 — see Part 0)
 **Status:** Design. Not built.
 **Parent:** `2026-08-19-aws-target-architecture-design.md` §2.3 (D3, F4, F8, F12, F16)
+**Module spec:** [`../superpowers/specs/2026-08-26-shared-platform-modules-design.md`](../superpowers/specs/2026-08-26-shared-platform-modules-design.md) — this document is `platform-outbox`'s LLD
+**Depends on:** [`2026-08-27-platform-tenancy-lld.md`](2026-08-27-platform-tenancy-lld.md) (#4) and [`2026-08-26-platform-primitives-lld.md`](2026-08-26-platform-primitives-lld.md) (#1)
+**Published:** https://claude.ai/code/artifact/032ad740-95ab-41db-8ade-f660d9a5a7eb
 
 The outbox is the one piece of shared mechanism every service depends on for correctness. This
 document specifies it at class level: what lives in `platform`, what each service implements, how a
 service adopts it, and the exact path a request takes from HTTP call to consumed message.
+
+---
+
+# Part 0 — Revisions, 2026-08-27
+
+This document was written before the six-module decomposition and before LLDs #1, #3 and #4. It is
+**revised, not rewritten**: every conclusion below survives, and the five changes are marked at the
+point they apply rather than silently folded in.
+
+| # | Revision | Cause |
+|---|---|---|
+| **1** | `platform-core` no longer exists. This module declares `platform-tenancy` and `platform-primitives` explicitly | The parent spec's P2. The declaration *is* the structural fix for TB3 |
+| **2** | `OutboxWriter` serialises through **`EventJson`**, never an injected or fresh `ObjectMapper` | LLD #1 built `EventJson` as a separately-configured mapper for exactly this wire. TB3 is the bug it exists to prevent |
+| **3** | `IdempotentConsumer` binds a **`SystemPrincipal`**, not `new TenantPrincipal(…, "SYSTEM")` | LLD #4's CD3 — `TenantPrincipal` is a sealed interface and the string provenance is gone |
+| **4** | **`relay_app` loses `BYPASSRLS`** and gains a role-scoped policy on the outbox table alone | New — see OF6. `BYPASSRLS` is a role attribute that applies database-wide and overrides `FORCE`, which collides with LLD #4's PF14 |
+| **5** | ShedLock's table ships as `V902`, and the dependency is declared | New — see OF7. `@SchedulerLock` was specified with no table and no library |
+
+**A sixth change lands on LLD #4 rather than here.** Its CD1 schedules `TenantLoopRunner` to be built
+"with the first `@Scheduled` job". The first scheduled job in the system is **this relay**, and it is
+the one job that must deliberately *not* bind a tenant. Recorded as OF8; LLD #4's §2.4 is amended
+rather than this document's design changed.
 
 ---
 
@@ -16,8 +40,9 @@ service adopts it, and the exact path a request takes from HTTP call to consumed
 
 ```
 platform/
-├── platform-core/                    existing — tenancy, security, money, error, persistence
-└── platform-outbox/                  NEW
+├── platform-primitives/              LLD #1 — EventJson, money, error vocabulary
+├── platform-tenancy/                 LLD #4 — TenantContext, SystemPrincipal, TenantScopedEntity
+└── platform-outbox/                  NEW  (revision 1: there is no `platform-core`)
     ├── src/main/java/com/easycrm/platform/outbox/
     │   ├── DomainEvent.java              the contract a service implements
     │   ├── Outbox.java                   @Entity, tenant-scoped — the WRITE side
@@ -33,7 +58,8 @@ platform/
     │   └── OutboxAutoConfiguration.java
     ├── src/main/resources/db/outbox/
     │   ├── V900__outbox.sql
-    │   └── V901__processed_event.sql
+    │   ├── V901__processed_event.sql
+    │   └── V902__shedlock.sql            revision 5 — see OF7
     └── src/main/resources/META-INF/spring/
         └── org.springframework.boot.autoconfigure.AutoConfiguration.imports
 ```
@@ -51,6 +77,21 @@ Three things, and nothing else.
 // services/sales/build.gradle.kts
 dependencies { implementation(project(":platform:platform-outbox")) }
 ```
+
+`platform-outbox` itself declares what it needs, which is revision 1 and is the whole point of P2:
+
+```kotlin
+// platform/platform-outbox/build.gradle.kts
+dependencies {
+    api(project(":platform:platform-tenancy"))       // Outbox is a TenantScopedEntity; SystemPrincipal
+    api(project(":platform:platform-primitives"))    // EventJson — the structural fix for TB3
+    implementation("net.javacrumbs.shedlock:shedlock-spring")
+    implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template")
+}
+```
+
+`api` on primitives rather than `implementation`: TB3 is a bug of *omission*, and a dependency a
+consumer cannot see is one a consumer can accidentally re-satisfy with a fresh `ObjectMapper`.
 
 **2. Its events implement `DomainEvent`.** The existing events already have the right shape and are
 already published on the existing seam:
@@ -124,14 +165,51 @@ CREATE INDEX idx_outbox_unpublished
     WHERE published_at IS NULL;
 
 ALTER TABLE ${flyway:defaultSchema}.outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ${flyway:defaultSchema}.outbox FORCE  ROW LEVEL SECURITY;   -- LLD #4, PF14
 CREATE POLICY tenant_isolation ON ${flyway:defaultSchema}.outbox
     USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+-- Revision 4. The relay must read and mark EVERY tenant's rows, and that exemption is
+-- scoped by POLICY to this one table rather than by BYPASSRLS on the role. Permissive
+-- policies are OR-ed, so relay_app matches through relay_reads_all while easycrm_app
+-- still matches only through tenant_isolation. See OF6.
+CREATE POLICY relay_reads_all       ON ${flyway:defaultSchema}.outbox
+    FOR SELECT TO relay_app USING (true);
+CREATE POLICY relay_marks_published ON ${flyway:defaultSchema}.outbox
+    FOR UPDATE TO relay_app USING (true);
 
 GRANT SELECT, UPDATE ON ${flyway:defaultSchema}.outbox TO relay_app;
 ```
 
+`relay_app` holds **no role attribute at all** — it is an ordinary `LOGIN` role whose reach is the
+two policies above plus its grants. That matters because `BYPASSRLS` is not a per-table permission:
+it applies to every table in the database and it overrides `FORCE`, so the design it replaced left
+the relay's containment resting entirely on the GRANT list never widening. A policy cannot widen by
+accident.
+
 The partial index is what keeps the relay's poll cheap forever: it covers only unpublished rows, so
 it stays small no matter how large the table grows between reaper runs.
+
+**Revision 5 — the lock table.** `OutboxRelay` carries `@SchedulerLock`, and ShedLock's JDBC provider
+needs a table that this document never shipped. A service adopting the module exactly as §1.2
+describes gets a relay that cannot take its lock. It belongs in the same shared-DDL mechanism as the
+other two, in the service's own schema:
+
+```sql
+-- V902__shedlock.sql
+CREATE TABLE ${flyway:defaultSchema}.shedlock (
+  name       VARCHAR(64) PRIMARY KEY,
+  lock_until TIMESTAMPTZ NOT NULL,
+  locked_at  TIMESTAMPTZ NOT NULL,
+  locked_by  VARCHAR(255) NOT NULL
+);
+GRANT SELECT, INSERT, UPDATE ON ${flyway:defaultSchema}.shedlock TO easycrm_app;
+```
+
+**No RLS, and that is correct rather than an omission** — a lock row belongs to a *task*, not to a
+tenant, so it is a global table in the LLD #4 sense and would carry `@GlobalTable(reason = …)` if it
+were an entity at all. It is not; ShedLock manages it directly. Worth stating because the tenant-
+scoping ArchUnit rule is deliberately silent about tables with no entity, and this is the first one.
 
 ---
 
@@ -188,7 +266,7 @@ public class OutboxWriter {
             event.aggregateType(), event.aggregateId(),
             event.eventType(), event.schemaVersion(),
             trace.capture(),                 // W3C traceparent, see Part 5
-            mapper.valueToTree(event),       // Jackson 3 — tools.jackson, not com.fasterxml
+            EventJson.tree(event),           // revision 2 — NEVER a fresh or injected ObjectMapper
             Instant.now()));
     }
 }
@@ -197,6 +275,12 @@ public class OutboxWriter {
 This is the whole integration surface. A service publishes a Spring event exactly as
 `QuotationService` and `OrderService` already do; the outbox row is a side effect of that publish,
 in the same transaction, with no service code aware of SNS.
+
+**Revision 2.** The serialiser is `EventJson`, from `platform-primitives` (LLD #1), and the module
+declares that dependency. TB3 — money crossing the wire as a JSON *number*, quietly undoing
+challenges #2 and #17 across the whole asynchronous surface — is not a mistake anyone makes on
+purpose; it is what happens when a mapper is constructed where no one is looking. LLD #1's R1 already
+forbids building one, so this is that rule reaching its most consequential caller.
 
 ## 2.4 `OutboxRelay` — the read side
 
@@ -243,7 +327,10 @@ stable tiebreak for rows written inside the same transaction rather than an arbi
 public <T extends Record> void consume(EventEnvelope env, Class<T> type, Consumer<T> handler) {
     // runAs BEFORE the transaction opens. Hibernate resolves a session's tenant once, at
     // session-open, and never re-reads it (challenge #9). Parent doc F4.
-    TenantContext.runAs(new TenantPrincipal(env.tenantId(), null, "SYSTEM"), () ->
+    // Revision 3: SystemPrincipal, not a string provenance — LLD #4, CD3.
+    // Entitlements are UNRESOLVED here, deliberately: the envelope does not carry them
+    // and must not. See OF9.
+    TenantContext.runAs(new SystemPrincipal(env.tenantId(), Entitlements.unresolved()), () ->
         tx.executeWithoutResult(status -> {
             try {
                 processed.saveAndFlush(new ProcessedEvent(env.eventId()));
@@ -256,6 +343,17 @@ public <T extends Record> void consume(EventEnvelope env, Class<T> type, Consume
 ```
 
 The dedupe insert and the handler share **one transaction** — see OF3.
+
+**Why the entitlements are `unresolved` and not looked up.** LLD #4 put `entitlements()` on the
+`TenantPrincipal` interface, so every construction site must supply them — and a consumer restoring
+context from a message is the one site that cannot. Adding them to the envelope is the obvious fix
+and it is wrong: an event is immutable and entitlements are not, so a message redelivered from a DLQ
+a week later would carry a plan the tenant may have since changed, and a replay would be authorised
+against the past. The correct reading is narrower and worth stating once: **an entitlement check
+belongs to the synchronous, user-initiated write that produced the event, not to the handler
+downstream of it.** By the time a message is consumed, the metered thing has already happened. A
+handler that genuinely needs a live plan must look it up, and `unresolved()` is what makes that
+explicit instead of silently reading as "no entitlements". See OF9.
 
 ## 2.6 `ProcessedEvent`
 
@@ -287,7 +385,7 @@ window, not the DLQ age — a message redriven from a DLQ a week later must stil
 | 5 | " | `events.publishEvent(new QuotationSentEvent(…))` |
 | 6 | `OutboxWriter.on` | **Same thread, same transaction.** Serialises the payload, captures `traceparent`, saves. `@TenantId` stamps `tenant_id`; the RLS policy doubles as `WITH CHECK` on insert |
 | 7 | commit | Quotation state and outbox row become durable **atomically**. HTTP 200 returns. Nothing has touched SNS |
-| 8 | ≤2s later, `OutboxRelay` | One task holds the ShedLock row. Reads through `relayJdbc` as `relay_app` — no Hibernate, no `@TenantId`, no RLS (OF1, parent F12) |
+| 8 | ≤2s later, `OutboxRelay` | One task holds the ShedLock row. Reads through `relayJdbc` as `relay_app` — no Hibernate, no `@TenantId`, and an RLS policy written for it rather than a role that ignores RLS (OF1, OF6) |
 | 9 | `SnsOutboxPublisher` | `PublishBatch`, ≤10 entries per call. `MessageGroupId = aggregateId`, `MessageDeduplicationId = eventId`, `eventType` as a message attribute |
 | 10 | " | Marks the **contiguous successful prefix** `published_at = now()` (OF4) |
 | 11 | SNS | Fans out to subscribed SQS FIFO queues, each filtered by `eventType` so a consumer receives only what it handles |
@@ -359,7 +457,9 @@ system is invisible.
 | `platform-outbox` may not reference any service package | The shared module accumulating domain meaning (D12) |
 | **No class anywhere is annotated `@TransactionalEventListener`** | OF2 — the single most likely way to silently break this design |
 | Every `DomainEvent` implementation is a `record` | Mutable events, and payloads that serialise differently than they read |
-| Every `@Entity` extends `TenantScopedEntity` or is allowlisted | Existing rule; `Outbox` and `ProcessedEvent` both pass without an allowlist |
+| Every `@Entity` extends `TenantScopedEntity` or is annotated `@GlobalTable` | LLD #4's CR1 (the FQN allowlist is gone); `Outbox` and `ProcessedEvent` both pass without an exemption |
+| No `@Scheduled` method outside `platform-outbox` runs without a bound tenant | OF8 — the relay and the reaper are the *only* jobs that legitimately run cross-tenant, and they should be the only exemptions anyone ever has to justify |
+| No `ObjectMapper` is constructed anywhere | LLD #1's R1, reaching its most consequential caller — revision 2 |
 
 The second rule is one line and closes a bug that no test would reliably catch.
 
@@ -419,7 +519,9 @@ grants on outbox tables only. Without it, none of the relay tests are testing th
 | 4 | Written under tenant A, read via `easycrm_app` under tenant B → zero rows |
 | 5 | Native insert with a foreign `tenant_id` → rejected by the RLS policy acting as `WITH CHECK` |
 | 6 | **Relay sees across tenants.** Rows under A and B; the relay, as `relay_app`, reads both. The regression test for F12 *and* OF1 |
-| 7 | **The grant boundary holds.** `relay_app` selecting from `quotation` → permission denied. Test 6 without test 7 proves only that a hole exists, not that it is the right size |
+| 7 | **The boundary holds, on every table.** `relay_app` is denied on **each** table backing a `TenantScopedEntity`, generated from the entity set rather than naming `quotation` alone — so a table added later cannot quietly fall outside it. Test 6 without test 7 proves only that a hole exists, not that it is the right size |
+| 7a | **`relay_app` holds no `BYPASSRLS`.** Assert `rolbypassrls = false` in `pg_roles`. Revision 4's entire safety argument is that the exemption is per-table; a role attribute granted later in an unrelated migration would silently restore the database-wide bypass and no other test would notice (OF6) |
+| 7b | **A second tenant-scoped table is not reachable through the policy.** Insert into `processed_event` under two tenants, read as `relay_app` → only its own tenant's rows, because no `relay_*` policy exists there |
 | 8 | Consumer writes land under the envelope's tenant, never the ambient one |
 
 ### Ordering
@@ -448,6 +550,7 @@ grants on outbox tables only. Without it, none of the relay tests are testing th
 | 18 | Two relay instances fire together → exactly one publishes |
 | 19 | Lease expiry — holder "dies", another instance may run after `lockAtMostFor` |
 | 20 | Flyway applies both locations cleanly; the `V900` namespace does not collide |
+| 20a | `V902` creates the ShedLock table in the service's own schema, and two relay instances actually contend on it (test 18 is vacuous without this — OF7) |
 | 21 | The outbox table has the expected shape **in every service schema** — catches hand-edited drift |
 | 22 | `EXPLAIN` the relay query → index scan on `idx_outbox_unpublished`, not a seq scan |
 | 23 | **Expand/contract:** apply the new migrations to a database seeded at the previous release, then boot the *previous* entity mappings under `ddl-auto: validate`. The regression test for parent F14, and almost nobody builds it |
@@ -461,15 +564,16 @@ test asserting `DatabaseConnectionsCurrentlySessionPinned` stays at zero under l
 
 | # | Symptom | Cause | Fix |
 |---|---|---|---|
-| **TB1** | Events silently stop flowing; outbox lag climbs; no error anywhere | The relay reads through JPA and `@TenantId` filters to zero rows (OF1), or RLS does (F12) | `JdbcTemplate` on the `relay_app` DataSource. **Detection depends entirely on the outbox-lag alarm existing** |
+| **TB1** | Events silently stop flowing; outbox lag climbs; no error anywhere | The relay reads through JPA and `@TenantId` filters to zero rows (OF1), or RLS does — and after revision 4 there is a third way in: the `relay_*` policies were never created, or were created on one schema and not another | `JdbcTemplate` on the `relay_app` DataSource, plus test 20's per-schema shape check now covering policies as well as columns. **Detection depends entirely on the outbox-lag alarm existing** |
 | **TB2** | Events occasionally missing under load; every test passes | `@TransactionalEventListener` instead of `@EventListener` (OF2). Tests commit, so the dual write never shows | Plain `@EventListener`, plus the ArchUnit ban |
-| **TB3** | Money arrives at the consumer as a JSON **number** and re-acquires `double` rounding error | The outbox `ObjectMapper` is a fresh instance without `BigDecimalStringModule` registered | Inject the **application's** configured mapper, never `new ObjectMapper()`. This quietly undoes challenges #2 and #17 across the whole async surface |
+| **TB3** | Money arrives at the consumer as a JSON **number** and re-acquires `double` rounding error | The outbox `ObjectMapper` is a fresh instance without `BigDecimalStringModule` registered | **Revision 2:** `EventJson`, from a declared `platform-primitives` dependency — not the application's mapper either, since the HTTP wire and the event wire are configured separately (LLD #1 §2.3). LLD #1's R1 makes the fresh instance unbuildable |
 | **TB4** | `ClassNotFoundException`, or a mapper that ignores every module | Boot 4 ships Jackson under `tools.jackson`, not `com.fasterxml.jackson` (challenge #10) | Import the right package; assert module registration in a test |
 | **TB5** | Throughput does not scale; `DatabaseConnectionsCurrentlySessionPinned` > 0 | `prepareThreshold=0` set on the primary DataSource and **forgotten on the relay's** — it is hand-configured, so it is easy to miss | Set it on both. Assert it in a config test |
 | **TB6** | One task dies and every event in the system stalls for minutes | `lockAtMostFor` copied from the sweep jobs (10m) | 60s for the relay specifically |
 | **TB7** | Events for different aggregates publish out of `occurred_at` order | **Interleaved commits.** Transaction A (earlier `occurred_at`) is still open when B commits; the relay polls and sees only B; A commits afterwards and publishes second. Inherent to *every* polling outbox | **Per-aggregate ordering still holds here, and for a specific reason:** two transactions writing events about the same quotation must both load and modify it, and `@Version` optimistic locking makes the second commit fail with 409 (challenge #26). Concurrent same-aggregate commits cannot both succeed. Cross-aggregate ordering was never guaranteed (F5). The caveat: an event published *without* touching its aggregate under the optimistic lock loses this protection |
 | **TB8** | Ordering test flakes; rare real misordering within a transaction | `UuidV7` may not be monotonic inside one millisecond | Verify the generator has a counter. If not, order by an explicit column rather than `id` |
-| **TB9** | Cross-tenant writes — the worst outcome available | `runAs` called *after* the transaction opens, or `open-in-view` re-enabled | `runAs` before; `spring.jpa.open-in-view: false` stays load-bearing (challenges #9, #29) |
+| **TB9** | Cross-tenant writes — the worst outcome available | `runAs` called *after* the transaction opens, or `open-in-view` re-enabled | `runAs` before; `spring.jpa.open-in-view: false` stays load-bearing (challenges #9, #29). LLD #4's CR2 gives this its first mechanical form |
+| **TB15** | The relay works in one service and silently publishes nothing in another | The `relay_*` policies live in shared DDL but the **role** does not — `relay_app` is created once per database while the policies are created once per schema, so a schema whose `V900` ran before the role existed has policies referencing a role that was not there | Create the role in the database bootstrap, ahead of every service's Flyway run, and assert its existence in `V900` rather than assuming it. Appendix B item 9 |
 | **TB10** | A DLQ redrive a week later re-sends WhatsApp messages to real customers | `processed_event` reaped on the outbox's 7-day schedule | Retention ≥ maximum DLQ retention (14 days), not the outbox reaper's |
 | **TB11** | The dedupe `catch` never fires; the whole transaction fails instead | `save()` without `flush()` — the constraint violation surfaces at commit, outside the try/catch | `saveAndFlush` |
 | **TB12** | Phone numbers and GSTINs appear in CloudWatch Logs | A consumer logs the whole envelope on error | `EventEnvelope.toString()` redacts `payload`; log `eventId` and `eventType` only. DPDP, not tidiness |
@@ -487,6 +591,10 @@ test asserting `DatabaseConnectionsCurrentlySessionPinned` stays at zero under l
 | **OF3** | The dedupe insert and the handler must share one transaction. Committing the dedupe row separately means a handler failure permanently marks the event processed, and the work is lost with no error anywhere |
 | **OF4** | `PublishBatch` reports success per entry. Marking the whole batch published loses the failures; publishing the rest of the batch after a failure breaks per-aggregate ordering. Only the **contiguous successful prefix** may be marked, and publishing stops at the first failure |
 | **OF5** | Five independent Flyway histories cannot share a migration file without colliding on version numbers. Resolved by a version namespace — services own `V1`–`V899`, platform-shipped migrations start at `V900` — plus `${flyway:defaultSchema}` so one file resolves per schema |
+| **OF6** | **`BYPASSRLS` is a role attribute, not a table permission.** It applies to every table in the database and it **overrides `FORCE`**, so the `relay_app` role as originally specified could not be constrained by LLD #4's PF14 fix, and its containment rested entirely on the GRANT list never widening — a procedural guarantee inside a design whose thesis is that isolation must be structural. Replaced by two role-scoped permissive policies on the outbox table alone (revision 4). Every other conclusion here survives, OF1 included: Hibernate's `@TenantId` still filters a JPA read to zero rows regardless of what the database permits, so the relay still needs `JdbcTemplate` on its own DataSource. **Two layers, two fixes — and now neither of them is database-wide** |
+| **OF7** | `@SchedulerLock` was specified with **no lock table and no library**. Test 18 ("two relay instances fire together → exactly one publishes") could not have passed, and a service adopting the module per §1.2 gets a relay that fails at first lock acquisition. `V902` and the two ShedLock dependencies close it. The table is deliberately not tenant-scoped — a lock belongs to a task |
+| **OF8** | **The first `@Scheduled` job in the system is the one that must not bind a tenant.** LLD #4's CD1 schedules `TenantLoopRunner` to be built "with the first scheduled job", and that job is this relay, whose whole purpose is to read across tenants. The adapter and its first apparent consumer want opposite things. Resolved by amending LLD #4 rather than this design: the relay and the reaper are named exemptions, and the ArchUnit rule in Part 6 makes any *further* exemption something a reviewer has to approve |
+| **OF9** | **A consumer cannot know the tenant's entitlements, and must not be told.** LLD #4 put `entitlements()` on the `TenantPrincipal` interface, so every construction site supplies them — and restoring context from a message is the one site that cannot. Putting them in the envelope looks obvious and is wrong: an event is immutable, a plan is not, and a DLQ redrive a week later would authorise a replay against a plan the tenant no longer has. `Entitlements.unresolved()` states the gap instead of hiding it behind an empty set. **The general rule this exposes:** an entitlement check belongs to the synchronous write that produced the event, never to the handler downstream of it. Feeds back to LLD #4's CF8 |
 
 # Appendix B — To verify
 
@@ -502,3 +610,16 @@ test asserting `DatabaseConnectionsCurrentlySessionPinned` stays at zero under l
    whether partial failure preserves the order of the succeeded entries.
 6. SQS deduplication interaction: `MessageDeduplicationId` gives a five-minute window; confirm
    `processed_event` is genuinely required beyond it rather than merely belt-and-braces.
+7. **That permissive RLS policies are OR-ed as revision 4 assumes** — that `relay_app` matching
+   `relay_reads_all` grants it every row even though `tenant_isolation` (which has no `TO` clause, so
+   it applies to `PUBLIC`) matches none. If Postgres AND-ed them, or if an unqualified policy took
+   precedence, the relay reads zero rows and OF6's fix is worse than what it replaced. **Verify this
+   first** — it is the load-bearing assumption of the whole revision.
+8. **That `FORCE ROW LEVEL SECURITY` on the outbox table does not break the reaper**, which deletes
+   published rows across tenants and must therefore have a `FOR DELETE` policy of its own — the
+   design names the reaper but never says which role runs it.
+9. **When `relay_app` is created relative to each service's Flyway run.** The policies are per-schema
+   and the role is per-database; a `V900` executing before the role exists fails or, worse, succeeds
+   against a role created later with different attributes (TB15).
+10. ShedLock's Boot 4 / Spring 7 compatibility and its exact table DDL for the JDBC provider version
+    resolved by the platform BOM — `V902` above is written from the documented schema, not verified.
