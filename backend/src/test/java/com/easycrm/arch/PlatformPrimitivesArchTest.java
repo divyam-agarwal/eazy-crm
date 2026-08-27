@@ -29,13 +29,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * overload — the exact shape of vacuous pass this codebase has already been bitten by once.
  *
  * <p><b>Why the condition reports the offending call as {@code satisfied}, not {@code violated}:</b>
- * {@code noClasses().should(condition)} evaluates by inverting every {@link ConditionEvent} the
- * condition emits (confirmed against the 1.4.1 jar: {@code SimpleConditionEvent.invert()} flips
- * {@code conditionSatisfied}) before deciding what counts as a rule violation. A condition that
- * emits {@code violated(...)} for the offending class is therefore inverted into a passing event
- * and the rule never fails — vacuously green in exactly the way this task exists to prevent. Emitting
- * {@code satisfied(...)} for the offending call is what survives that inversion as a reported
- * violation. This was verified empirically (Step 6 below) before being trusted.
+ * {@code noClasses().should(condition)} wraps the given condition in a {@code NeverCondition}
+ * (see {@code ArchRuleDefinition.negateCondition()} in the 1.4.1 sources), whose {@code check}
+ * delegates through an {@code InvertingConditionEvents} that calls {@link ConditionEvent#invert()}
+ * on every event the wrapped condition adds — flipping {@code SimpleConditionEvent}'s
+ * {@code conditionSatisfied} flag before deciding what counts as a rule violation. A condition
+ * that emits {@code violated(...)} for the offending class is therefore inverted into a passing
+ * event and the rule never fails — vacuously green in exactly the way this task exists to prevent.
+ * Emitting {@code satisfied(...)} for the offending call is what survives that inversion as a
+ * reported violation. This was verified empirically — evaluating the rule directly with both
+ * event polarities against a deliberately introduced violation, before trusting either one — and
+ * is re-verified by the deliberate-violation step recorded in the task's own report, not by
+ * anything in this file.
  */
 class PlatformPrimitivesArchTest {
 
@@ -53,7 +58,20 @@ class PlatformPrimitivesArchTest {
 
     @Test
     void theImportIsNotVacuous() {
-        assertThat(appClasses()).as("imported classes").isNotEmpty();
+        JavaClasses classes = appClasses();
+        assertThat(classes).as("imported classes").isNotEmpty();
+        // isNotEmpty() alone is not sufficient here: this test's classpath also carries the
+        // platform-primitives jar (backend/build.gradle.kts), whose classes live under
+        // com.easycrm.. too. If the root project's own bytecode stopped being imported - the
+        // exact ArchUnit 1.3.0/Java 25 failure this codebase already suffered once - this
+        // assertion would still pass on the jar's ten classes alone, and the rule below would
+        // go vacuously green while checking nothing that matters. EasyCrmApplication only
+        // exists in this project's own source, never in the primitives jar, so its presence is
+        // proof this project's bytecode specifically was imported.
+        assertThat(classes.contain("com.easycrm.EasyCrmApplication"))
+            .as("root project's own bytecode (not just the platform-primitives jar also on "
+              + "this classpath) was imported")
+            .isTrue();
     }
 
     @Test
@@ -82,6 +100,10 @@ class PlatformPrimitivesArchTest {
                     }
                     for (JavaConstructorCall call : unit.getConstructorCallsFromSelf()) {
                         if (MAPPER_TYPES.contains(call.getTargetOwner().getFullName())) {
+                            // satisfied(), not violated() — same reason as the method-call branch
+                            // above: noClasses() inverts every event this condition emits, so this
+                            // is what surfaces as a reported violation. Do not "tidy" this to
+                            // violated() without re-reading the class Javadoc.
                             events.add(SimpleConditionEvent.satisfied(item, call.getDescription()));
                         }
                     }

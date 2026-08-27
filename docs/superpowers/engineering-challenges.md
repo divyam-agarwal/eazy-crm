@@ -1767,22 +1767,28 @@ the class import.
 The built-in DSL conditions (`.should().dependOnClassesThat().resideInAnyPackage(...)`,
 used by R2) work correctly under both `classes()` and `noClasses()` without the
 author ever thinking about polarity, which trains the reasonable expectation
-that a hand-rolled `ArchCondition` will too. It doesn't. Decompiling
-`SimpleConditionEvent` (`javap -p -c`, no source jar available) shows the actual
-mechanism: `noClasses().should(condition)` evaluates by calling `.invert()` on
-every `ConditionEvent` the condition emits before deciding what counts as a
-rule violation — `invert()` just flips the `conditionSatisfied` boolean and
-keeps the same message. Emitting `violated(item, ...)` for the offending class,
-the natural-reading choice ("this thing happened, and it's bad — call it a
-violation"), gets flipped by that inversion into a *satisfied* event, and the
-rule reports no failure — for every class, regardless of what it does. This was
-confirmed empirically by evaluating four variants side by side: `classes().should(condition)`
-with `violated()` correctly named both offending classes; `noClasses().should(condition)`
-with `violated()` reported zero violations against the identical import; and
-`noClasses().should(condition)` with `satisfied()` correctly named only the one
-class outside `platform.money`. The fix is counter-intuitive by name — the
-"bad" case is reported via `SimpleConditionEvent.satisfied(...)`, not
-`.violated(...)` — precisely because `noClasses()` is going to invert it back.
+that a hand-rolled `ArchCondition` will too. It doesn't. `archunit-1.4.1-sources.jar`
+**is** present in the Gradle cache, and reading it names the actual mechanism:
+`ArchRuleDefinition.noClasses()` builds its rule through a private
+`negateCondition()` helper — `condition -> never(condition).as(condition.getDescription())`
+— where `never(...)` constructs a package-private `NeverCondition` (`com.tngtech.archunit.lang.conditions`).
+`NeverCondition.check(item, events)` delegates to the wrapped condition with an
+`InvertingConditionEvents` in place of the real `ConditionEvents`; that class's
+`add(ConditionEvent event)` calls `delegate.add(event.invert())` — `invert()` on
+`SimpleConditionEvent` just flips the `conditionSatisfied` boolean and keeps the
+same message. So every event a hand-rolled condition emits under `noClasses()`
+is flipped before it reaches the real rule evaluation. Emitting `violated(item, ...)`
+for the offending class, the natural-reading choice ("this thing happened, and
+it's bad — call it a violation"), gets inverted into a *satisfied* event, and
+the rule reports no failure — for every class, regardless of what it does. This
+was confirmed empirically by evaluating four variants side by side:
+`classes().should(condition)` with `violated()` correctly named both offending
+classes; `noClasses().should(condition)` with `violated()` reported zero
+violations against the identical import; and `noClasses().should(condition)`
+with `satisfied()` correctly named only the one class outside `platform.money`.
+The fix is counter-intuitive by name — the "bad" case is reported via
+`SimpleConditionEvent.satisfied(...)`, not `.violated(...)` — precisely because
+`noClasses()` is going to invert it back.
 
 ### The solution
 
@@ -1808,7 +1814,15 @@ trusting the rule. The general lesson generalizes past ArchUnit — any
 API that lets you plug a custom predicate/condition into a "positive" and a
 "negated" entry point should be treated as two different contracts until
 proven otherwise by making the negated one fail on a known-bad input, not
-assumed identical by symmetry of the surrounding DSL.
+assumed identical by symmetry of the surrounding DSL. It also isn't confined to
+hand-rolled conditions: when R2 was later reworked from an enumeration to a
+closure (`onlyDependOnClassesThat(allowedPackages)`), the same experiment —
+evaluating it under both `classes()` and `noClasses()` — showed `noClasses()`
+inverts that built-in condition too (it fires on every *permitted* dependency
+instead of every forbidden one), which is why that rule was written with
+`classes()`, not `noClasses()`, even though it lives beside a sibling rule that
+correctly uses `noClasses()` for an enumeration. Same DSL, same file, opposite
+polarity requirement depending on which shape the condition takes.
 
 ---
 
