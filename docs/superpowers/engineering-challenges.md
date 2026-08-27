@@ -1644,6 +1644,104 @@ them wrong.
 
 ---
 
+## Challenge 32 — TB3: money crosses a second wire, and it must not share a mapper with the first
+
+**Phase:** Design & Implementation (`platform-primitives`, Task 4)
+
+### The problem
+
+Challenge #17 fixed money on the **HTTP** wire: a `BigDecimalStringModule`
+registered as a Spring bean, picked up by Boot's Jackson auto-configuration onto
+the one application `ObjectMapper`. That fix is invisible to a second wire that
+does not exist yet: the outbox `payload` JSONB column, published to SNS/SQS. TB3
+is what happens when a future outbox writer builds its own `ObjectMapper` ad hoc
+(`new ObjectMapper()` inside the writer, the obvious thing to type) — it does not
+carry `BigDecimalStringModule`, so money reaches SNS as an IEEE-754 double after
+the entire rest of the stack was built specifically to avoid that.
+
+The obvious fix — inject the application mapper into the outbox writer — is
+worse than the bug it fixes, and only fails months later. HTTP responses and
+event payloads are versioned by different owners on different cadences. The day
+someone sets `spring.jackson.default-property-inclusion=non_null` to slim an API
+response, every subsequent outbox event silently drops its null fields too,
+because it is the same mapper instance. A consumer reading that event later has
+no way to tell "field absent because the producer predates this field" from
+"field present and explicitly null" — exactly the ambiguity an additive-only
+contract exists to prevent. The bug is not in the code at the time it's
+introduced; it's in the coupling that makes an unrelated, reasonable-looking API
+change silently rewrite a wire contract that has to stay readable for years.
+
+### Why it's hard
+
+Two further things made this harder than "write a second `ObjectMapper`":
+
+1. **The fix has to be a separate, independently-owned object, not a shared one
+   behind a flag.** `rebuild()`-ing the application mapper with different
+   settings still carries the coupling one step later — it would still change
+   the instant Boot's defaults change underneath it. The only fix that actually
+   removes the dependency is a mapper built from `JsonMapper.builder()` with
+   every relevant setting stated explicitly, so a change to Boot's Jackson
+   configuration has no path to reach it at all.
+
+2. **Jackson 3 relocated the specific settings this contract depends on.**
+   `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS` and
+   `.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` — the Jackson-2-era spellings for
+   "timestamps as ISO-8601 strings, not epoch numbers" — no longer exist on
+   `SerializationFeature` in Jackson 3.1.4; `javap -p
+   tools/jackson/databind/SerializationFeature.class` lists 17 members and
+   neither is among them. Both moved to a new, java.time-specific enum,
+   `tools.jackson.databind.cfg.DateTimeFeature` (itself a `DatatypeFeature`,
+   configured via the builder's `disable(DatatypeFeature...)` overload rather
+   than `disable(SerializationFeature...)`). The bytecode for
+   `DateTimeFeature`'s static initializer also shows `WRITE_DATES_AS_TIMESTAMPS`
+   defaults to `false` and `WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` defaults to
+   `true` in Jackson 3 — so the ISO-8601 behaviour this contract needs is
+   already Jackson 3's default, which made it tempting to drop the calls
+   entirely. They stayed in, explicit, for the same reason the whole class
+   exists: a *future* Jackson or Boot default is exactly what this mapper must
+   not silently inherit.
+
+### The solution
+
+`EventJson` (`platform.money`) exposes one `public static JsonMapper mapper()`
+built once from `JsonMapper.builder()` with every setting stated: the same
+`BigDecimalStringModule` as the HTTP wire (challenge #17, so the one property
+that must never diverge doesn't), `DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS`
+and `.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` disabled explicitly,
+`changeDefaultPropertyInclusion(...Include.ALWAYS)` so nulls are always written,
+and `DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES` disabled so a newer
+producer's additive field doesn't break an older consumer. Jackson 3 mappers are
+immutable and thread-safe post-`build()`, so a single `static final` instance is
+correct — no synchronization, no per-call construction.
+
+The design's own open question — "does `JsonMapper.builder()`'s defaults
+actually differ from what Boot configures?" — was answered with a test instead
+of prose (`EventJsonDivergenceTest`, root project, the only place a
+Boot-configured application `ObjectMapper` exists to compare against). All three
+assertions passed unchanged: on this codebase, today, the two mappers already
+agree that money is a string and timestamps are ISO-8601, and only diverge (by
+design) on whether `EventJson` keeps nulls regardless of what
+`default-property-inclusion` becomes. Written as an executable test rather than
+a comment, a future change to Boot's Jackson configuration that quietly closes
+that gap turns the test red instead of leaving the LLD's claim stale.
+
+### Lesson
+
+When two consumers of the same value have different owners and different
+change cadences, giving them a shared configurable object — even one that
+starts out behaving identically — reintroduces the coupling you built the
+second object to remove; the divergence only shows up later, as a silent
+side effect of an unrelated, well-intentioned change. And a "the brief's builder
+spelling might be wrong" warning is worth taking literally against a major
+version bump: Jackson 3 didn't just rename `com.fasterxml.jackson.*` to
+`tools.jackson.*` (challenge #10) — it also moved specific enum constants
+(`SerializationFeature` → `DateTimeFeature`) to a differently-typed sibling enum,
+which no amount of guessing the new package name would have caught. `javap` on
+the resolved jar found both the real location and its default, in less time
+than a web search would have taken.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
