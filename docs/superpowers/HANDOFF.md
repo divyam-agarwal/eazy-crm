@@ -418,10 +418,11 @@ is the weakest of these claims. Confirm with the user rather than assuming.
 ### Smaller deferred-Minor backlog
 
 Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
-ledger (`progress.md`, quotation PDF/share slice) accumulated across all ten tasks, cross-checked
-line-by-line against that ledger before its workspace was deleted at merge — so it really is
-**self-contained**: don't go looking for an SDD ledger to corroborate it, there won't be one.
-Roughly highest-value first.
+ledgers of **two** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
+items 23–24 from the `platform-primitives` slice (eight tasks) — each cross-checked line-by-line
+against its ledger before that workspace was deleted at merge. So it really is **self-contained**:
+don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
+first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
 
 1. ~~**`QuotationService.list` has the dropped-filter bug**~~ — **DONE.** Closed by the quotation
    PDF/share slice's Task 9: `QuotationSpecifications.filter` mirrors `OrderSpecifications`,
@@ -520,3 +521,26 @@ Roughly highest-value first.
     inter-state Total tax row specifically would not turn the test red. The row does render
     (verified by inspection); the intra-state branch has no such ambiguity. Asserting on the
     literal `Total tax` label, or choosing a fixture where the two amounts differ, closes it.
+
+**From the `platform-primitives` slice (2026-08-27).** Both were raised by the whole-branch review,
+judged real, and deliberately deferred rather than fixed — each is a decision better made once,
+when module 2 lands and there are three places to keep in step instead of two.
+
+23. **`PrimitivesModuleArchTest.carriesNoRuntimeSpringDependency` exempts by *name suffix*.** The
+    rule is `noClasses().that().haveSimpleNameNotEndingWith("AutoConfiguration").should()
+    .dependOnClassesThat().resideInAnyPackage("org.springframework..")`, so **any** class named
+    `*AutoConfiguration` silently opts out of the module's no-runtime-Spring guarantee — a naming
+    convention, not a real constraint. Today it exempts exactly one class
+    (`MoneyAutoConfiguration`) and is not over-exempting anything. Scoping the exemption by the
+    `@AutoConfiguration` annotation, or by package, would not be forgeable. Worth doing when
+    `platform-web` and `platform-tenancy` arrive with auto-configurations of their own, because
+    that is when the convention starts carrying weight it was never designed to carry.
+24. **The Spring Boot version is pinned in two independent places and can drift silently.** The
+    root project pins it via the plugin (`backend/build.gradle.kts`, `id("org.springframework.boot")
+    version "4.1.0"`), and the module pins it via the BOM
+    (`backend/platform/platform-primitives/build.gradle.kts`,
+    `platform("org.springframework.boot:spring-boot-dependencies:4.1.0")`). Nothing checks the two
+    agree, and a mismatch would surface as a confusing resolution error rather than as "you edited
+    one of two". The right fix is a Gradle version catalog (`gradle/libs.versions.toml`) or a shared
+    convention plugin — a build-structure decision worth making **once**, at module 2, rather than
+    twice.
