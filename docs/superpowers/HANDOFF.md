@@ -15,7 +15,7 @@ see §3's "Previous code work" for its detail.
 
 ## 0. Resuming? Start here
 
-**One thing is in flight: `public-rate-limiting` is complete but not merged.** Seven tasks
+**One thing is in flight: `public-rate-limiting` is complete but not merged.** Seven tasks plus a whole-branch fix wave
 (policy value type + config binding, the bounded in-memory store, the filter with its 429/Retry-After
 contract, filter ordering ahead of Spring Security, end-to-end tests, and this docs wrap-up) are done
 on branch `public-rate-limiting`, commits `bc542c2`..`5653bfb` off `main` at `e69d7ac`, every task
@@ -26,7 +26,7 @@ it. Before it, the `rls-force-and-guard` slice ran to completion and **merged to
 before it (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. Expect **287 tests, 0 failures, 0 errors** — 264 in
+   then `cd backend && ./gradlew clean test`. Expect **296 tests, 0 failures, 0 errors** — 273 in
    the root project and 23 in `platform-primitives`. Gradle prints no total for a multi-project
    build, so count it yourself:
 
@@ -176,7 +176,7 @@ All under `docs/superpowers/`:
   with an `InMemoryRateLimitStore` implementation bounded by a Caffeine cache (challenge #39), a
   `RateLimitFilter` returning 429 + `Retry-After` on exhaustion, registering that filter ahead of
   Spring Security so failed-auth traffic is capped too, end-to-end integration tests proving the
-  filter ordering, and this docs wrap-up. **287 tests, 0 failures, 0 errors** — 264 in the root
+  filter ordering, and this docs wrap-up. **296 tests, 0 failures, 0 errors** — 273 in the root
   project, 23 in `platform-primitives`, up from the 264-test `rls-force-and-guard` baseline (+23).
   Delivered: token-bucket limits (Bucket4j) keyed on `(policy name, client IP)` so one policy's
   allowance can't drain another's exhausted client's traffic against a different route (challenge
@@ -388,7 +388,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 287 tests run in ~13s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 296 tests run in ~13s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
