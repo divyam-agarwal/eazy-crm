@@ -81,6 +81,11 @@ class RateLimitIntegrationTest extends IntegrationTest {
      * would fail with confusing 404s/401s that look like the feature is broken. This
      * test fails first, and its message says the actual problem: the limiter is
      * disabled in this context.
+     *
+     * <p>Matched pair with {@code com.easycrm.support.HarnessRateLimitDisabledTest},
+     * which guards the opposite direction: that the limiter stays OFF in the ordinary
+     * shared harness context every other integration test class uses. Together they
+     * pin both edges of the {@code easycrm.rate-limit.enabled} default.
      */
     @Test
     void theLimiterIsEnabledInThisTestContext() {
@@ -115,10 +120,14 @@ class RateLimitIntegrationTest extends IntegrationTest {
     @Test
     void spoofedForwardedHeadersShareOneBucket() throws Exception {
         String token = someToken();
+        // Priming calls assert 404 (unknown token, bucket not yet drained) so a bucket
+        // leaked from an earlier test fails right here, not silently at the third call.
         mvc.perform(get("/public/q/" + token).with(from("203.0.113.20"))
-            .header("X-Forwarded-For", "1.1.1.1"));
+                .header("X-Forwarded-For", "1.1.1.1"))
+            .andExpect(status().isNotFound());
         mvc.perform(get("/public/q/" + token).with(from("203.0.113.20"))
-            .header("X-Forwarded-For", "2.2.2.2"));
+                .header("X-Forwarded-For", "2.2.2.2"))
+            .andExpect(status().isNotFound());
 
         // If the filter trusted the header, each request would have minted its own bucket
         // and this third one would sail through — a bypass any client could perform.
@@ -154,8 +163,12 @@ class RateLimitIntegrationTest extends IntegrationTest {
     @Test
     void distinctClientsDoNotShareAnAllowance() throws Exception {
         String token = someToken();
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")));
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")));
+        // Priming calls assert 404 (unknown token, bucket not yet drained) so a bucket
+        // leaked from an earlier test fails right here, not silently at the third call.
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")))
+            .andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")))
+            .andExpect(status().isNotFound());
         mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")))
             .andExpect(status().isTooManyRequests());
 
