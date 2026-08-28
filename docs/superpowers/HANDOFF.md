@@ -432,11 +432,14 @@ the workflow from §0 step 4.
    to hang activity listeners on.
 2. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
    today; nothing runs on a schedule. Small, introduces the first scheduled job.
-3. **P0-auth follow-up** — user invitations + **record-level visibility filtering** (`assigned_to`,
-   still open from P1a — every user in a tenant reads every record). **Its rate-limiting half is now
-   done** on branch `public-rate-limiting` (§0/§3, pending merge) — `/public/q/{token}` and the auth
-   routes are capped per-IP with a 429 + `Retry-After` contract. That closes the *abuse-of-rate*
-   half of PF19, not the *entitlement-metering* half — PF19 stays open below.
+3. **P0-auth follow-up** — now **only** user invitations + **record-level visibility filtering**
+   (`assigned_to`, still open from P1a — every user in a tenant reads every record). Its
+   rate-limiting third is **done** on branch `public-rate-limiting` (§0/§3, pending merge):
+   `/public/q/{token}` and the auth routes are capped per-IP with a 429 + `Retry-After` contract.
+   That closes the *abuse-of-rate* half of PF19 and **not** the *entitlement-metering* half — PF19
+   stays open below. Record-level visibility is the larger and more overdue of the two remainders:
+   it is a **tenant-internal confidentiality gap that exists in code running today**, which is the
+   same category of claim that made PF14/PF15 outrank everything else two slices ago.
 4. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
    `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
 
@@ -475,11 +478,27 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested default:** with PF14/PF15 closed and #3's rate-limiting half done, the field narrows to
-**#1 (activity/follow-up)** — the next spec-scoped product surface — and finishing the rest of #3
-(user invitations + record-level visibility filtering), which is now the smaller remaining piece of
-what #3 originally scoped. `platform-web` is next by dependency order, but "next in the queue"
-remains the weakest of these claims. Confirm with the user rather than assuming.
+**Suggested default — read this before proposing anything.** Three slices in a row have now been
+hardening (RLS forcing, then rate limiting). The security items that described *running code* are
+closed or downgraded, so the honest ranking has changed:
+
+- **Record-level visibility filtering (the rest of #3) is the last "it is wrong in code that runs
+  today" item on this list.** Every user in a tenant currently reads every record — a
+  tenant-internal confidentiality gap, the same category of claim that put PF14/PF15 ahead of
+  everything else two slices ago. It is also a prerequisite the frontend will assume exists.
+- **#1 (activity/follow-up) is the strongest product claim** and the wedge's most conspicuous
+  missing surface: "never lose a follow-up" is a headline promise with no implementation. The accept
+  event seam already exists to hang listeners on. Pick this if the next slice should move the
+  product rather than the platform.
+- **PF19's entitlement-metering half** is now the only part of PF19 left, and it is genuinely
+  blocked on design, not effort: the public route has no JWT, so there is nowhere to hang a
+  per-tenant check. It needs the billing thread's decisions before code.
+- **`platform-web`** is next by dependency order, which remains the weakest of these claims.
+
+A reasonable reading is: **visibility filtering if you want the last correctness gap closed, #1 if
+three hardening slices is enough and the product needs to move.** Confirm with the user rather than
+assuming — and note that #2 (scheduled auto-expiry) is still the cheapest item on the board if a
+small slice is wanted between two large ones.
 
 **Before any second app instance:** the rate limiter's store is in-process (§3) — running N
 instances behind a load balancer multiplies every configured limit by N, silently. Build the
@@ -617,3 +636,40 @@ when module 2 lands and there are three places to keep in step instead of two.
     one of two". The right fix is a Gradle version catalog (`gradle/libs.versions.toml`) or a shared
     convention plugin — a build-structure decision worth making **once**, at module 2, rather than
     twice.
+
+**From the `public-rate-limiting` slice (2026-08-28).** Items 25–28 are per-task review findings;
+29–32 came from the whole-branch review, which triaged all four as genuinely safe to defer (its two
+must-fix findings — the eviction window and the context path — were fixed on the branch, not deferred).
+
+25. **Jackson's `AUTO_CLOSE_TARGET` closes the servlet output stream** when `RateLimitFilter.reject`
+    writes the 429 body via `writeValue(response.getOutputStream(), …)`. Harmless today because the
+    deny path is terminal — nothing runs after it. It stops being harmless the moment anything is
+    layered after the limiter in the chain.
+26. **`org.springframework.lang.NonNull` is `@Deprecated` since Spring 7.0** (JSpecify annotations are
+    the replacement). `RateLimitFilter` is its only use in `src/main/java`. Cosmetic, but it is the
+    kind of thing that becomes a compile warning wall later; fix it when JSpecify is adopted repo-wide.
+27. **Three of the five `RateLimitFilterTest` cases would also pass against a pass-through filter**
+    (allowed / unmatched / disabled). They are negative controls. The two load-bearing cases — deny,
+    and the bucket key — are properly falsifiable, and four integration tests cover the rest, so this
+    is thin rather than wrong.
+28. **`HarnessRateLimitDisabledTest` guards the shared context only.** It proves the suite-wide
+    `enabled=false` default still applies to a plain `IntegrationTest` subclass, and the re-review
+    proved it falsifiable by deleting the annotation and watching it go red. It cannot catch a future
+    test class that forks its own context with the limiter ON, nor a new `@SpringBootTest` base that
+    does not extend `IntegrationTest`. All 64 current subclasses inherit cleanly.
+29. **`UrlPathHelper.getPathWithinApplication` URL-decodes the path**, so a `%2F` inside a share token
+    would split into segments and miss the `/public/q/*` pattern where the raw URI matched. Not
+    reachable today: Tomcat rejects encoded slashes with a 400 before the filter runs. It becomes
+    reachable if `ALLOW_ENCODED_SLASH` is ever turned on, or behind a proxy that normalises differently.
+30. **`refillPeriod` carries `@NotNull` but no positivity constraint,** so `refill-period: 0s` binds
+    successfully at startup and then throws inside Bucket4j on the first request — the one
+    misconfiguration in this properties class that still fails late rather than fast. `capacity` is
+    correctly `@Positive`.
+31. **CGNAT collateral: customers behind one carrier NAT share a bucket.** A share link forwarded to
+    several people on the same mobile carrier can 429 legitimate recipients. This is inherent to the
+    per-IP keying decision (design spec §3 argues why per-token is worse), not a defect — but it is the
+    failure mode to look for first if a distributor ever reports "my customer says the link is broken."
+32. **The shipped `auth` policy is never exercised end-to-end.** `RateLimitIntegrationTest` overrides
+    `policies[1]` with its throwaway `api-protected` policy, so the 30/minute login cap is covered only
+    by `RateLimitDefaultsTest`'s matching assertions. Adequate — the mechanism is identical and proven
+    on the other policy — but no test ever drives a real login to 429.
