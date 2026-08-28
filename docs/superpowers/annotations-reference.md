@@ -136,7 +136,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@SpringBootTest` | `org.springframework.boot.test.context` | Boots the full application context for integration tests. | Meta-annotated with `@ExtendWith(SpringExtension.class)` etc. |
 | `@Testcontainers` | `org.testcontainers.junit.jupiter` | JUnit 5 extension that manages container lifecycle. | `@ExtendWith(TestcontainersExtension.class)` |
 | `@Container` | `org.testcontainers.junit.jupiter` | Marks a container field for the extension to start/stop. | — |
-| `@DynamicPropertySource` | `org.springframework.test.context` | Injects runtime values (container JDBC URL) into the Spring `Environment` before context start. | — |
+| `@DynamicPropertySource` | `org.springframework.test.context` | Injects runtime values (container JDBC URL) into the Spring `Environment` before context start. Always outranks `@TestPropertySource`, but among several `@DynamicPropertySource` methods in one class hierarchy the superclass's runs *last* and wins on a shared key — see challenge log #40. | — |
+| `@TestPropertySource` | `org.springframework.test.context` | Adds inline test properties (`properties = "..."`) to the `Environment`, lower precedence than `@DynamicPropertySource` and than any same-key `@DynamicPropertySource` registration from any class in the hierarchy. Used on `IntegrationTest` to default `easycrm.rate-limit.enabled=false` so a subclass's `@DynamicPropertySource` can reliably override it (challenge log #40). | — |
 | `@Autowired` | `org.springframework.beans.factory.annotation` | Injects a bean into a field/constructor. | — |
 | `@AutoConfigureMockMvc` | `org.springframework.boot.webmvc.test.autoconfigure` (Boot 4 module `spring-boot-webmvc-test`) | Wires a `MockMvc` for controller tests without a live server. | — |
 

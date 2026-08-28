@@ -2309,3 +2309,73 @@ single-parameter cache key silently collapses is exactly the one that every
 single-axis test is structurally unable to catch.
 
 ---
+
+## Challenge 40 — `@DynamicPropertySource` in a subclass loses to its own superclass
+
+**Phase:** Implementation
+
+### The problem
+
+`RateLimitIntegrationTest` needs the limiter turned ON with its own tiny, test-scoped
+policies, but its superclass, `IntegrationTest`, turns the limiter OFF for every other
+test in the suite via a `@DynamicPropertySource` method (`registry.add("easycrm.rate-
+limit.enabled", () -> "false")`) — necessary so 62 unrelated integration test classes
+sharing one cached context don't accumulate MockMvc's fixed loopback-address traffic
+into one bucket and blow the auth policy partway through the run. The obvious fix —
+give `RateLimitIntegrationTest` its own `@DynamicPropertySource` method that adds
+`"easycrm.rate-limit.enabled" -> "true"` — compiles, looks correct, and is exactly what
+Spring's own reference docs seem to promise ("dynamic properties take higher precedence
+than `@TestPropertySource`, ... regardless of declaration order or class hierarchy").
+It fails anyway: every 429 assertion in the class saw 404/401 instead, because the
+limiter was still off. `RateLimitProperties.enabled()` resolved to `false` even though
+the subclass had explicitly, unconditionally registered `true`.
+
+### Why it's hard
+
+That Spring doc quote is about `@DynamicPropertySource` **vs.** `@TestPropertySource` —
+a real, one-directional guarantee — not about ordering **among multiple
+`@DynamicPropertySource` methods within one class hierarchy**, which the docs don't
+spell out and which behaves the opposite of the intuitive "subclass overrides
+superclass" mental model borrowed from method overriding. Tracing
+`DynamicPropertiesContextCustomizerFactory` into `MethodIntrospector.selectMethods` →
+`ReflectionUtils.doWithMethods` shows the actual mechanics: methods are collected
+**leaf-class first, then superclass**, into one ordered set, and
+`DynamicPropertiesContextCustomizer.customizeContext` invokes them in that same order
+into a single `Map<String, Supplier<Object>>` (`DynamicValuesPropertySource`) where
+`registry.add(name, supplier)` is a plain `map.put` — last write for a given key wins.
+So for any property key both a subclass and its superclass register, **the superclass's
+call always runs last and always wins**, unconditionally — the exact inverse of what
+"a subclass overrides its superclass" would lead you to expect, and invisible from
+reading either method in isolation. `ClassUtils.getMostSpecificMethod` doesn't collapse
+a same-named override either: it explicitly treats static methods as non-overridable
+(`NON_OVERRIDABLE_MODIFIER` includes `Modifier.STATIC`), so even declaring an
+identically-named, identically-signed method in the subclass still yields two distinct
+`Method` objects, both invoked, superclass still last.
+
+### The solution
+
+Don't fight the ordering — sidestep it. Move the *default* out of `IntegrationTest`'s
+`@DynamicPropertySource` method and into a class-level `@TestPropertySource(properties
+= "easycrm.rate-limit.enabled=false")` instead. That default is no longer a
+`@DynamicPropertySource` registration at all, so there is no same-key race to lose.
+`RateLimitIntegrationTest` then registers `"easycrm.rate-limit.enabled" -> "true"`
+through its own `@DynamicPropertySource` method — and per the *actually-applicable*
+Spring guarantee (`@DynamicPropertySource` unconditionally outranks
+`@TestPropertySource`, regardless of which class in the hierarchy declares which), that
+override wins deterministically, with no shared mutable state and no dependency on
+reflection enumeration order.
+
+### Lesson
+
+"Dynamic property sources beat `@TestPropertySource`, hierarchy be damned" is a real,
+documented, one-directional rule — but it says nothing about precedence **between**
+multiple `@DynamicPropertySource` methods in one hierarchy, and that gap is exactly
+where intuition (subclass overrides superclass, like method dispatch) points the wrong
+way. When a subclass needs to override a superclass's `@DynamicPropertySource` value,
+don't add a second `@DynamicPropertySource` registration for the same key and assume
+declaration order helps you — verify the actual invocation order for the framework
+version in use (here: leaf-first collection, so superclass wins last), and if it cuts
+against you, move the default to a strictly lower-precedence mechanism instead of
+trying to out-order the higher-precedence one.
+
+---
