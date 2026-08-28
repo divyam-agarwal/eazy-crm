@@ -2379,3 +2379,93 @@ against you, move the default to a strictly lower-precedence mechanism instead o
 trying to out-order the higher-precedence one.
 
 ---
+
+## Challenge 41 — A security control keyed on attacker input can be turned against itself, twice
+
+**Phase:** Design & Implementation
+
+### The problem
+
+The per-IP rate limiter (challenges #38–#40) exists to stop one class of abuse — a
+client hammering `/public/q/{token}` or the auth routes — but its own design gave an
+attacker two separate ways to turn the limiter itself into the weapon, and both slipped
+past every test written against the feature's stated purpose before anyone asked "what
+can the *attacker* make this component do?"
+
+The first: `RateLimitStore` caches one Bucket4j bucket per client key, and the client
+key is a bare IP address the caller controls the volume of, not the identity of. A
+`ConcurrentHashMap`-backed cache with no bound grows by exactly one entry per distinct
+IP an attacker presents. Rotating source addresses — trivial from a botnet, a proxy
+pool, or plain IPv6 — costs the attacker nothing and costs the server one live
+`Bucket` object forever. The feature meant to defend against resource exhaustion would,
+implemented naively, become an unbounded allocator driven directly by attacker input:
+a memory-exhaustion vector wearing a rate limiter's clothes.
+
+The second, independent from the first: the filter decides *which* IP a request came
+from before it can decide whether to allow it. `X-Forwarded-For` looks like the more
+correct source for that decision — it is, after all, what a load balancer sets to carry
+the real client address through a proxy hop — but the header ships in the HTTP request
+itself, and nothing about receiving it proves who's in front of the socket. Any direct
+caller may set it to whatever it likes, without a proxy in the loop at all. A limiter
+that trusts it lets a single attacker mint a fresh, full bucket on every single request
+just by varying one header value, which is strictly worse than not rate-limiting at
+all: it looks like protection while providing none, and the attacker doesn't even need
+a second IP address to defeat it — one socket, an infinite header, done.
+
+### Why it's hard
+
+Both mistakes make the component *look* more correct while removing its protection,
+and both leave every obvious test green. An unbounded cache passes every capacity,
+refill, and per-client-isolation test that exercises a handful of clients — the failure
+mode only exists at a cardinality no unit test runs at. Reading `X-Forwarded-For`
+"to be more accurate about the real client" is the natural next thought once you know
+requests may arrive through a proxy, and a test written from the defender's assumptions
+(one client, one header value, does the bucket correctly track it) confirms the code
+does exactly what it was asked to do — it just never asks who's allowed to set that
+header. In both cases the review question that actually catches the bug isn't "does
+this work?" but "what happens if the input this control keys on is chosen by the
+attacker specifically to defeat it?" — a question orthogonal to functional correctness,
+and easy to never ask because the code that would fail it reads as the more careful,
+more accurate implementation.
+
+### The solution
+
+Bound the thing the attacker can grow. `InMemoryRateLimitStore` caches buckets in a
+Caffeine `Cache` with `maximumSize(50_000)` and `expireAfterAccess(Duration.ofHours(2))`
+instead of an unbounded map. Eviction under this design is safe to be aggressive about,
+because an evicted bucket and a bucket that simply refilled while idle are
+indistinguishable to any caller: both mean "this client currently has its full
+allowance." There is no state a legitimate client can lose by being evicted — eviction
+only ever gives back capacity, never takes it away — so capping the cache trades
+unbounded memory for, at worst, a slightly-early refill for the coldest 0.002% of
+tracked clients, not a correctness or fairness regression.
+
+Don't trust the header. `RateLimitFilter` keys exclusively on
+`HttpServletRequest.getRemoteAddr()` — the actual TCP peer address, which nothing the
+client sends can override — and never reads `X-Forwarded-For` itself. Getting the real
+client address through an actual reverse proxy is Spring's job, not application code's:
+`server.forward-headers-strategy: framework` tells the servlet container itself to
+rewrite `getRemoteAddr()` (and the request's scheme/port) from the forwarded headers,
+*before* any filter — including this one — ever sees the request. The property is left
+off by default with a comment in `application.yml` explaining why: nothing trusted sits
+in front of this app today, so honouring the header would only be handing the attacker
+what they were asking for. The moment a real reverse proxy is deployed, turning the
+property on is the entire fix, applied once, for every consumer of the socket address —
+not a per-filter judgment call about which headers to believe.
+
+### Lesson
+
+When a security control's cache key or trust decision is built from attacker-controlled
+input, the design review has to include the question a purely functional review never
+asks: *what can the attacker make the control itself do* — not just what can it fail to
+stop? An identifier the caller supplies volume or content for (a rotatable IP, a
+spoofable header) is a lever on the control's own resource usage or trust boundary,
+not just a dimension of the traffic it's watching. And prefer a framework-level
+mechanism that states a *deployment fact* (`forward-headers-strategy` says "a trusted
+proxy terminates in front of me, so believe its headers") over application code that
+*guesses* the same fact from a header value with no way to verify who sent it — the
+framework's version is an assertion the operator makes deliberately at deploy time; the
+application's version is a default trust decision baked into code that runs identically
+whether or not the assumption holds.
+
+---
