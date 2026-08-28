@@ -124,6 +124,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Email` | `jakarta.validation.constraints` | String must look like an email address (`SignupRequest.email`). | Meta-annotated `@Constraint` |
 | `@Size` | `jakarta.validation.constraints` | Length/size bounds (`password` min 8). | Meta-annotated `@Constraint` |
 | `@Pattern` | `jakarta.validation.constraints` | String must match a regex (`slug` charset, 2-digit `stateCode`). | Meta-annotated `@Constraint` |
+| `@Positive` | `jakarta.validation.constraints` | Numeric value must be > 0 (`RateLimitPolicy.capacity` — `capacity: 0` would otherwise bind happily and then deny every request on that policy's route, a startup-time catch for what would else be a production outage). | Meta-annotated `@Constraint` |
+| `@Validated` | `org.springframework.validation.annotation` | On a `@ConfigurationProperties` class, tells `ConfigurationPropertiesBindingPostProcessor` to run Bean Validation on the bound instance so a bad value (e.g. `RateLimitProperties`' `capacity: 0`) fails application startup instead of binding silently. Paired with `@Valid` on the `List<RateLimitPolicy> policies` field to cascade validation into each element. | Meta-annotated with Spring's `@Validated` machinery (not JSR-303 `@Constraint`) |
 | `@Transactional` | `org.springframework.transaction.annotation` | Method/class transaction boundary (`AuditService.record`, `RefreshTokenService`, the RLS-scoped derived finders, `AuthService.me`). `readOnly = true` for reads. Runs through the `@Primary` `TenantAwareTransactionManager`, which sets the tenant GUC at `doBegin`. See challenges #8/#9. | — |
 
 ## 7. Testing (JUnit 5, Spring Test, Testcontainers)

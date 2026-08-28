@@ -1,5 +1,8 @@
 package com.easycrm.platform.ratelimit;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.http.server.PathContainer;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
@@ -16,8 +19,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link PathPattern} component would have no source in configuration and no
  * converter, which breaks binding. Instead the compiled pattern is resolved lazily
  * through {@link #PATTERN_CACHE}, keyed on {@code path}.
+ *
+ * <p>Validated on bind (see {@code @Valid} on {@link RateLimitProperties#policies()}):
+ * {@code capacity: 0} would otherwise bind happily and then deny every single request
+ * on whatever route it's attached to — a self-inflicted outage that should fail at
+ * startup, not surface as "every request 429s" in production.
  */
-public record RateLimitPolicy(String name, String path, long capacity, Duration refillPeriod) {
+public record RateLimitPolicy(@NotBlank String name, @NotBlank String path,
+                              @Positive long capacity, @NotNull Duration refillPeriod) {
 
     // Keyed on `path`, which comes only from configuration (application.yml), never
     // from request input. The number of distinct keys is therefore bounded by the

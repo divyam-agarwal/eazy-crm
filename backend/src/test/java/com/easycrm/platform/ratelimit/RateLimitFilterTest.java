@@ -1,8 +1,12 @@
 package com.easycrm.platform.ratelimit;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -100,6 +104,66 @@ class RateLimitFilterTest {
         // decorative while every other test still passed. The store owns policy
         // namespacing internally, so the filter passes the client identifier alone.
         assertEquals(List.of("1.2.3.4", "1.2.3.4"), store.keys);
+    }
+
+    @Test
+    void matchesAPolicyEvenUnderANonEmptyContextPath() throws Exception {
+        // getRequestURI() INCLUDES the servlet context path. If the filter matched on
+        // that raw URI, setting server.servlet.context-path=/crm would turn every
+        // "/public/q/*"-style policy path into a permanent non-match — the limiter would
+        // become a total no-op with every existing test still green, since no other test
+        // sets a context path. Matching must be done on the path WITHIN the application.
+        RecordingStore store = new RecordingStore();
+        RateLimitFilter filter = new RateLimitFilter(PROPS, store, new ObjectMapper());
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/crm/public/q/tok");
+        req.setContextPath("/crm");
+        req.setRequestURI("/crm/public/q/tok");
+        req.setRemoteAddr("1.2.3.4");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(req, res, chain);
+
+        verify(chain).doFilter(any(), any());
+        assertEquals(List.of("1.2.3.4"), store.keys,
+            "a request under a non-empty context path must still match its policy");
+    }
+
+    @Test
+    void rejectionLogsAWarningNamingThePolicyAndClientButNeverTheUriOrToken() throws Exception {
+        // Before this, a rejection was completely silent: no log line, no counter,
+        // nothing. An operator could not tell "limiter working" from "limiter matching
+        // nothing." The fix must name the policy and client (so it's actionable) while
+        // never logging the request URI/path — on /public/q/{token} that URI IS the share
+        // token, and PublicShareController's javadoc is explicit that the token must
+        // never reach a log.
+        ch.qos.logback.classic.Logger logbackLogger =
+            (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(RateLimitFilter.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logbackLogger.addAppender(appender);
+        try {
+            RecordingStore store = new RecordingStore();
+            store.deny = true;
+            RateLimitFilter filter = new RateLimitFilter(PROPS, store, new ObjectMapper());
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            FilterChain chain = mock(FilterChain.class);
+
+            filter.doFilter(request("/public/q/super-secret-token", "9.9.9.9"), res, chain);
+
+            assertEquals(1, appender.list.size(), "exactly one rejection, exactly one log line");
+            ILoggingEvent event = appender.list.get(0);
+            assertEquals(Level.WARN, event.getLevel());
+            String message = event.getFormattedMessage();
+            assertTrue(message.contains("public-share"), "must name the policy: " + message);
+            assertTrue(message.contains("9.9.9.9"), "must name the client: " + message);
+            assertFalse(message.contains("super-secret-token"),
+                "must never log the share token: " + message);
+            assertFalse(message.contains("/public/q"),
+                "must never log the request URI/path: " + message);
+        } finally {
+            logbackLogger.detachAppender(appender);
+        }
     }
 
     @Test

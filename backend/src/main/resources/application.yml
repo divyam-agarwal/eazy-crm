@@ -5,6 +5,14 @@
 # read that header directly — it is client-supplied, and trusting it unconditionally lets
 # any caller mint a fresh rate-limit bucket per request. Off by default because nothing
 # trusted sits in front of this app today.
+#
+# Leaving this unset behind a proxy is not merely "less accurate" — every distinct client
+# collapses into the SAME bucket, because getRemoteAddr() returns the proxy's address for
+# all of them, not the caller's. This is not hypothetical: the backend-restart-ngrok-up
+# skill and every demo that shares a quotation link through ngrok puts a proxy in front of
+# this app today, so getRemoteAddr() is 127.0.0.1 for the entire internet and the 60/hour
+# public-share cap silently becomes ONE global cap of 60/hour shared by every visitor —
+# the second demo viewer of the hour gets rate-limited by the first.
 spring:
   application:
     name: easycrm

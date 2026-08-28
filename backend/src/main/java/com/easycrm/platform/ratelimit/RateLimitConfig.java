@@ -19,8 +19,8 @@ public class RateLimitConfig {
     public static final int FILTER_ORDER = -110;
 
     @Bean
-    RateLimitStore rateLimitStore() {
-        return new InMemoryRateLimitStore();
+    RateLimitStore rateLimitStore(RateLimitProperties properties) {
+        return new InMemoryRateLimitStore(properties);
     }
 
     @Bean

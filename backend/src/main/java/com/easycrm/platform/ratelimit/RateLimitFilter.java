@@ -5,9 +5,12 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
 import java.util.Map;
@@ -29,6 +32,17 @@ import java.util.Optional;
  */
 public class RateLimitFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
+
+    // getPathWithinApplication, not getRequestURI: the URI includes the servlet context
+    // path (server.servlet.context-path). Matching on the raw URI means every configured
+    // policy path (e.g. "/public/q/*") stops matching the instant a context path is set,
+    // and policyFor(...) silently returns empty for every request — the limiter becomes a
+    // total no-op with every existing test still green, because no test sets a context
+    // path. This mirrors the ordering test's failure class: a misconfiguration that looks
+    // like nothing changed.
+    private static final UrlPathHelper PATH_HELPER = UrlPathHelper.defaultInstance;
+
     private final RateLimitProperties properties;
     private final RateLimitStore store;
     private final ObjectMapper objectMapper;
@@ -49,7 +63,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
-        Optional<RateLimitPolicy> policy = properties.policyFor(request.getRequestURI());
+        Optional<RateLimitPolicy> policy = properties.policyFor(PATH_HELPER.getPathWithinApplication(request));
         if (policy.isEmpty()) {
             chain.doFilter(request, response);
             return;
@@ -70,6 +84,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
+        // WARN, not silence: without this line a token-space scan against the public
+        // route is throttled but completely invisible, and an operator has no way to
+        // distinguish "limiter working" from "limiter matching nothing" (see
+        // policyFor above). Deliberately NOT logged: the request URI/path — on
+        // /public/q/{token} it contains the share token, and PublicShareController's
+        // javadoc is explicit that the token must never reach a log.
+        log.warn("rate limit exceeded: policy={} client={}", p.name(), request.getRemoteAddr());
         reject(response, RateLimitPolicy.retryAfterSeconds(decision.nanosToWaitForRefill()));
     }
 

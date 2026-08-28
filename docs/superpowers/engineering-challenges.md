@@ -2187,17 +2187,6 @@ Both were cheap; without them the guard would have been decoration.
 
 ---
 
-<!-- Append new challenges below. Template:
-
-## Challenge N — <title>
-
-**Phase:** Design | Implementation
-
-### The problem
-### The solution
-### Lesson
--->
-
 ## Challenge 38 — A `@ConfigurationProperties` record can't carry a derived, uncompilable field
 
 **Phase:** Design
@@ -2469,3 +2458,104 @@ application's version is a default trust decision baked into code that runs iden
 whether or not the assumption holds.
 
 ---
+
+## Challenge 42 — A whole-branch review found two more ways the rate limiter goes quiet while every test stays green
+
+**Phase:** Implementation (post-merge fix wave)
+
+### The problem
+
+A final review of the rate-limiting branch (challenges #38–#41) found two further
+defects in the same failure family as #41: each one turns the control into a no-op
+under a condition no existing test exercises, so the entire suite — including the
+tests specifically written to catch a misordered or ineffective limiter — stays green.
+
+The first: `InMemoryRateLimitStore`'s Caffeine cache hardcoded
+`expireAfterAccess(Duration.ofHours(2))`, and its own javadoc claimed entries are
+evicted only after "at least twice the longest configured refill period." Nothing
+enforced that relationship — the `2h` was just a number that happened to equal twice
+the shipped `public-share` policy's `1h` refill period. `application.yml`'s own
+comments actively invite an operator to retune `refill-period` to something longer
+(there's a worked comment about credential-stuffing thresholds right next to it). Retune
+`public-share` to `6h` and the eviction window is still `2h`: an attacker burns the
+60-request allowance, waits two hours (not six), and the bucket has been evicted and
+recreated full. The configured 60-per-6-hours cap silently becomes 60-per-2-hours, with
+no code change, no failing test, and a javadoc comment that is now simply false.
+
+The second: `RateLimitFilter` matched policies against `request.getRequestURI()`, which
+**includes** the servlet context path. Set `server.servlet.context-path=/crm` — a
+one-line, entirely ordinary deployment configuration change — and every request path
+becomes `/crm/public/q/...`, `/crm/api/v1/auth/...`, etc. None of the configured
+`RateLimitPolicy` patterns (`/public/q/*`, `/api/v1/auth/**`) match a URI with that
+prefix, `policyFor(...)` returns empty for every request, and the entire limiter
+becomes a permanent no-op — not degraded, not misconfigured-but-present, just gone.
+No test in the suite sets a context path, so nothing catches it.
+
+### Why it's hard
+
+Both bugs are invisible to the exact kind of test the branch already had discipline
+about writing. `RateLimitIntegrationTest.limiterRunsBeforeSpringSecurity` proves the
+filter is *positioned* correctly; it says nothing about whether the filter still
+*matches* anything once an orthogonal piece of configuration (context path) changes
+the string it matches against. `InMemoryRateLimitStoreTest.refillsAfterThePeriodElapses`
+proves the bucket refills correctly for a fixed test policy; it says nothing about
+whether the eviction window *stays correct* when that policy's refill period is later
+retuned in production configuration the test never sees. In both cases the defect
+lives in the gap between "this policy" (what the unit test hardcodes) and "any policy
+this configuration could describe" (what production actually runs) — a gap unit tests
+that construct their own fixed `RateLimitPolicy` structurally cannot see, no matter how
+thorough they are about the one policy they did construct.
+
+### The solution
+
+For the eviction window: stop hardcoding it. `InMemoryRateLimitStore.evictionWindowFor`
+derives the window from the live `RateLimitProperties` — twice the longest configured
+`refillPeriod` across all policies, floored at `MIN_EVICTION_WINDOW` (10 minutes) so a
+deliberately tiny test policy can't produce an absurdly short window. `RateLimitConfig`
+now constructs the store with `new InMemoryRateLimitStore(properties)` instead of the
+no-arg constructor, so production always ties the two together; the no-arg and
+`TimeMeter`-only constructors are kept, but explicitly scoped to unit tests that supply
+no configuration and therefore get a fixed fallback with no configuration-tracking
+promise attached to it.
+
+For the context path: match on the path *within* the application, not the raw URI.
+`RateLimitFilter` now resolves the match target via
+`UrlPathHelper.defaultInstance.getPathWithinApplication(request)` instead of
+`request.getRequestURI()` — the same framework helper Spring MVC's own routing uses
+internally to strip the context path before pattern-matching, rather than
+hand-rolling a `substring(getContextPath().length())` that would need to independently
+get empty-context-path and trailing-slash edge cases right.
+
+Both fixes came with a test built specifically to fail on the *previous* code: one
+constructs an `InMemoryRateLimitStore` from a `RateLimitProperties` with a `6h` policy
+and asserts the resulting eviction window is `12h`, not the old fixed `2h`; the other
+drives `RateLimitFilter` with a `MockHttpServletRequest` carrying `setContextPath("/crm")`
+and a matching `setRequestURI("/crm/public/q/tok")`, and asserts the request still hits
+its policy.
+
+### Lesson
+
+"Every test passes" proves a control works for the inputs its tests hardcode, not for
+the space of configuration the control is supposed to keep working across. A javadoc
+comment describing an invariant ("evicted after twice the longest refill period") is
+not the same as code that maintains it — if the number and the description can drift
+independently, they will, the moment someone acts on the config file's own invitation
+to retune a value. And any control that matches or keys on a request property derived
+from more than one source (a URI plus a context path, a header plus a trust boundary,
+per challenge #41) needs a test that varies the *other* source, not just the one the
+control's happy path exercises — because "no test sets a context path" is not evidence
+the context path doesn't matter, it's the specific blind spot an attacker or an ordinary
+deployment change will eventually land in.
+
+---
+
+<!-- Append new challenges below. Template:
+
+## Challenge N — <title>
+
+**Phase:** Design | Implementation
+
+### The problem
+### The solution
+### Lesson
+-->

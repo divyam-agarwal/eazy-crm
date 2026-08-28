@@ -4,6 +4,7 @@ import io.github.bucket4j.TimeMeter;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -75,5 +76,42 @@ class InMemoryRateLimitStoreTest {
         assertTrue(store.bucketCount() <= InMemoryRateLimitStore.MAX_BUCKETS,
             "the key is attacker-controlled: unbounded storage makes the rate limiter "
                 + "its own memory-exhaustion vector, got " + store.bucketCount());
+    }
+
+    /**
+     * Pins the eviction window to the configured policies, not to a hardcoded constant.
+     * Without this, retuning {@code public-share.refill-period} to something longer than
+     * one hour (application.yml's comments actively invite this) would silently shrink
+     * the *effective* limit: a bucket idles out at the old fixed window and comes back
+     * FULL well before the configured refill period has actually elapsed.
+     */
+    @Test
+    void evictionWindowTracksTheLongestConfiguredRefillPeriod() {
+        RateLimitProperties sixHourPolicy = new RateLimitProperties(true, List.of(
+            new RateLimitPolicy("public-share", "/public/q/*", 60, Duration.ofHours(6)),
+            new RateLimitPolicy("auth", "/api/v1/auth/**", 30, Duration.ofMinutes(1))));
+
+        InMemoryRateLimitStore store = new InMemoryRateLimitStore(sixHourPolicy, new FakeClock());
+
+        assertEquals(Duration.ofHours(12), store.evictionWindow(),
+            "twice the longest configured refill period (6h), not a hardcoded 2h — "
+                + "otherwise a 6h-tuned policy is silently enforced as a 2h policy");
+    }
+
+    @Test
+    void evictionWindowIsFlooredForATinyConfiguredRefillPeriod() {
+        RateLimitProperties tinyPolicy = new RateLimitProperties(true, List.of(
+            new RateLimitPolicy("test", "/public/q/*", 3, Duration.ofSeconds(1))));
+
+        InMemoryRateLimitStore store = new InMemoryRateLimitStore(tinyPolicy, new FakeClock());
+
+        assertEquals(InMemoryRateLimitStore.MIN_EVICTION_WINDOW, store.evictionWindow(),
+            "twice a 1-second refill period is absurdly short; the floor must apply");
+    }
+
+    @Test
+    void noArgConstructorsKeepTheirFixedWindowForUnitTestsThatSupplyNoProperties() {
+        assertEquals(Duration.ofHours(2), new InMemoryRateLimitStore().evictionWindow());
+        assertEquals(Duration.ofHours(2), new InMemoryRateLimitStore(new FakeClock()).evictionWindow());
     }
 }
