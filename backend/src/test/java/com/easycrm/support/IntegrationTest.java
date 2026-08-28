@@ -35,6 +35,14 @@ public abstract class IntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", () -> "easycrm_app");
         registry.add("spring.datasource.password", () -> "easycrm_app");
+        // The limiter is OFF for the suite at large, and this is correctness, not tidiness.
+        // Every @SpringBootTest sharing this configuration shares ONE cached context, hence
+        // one RateLimitStore bean, and every MockMvc request originates from the same
+        // loopback address. Auth-touching requests from ALL test classes would therefore
+        // accumulate into a single bucket and blow the 30/minute auth policy partway
+        // through a suite that runs in ~12s — failing on the strength of how many other
+        // tests ran first. Rate-limit tests turn it back on with their own tiny limits.
+        registry.add("easycrm.rate-limit.enabled", () -> "false");
     }
 
     /**

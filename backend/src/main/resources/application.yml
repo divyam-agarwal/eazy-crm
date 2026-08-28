@@ -1,3 +1,10 @@
+# NOTE: the rate limiter keys on the socket address (getRemoteAddr). If this app is ever
+# deployed behind a load balancer or reverse proxy, set
+#   server.forward-headers-strategy: framework
+# so X-Forwarded-For is honoured for every consumer at once. Do NOT have application code
+# read that header directly — it is client-supplied, and trusting it unconditionally lets
+# any caller mint a fresh rate-limit bucket per request. Off by default because nothing
+# trusted sits in front of this app today.
 spring:
   application:
     name: easycrm
@@ -30,6 +37,25 @@ easycrm:
   # URL just shows up in the customer's chat (and http:// puts a bearer credential, the
   # share token, in the clear).
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  # Per-IP token buckets, applied BEFORE authentication. Numbers are starting values,
+  # not measured ones: no frontend and no production traffic exist yet. They are config
+  # precisely so they can be retuned without a release.
+  rate-limit:
+    enabled: true
+    policies:
+      # The only unauthenticated route, and the most expensive one: a PDF render per hit.
+      # Same pattern SecurityConfig permits, so the limited set and the publicly reachable
+      # set are the same set by construction.
+      - name: public-share
+        path: /public/q/*
+        capacity: 60
+        refill-period: 1h
+      # Credential stuffing. Well above any real office's login + 15-minute refresh
+      # traffic, far below what makes stuffing worthwhile.
+      - name: auth
+        path: /api/v1/auth/**
+        capacity: 30
+        refill-period: 1m
 management:
   endpoints:
     web:
