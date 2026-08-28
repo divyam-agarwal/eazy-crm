@@ -9,7 +9,11 @@ package com.easycrm.platform.ratelimit;
  */
 public interface RateLimitStore {
 
-    /** @param key an opaque bucket key — today {@code policyName + '|' + clientIp}. */
+    /**
+     * @param key identifies the client alone — today its socket address. The store
+     *            namespaces per policy internally, so two policies never share a bucket
+     *            regardless of what a caller passes here.
+     */
     Decision tryConsume(String key, RateLimitPolicy policy);
 
     record Decision(boolean allowed, long nanosToWaitForRefill) {

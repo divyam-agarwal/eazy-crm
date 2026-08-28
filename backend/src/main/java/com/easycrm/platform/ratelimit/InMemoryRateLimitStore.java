@@ -46,6 +46,11 @@ public class InMemoryRateLimitStore implements RateLimitStore {
     public Decision tryConsume(String key, RateLimitPolicy policy) {
         // Buckets are keyed by policy AND client: the same client IP must get an
         // independent allowance per policy, or one policy's limit would drain another's.
+        // Thread-safety leans on two guarantees, both true today: Caffeine's
+        // Cache.get(key, mappingFunction) is atomic per key, so concurrent first-touch
+        // for the same cacheKey builds exactly one bucket, never a duplicate; and
+        // Bucket4j's default bucket is itself safe under concurrent consumption. Swap
+        // either the cache or the bucket implementation and re-check both hold.
         String cacheKey = policy.name() + '|' + key;
         Bucket bucket = buckets.get(cacheKey, k -> newBucket(policy));
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
