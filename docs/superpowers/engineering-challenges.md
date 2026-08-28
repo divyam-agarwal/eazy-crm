@@ -2197,3 +2197,54 @@ Both were cheap; without them the guard would have been decoration.
 ### The solution
 ### Lesson
 -->
+
+## Challenge 38 — A `@ConfigurationProperties` record can't carry a derived, uncompilable field
+
+**Phase:** Design
+
+### The problem
+
+`RateLimitPolicy` needs a compiled `PathPattern` alongside its four configured fields
+(`name`, `path`, `capacity`, `refillPeriod`), and compiling that pattern once — in the
+constructor — instead of per request matters, because this type sits in front of every
+request the application serves. The obvious design is a fifth record component,
+`PathPattern compiled`, populated by a non-canonical constructor that calls
+`PathPatternParser.defaultInstance.parse(path)`.
+
+That design is fine for a value type built directly in Java (`new RateLimitPolicy("test",
+path, 10, Duration.ofMinutes(1))` happily resolves to the 4-arg constructor). It breaks
+the moment the same record is also a `@ConfigurationProperties` binding target.
+Spring Boot's relaxed binder always binds records through their **canonical**
+constructor — the one matching all declared components, `compiled` included — because
+that is the only constructor reflection can locate unambiguously. For a YAML list of
+policies, there is no `compiled:` key in configuration and no `Converter<String,
+PathPattern>` registered to produce one from a string that also isn't there. The bind
+fails, and it fails at the exact boundary the type exists to feed: `RateLimitProperties.
+policies`.
+
+### The solution
+
+Drop `compiled` as a record component entirely and resolve it lazily, keyed on `path`,
+through a `static final ConcurrentHashMap<String, PathPattern>` and `computeIfAbsent`.
+The record goes back to four components — `name`, `path`, `capacity`, `refillPeriod` —
+so the canonical constructor is the same one hand-written test code already calls, and
+the binder now has a real value for every component it needs to populate.
+
+The cache is safe to make static and unbounded-in-practice because its key space is
+bounded by construction, not by runtime input: `path` comes only from configuration
+(the policies a deployment operator writes into `application.yml`), never from a
+request. A caller cannot grow this map — the number of distinct keys tops out at the
+number of configured policies, typically single digits. `computeIfAbsent` gives the
+same one-compile-per-pattern behaviour the discarded `compiled` field was chasing,
+without the field.
+
+### Lesson
+
+A type that is both a domain value object *and* a `@ConfigurationProperties` binding
+target must stay bindable through its canonical constructor — derived, non-serializable
+fields (compiled patterns, parsed regexes, opened resources) don't belong as record
+components no matter how natural they look next to the data they're derived from. Push
+the derivation into a method backed by a cache keyed on the actual configuration value,
+and audit any such cache's key source before trusting it to stay bounded: "keyed by
+something only an operator writes" and "keyed by something a request supplies" look
+identical in the code until an attacker discovers the difference.

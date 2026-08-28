@@ -48,7 +48,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Profile` | `org.springframework.context.annotation` | Bean only active under a given profile (`DemoSeeder` runs only in `dev`). | — |
 | `@Primary` | `org.springframework.context.annotation` | When multiple beans of a type exist, prefer this one (our `TenantAwareTransactionManager`). | — |
 | `@ConfigurationPropertiesScan` | `org.springframework.boot.context.properties` | On the main class; scans for `@ConfigurationProperties` records/classes to bind. | — |
-| `@ConfigurationProperties` | `org.springframework.boot.context.properties` | Binds a group of `easycrm.*` YAML keys to a typed record (`JwtProperties`). | — |
+| `@ConfigurationProperties` | `org.springframework.boot.context.properties` | Binds a group of `easycrm.*` YAML keys to a typed record (`JwtProperties`, `RateLimitProperties`). | — |
+| `@DefaultValue` | `org.springframework.boot.context.properties.bind` | On a `@ConfigurationProperties` record component, supplies the value used when the YAML key is absent, since records have no field initializers for the binder to fall back on. `RateLimitProperties.enabled` uses `@DefaultValue("true")` so a missing key still ships rate limiting on; `policies` uses the no-argument form (empty list) so an unmatched path is simply unlimited rather than a `NullPointerException`. | — |
 | `@Value` | `org.springframework.beans.factory.annotation` | Injects a single resolved property/SpEL expression into a constructor or field parameter; `ShareLinkService`'s constructor takes `@Value("${easycrm.public-base-url}") String publicBaseUrl` — a lighter-weight alternative to `@ConfigurationProperties` for a single scalar. | — |
 
 ## 2. Persistence — JPA (jakarta.persistence)
