@@ -2248,3 +2248,64 @@ the derivation into a method backed by a cache keyed on the actual configuration
 and audit any such cache's key source before trusting it to stay bounded: "keyed by
 something only an operator writes" and "keyed by something a request supplies" look
 identical in the code until an attacker discovers the difference.
+
+---
+
+## Challenge 39 — A bucket cache keyed on the client alone lets one policy drain another's allowance
+
+**Phase:** Implementation
+
+### The problem
+
+`InMemoryRateLimitStore.tryConsume(String key, RateLimitPolicy policy)` caches one
+Bucket4j `Bucket` per cache key, built lazily via `Cache.get(key, k ->
+newBucket(policy))`. The natural-looking implementation uses the caller-supplied
+`key` (a bare client IP, e.g. `"1.2.3.4"`) as that cache key directly. It compiles,
+and it passes the single-policy tests (capacity, refill, per-IP isolation) without
+any hint of a problem — the bug only shows up the moment a *second* policy asks
+about the *same* client.
+
+`Cache.get(key, mappingFunction)` only invokes the mapping function on a cache
+miss; once a key is present, every subsequent `get` — regardless of which
+`RateLimitPolicy` is passed alongside it — returns the same cached `Bucket`. So a
+client that had already exhausted the `auth` policy's 3-per-minute bucket for
+`1.2.3.4` would, on its very next request against the unrelated `public-share`
+policy for the same IP, be handed back that same exhausted bucket and denied —
+even though `public-share` has never seen this client before. One rate limit
+silently drains an unrelated one, purely because they share a client address.
+
+### Why it's hard
+
+Nothing about `buckets.get(key, k -> newBucket(policy))` looks wrong locally: it
+reads as "get-or-create the bucket for this key," and `newBucket(policy)` clearly
+*does* build a bucket shaped for the right policy — on the first call. The mistake
+is invisible until a test exercises two policies against one identical client
+key, because every other test in the suite (capacity, refill, distinct clients)
+only ever varies one axis (requests over time, or client identity) and happens to
+pass regardless of whether the cache key includes the policy. The interface's own
+javadoc already stated the intended key shape — `policyName + '|' + clientIp` —
+but nothing enforced that the *implementation* actually built the key that way;
+the compiler has no way to check "this string was assembled from both an IP and a
+policy name."
+
+### The solution
+
+Build the Caffeine cache key inside `InMemoryRateLimitStore` by combining both
+axes — `policy.name() + '|' + key` — instead of trusting the raw `key` parameter
+as-is. Every `(policy, client)` pair now maps to its own `Bucket`, so
+`separatePoliciesDoNotShareABucket` (three `auth`-policy consumes exhaust
+`1.2.3.4`, then a `public-share`-policy consume for the same `1.2.3.4` must still
+be allowed) passes for the right reason instead of by coincidence.
+
+### Lesson
+
+When a cache's real identity is a *composite* of several inputs, build the cache
+key from all of them explicitly inside the component that owns the cache — never
+from whichever single argument happens to look identifier-shaped, and never by
+assuming a caller will pre-compose the key correctly just because a javadoc says
+so. And write the one test that varies the axis the implementation is most likely
+to have dropped (here: same client, different policy) — the axis a naive
+single-parameter cache key silently collapses is exactly the one that every
+single-axis test is structurally unable to catch.
+
+---
