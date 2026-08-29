@@ -78,6 +78,24 @@ to the eventual intent, which means a later team model narrows it — and narrow
 a caller that was relying on seeing less. The reverse (shipping a guess at team semantics, then
 changing it) would.
 
+### Only `SALES_EXEC` is restricted — a deliberate fail-open
+
+The rule is written as "restrict `SALES_EXEC`", not "permit `OWNER` and `SALES_MANAGER`". Every other
+role, and a request with **no principal at all**, is unrestricted.
+
+This is fail-open, and it is safe only because this layer is not a security boundary — RLS still
+applies to every query built here, so failing open means "sees the whole tenant", never "sees another
+tenant". Two things depend on it:
+
+- **Internal flows with no principal or a synthetic one** — async event listeners, tenant
+  provisioning (`TestTokens.provisionOwner` uses a `SYSTEM` role today), and the public share route.
+  A fail-closed default would break these silently and in ways that look like data loss.
+- **Any role added later** must not start hiding rows from users who could see them the day before.
+  Restricting a new role should be an explicit edit, not something it inherits by not being on a list.
+
+The trade is that a typo in a role name grants access rather than denying it. Acceptable here, and it
+would not be if this were the tenant wall.
+
 ### Unassigned means visible
 
 `assigned_to IS NULL` is visible to everyone, the standard CRM shared-pool idiom (Salesforce models
