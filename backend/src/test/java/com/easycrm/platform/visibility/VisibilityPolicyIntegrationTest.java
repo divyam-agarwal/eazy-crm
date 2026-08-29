@@ -9,7 +9,6 @@ import com.easycrm.sales.OrderRepository;
 import com.easycrm.sales.Quotation;
 import com.easycrm.sales.QuotationRepository;
 import com.easycrm.support.IntegrationTest;
-import com.easycrm.support.TestTokens;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +27,6 @@ class VisibilityPolicyIntegrationTest extends IntegrationTest {
     @Autowired CustomerRepository customers;
     @Autowired QuotationRepository quotations;
     @Autowired OrderRepository orders;
-    @Autowired TestTokens tokens;
     @Autowired TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();

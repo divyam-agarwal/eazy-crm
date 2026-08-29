@@ -22,7 +22,7 @@ want of a team model, and unassigned records are visible to everyone by design (
 **`record-visibility` is complete but not merged.** Nine tasks (visibility policy, `VisibleFinder`,
 customer/enquiry/quotation+order coverage, the nested-path and `assignedTo`-validation tasks, the
 `VisibilityScopingArchTest` allowlist guard, and this docs wrap-up) are done on branch
-`record-visibility`, commits `05444ec`..`91cf7dc` off `main` at `29b59ca`, every task reviewed clean.
+`record-visibility`, off `main` at `29b59ca`, every task reviewed clean.
 **It has not been merged to `main`** — run `finishing-a-development-branch` on it before starting
 anything new, unless you're picking this session up specifically to review or merge it.
 
@@ -194,8 +194,8 @@ All under `docs/superpowers/`:
 ## 3. Current state
 
 - **Latest code work: intra-tenant record-level visibility filtering** — **branch
-  `record-visibility`, complete and reviewed clean, NOT YET MERGED to `main`.** Commits
-  `05444ec`..`91cf7dc` off `main` at `29b59ca`. Nine tasks: `VisibilityPolicy` (role → `Specification`
+  `record-visibility`, complete and reviewed clean, NOT YET MERGED to `main`.** Off
+  `main` at `29b59ca`. Nine tasks: `VisibilityPolicy` (role → `Specification`
   per aggregate, `unrestricted()` fail-open for every role but `SALES_EXEC`), `VisibleFinder` (the
   single permitted reader of the four guarded repositories), customer and enquiry reads/writes
   re-pointed at it, quotation/order visibility derived from their customer (a correlated `EXISTS`

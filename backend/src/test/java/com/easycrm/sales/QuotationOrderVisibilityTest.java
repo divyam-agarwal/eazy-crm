@@ -117,7 +117,9 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
     void execQuotationListOmitsAnotherExecsCustomersQuotation() throws Exception {
         mvc.perform(get("/api/v1/quotations").header(AUTH, bearer(execAToken)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(quoteUnderB.toString()))));
+            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(quoteUnderB.toString()))))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(quoteUnderA.toString())))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(quoteUnderPool.toString())));
     }
 
     /** WRITE coverage. Findable-first ordering means the 404 fires before any status check. */
@@ -162,7 +164,9 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
     void execOrderListOmitsAnotherExecsCustomersOrder() throws Exception {
         mvc.perform(get("/api/v1/orders").header(AUTH, bearer(execAToken)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(orderUnderB.toString()))));
+            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(orderUnderB.toString()))))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(orderUnderA.toString())))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(orderUnderPool.toString())));
     }
 
     /** WRITE coverage. Findable-first ordering means the 404 fires before any status check. */

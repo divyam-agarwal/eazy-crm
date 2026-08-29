@@ -2778,7 +2778,11 @@ not have, and grepping the actual call sites turned up zero callers of `saveAndF
 An allowlist is only a forcing function if every entry in it was argued for, not carried
 over from a template; an unused or undocumented entry is a silent door left ajar in the
 same way a missing one is, just in the other direction. The spec's list was followed as
-written and `deleteAll` was dropped, rather than trusting the brief as pre-verified.
+written and `deleteAll` was dropped, rather than trusting the brief as pre-verified. The
+whole-branch review that closed out this slice re-ran the same grep against `saveAndFlush`
+and `delete` and found the same answer — still zero callers — so both were dropped from
+`ALLOWED_METHODS` too; the allowlist now names exactly the four methods that are actually
+reached: `save`, `findByGstin`, `findByNormalizedPhone`, `findByQuotationId`.
 
 ### The solution
 

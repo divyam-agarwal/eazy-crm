@@ -47,7 +47,7 @@ class CustomerVisibilityTest extends IntegrationTest {
 
     private String execAToken;
     private String ownerToken;
-    private UUID mine, theirs, pool;
+    private UUID mine, theirs, pool, inactive;
 
     @BeforeEach
     void seed() {
@@ -58,6 +58,9 @@ class CustomerVisibilityTest extends IntegrationTest {
         mine = customers.saveAndFlush(newCustomer("Mine Traders", execAId)).getId();
         theirs = customers.saveAndFlush(newCustomer("Theirs Traders", execBId)).getId();
         pool = customers.saveAndFlush(newCustomer("Pool Traders", null)).getId();
+        Customer inactiveCustomer = customers.saveAndFlush(newCustomer("Inactive Traders", null));
+        inactiveCustomer.deactivate();
+        inactive = customers.saveAndFlush(inactiveCustomer).getId();
         TenantContext.clear();
     }
 
@@ -91,7 +94,9 @@ class CustomerVisibilityTest extends IntegrationTest {
     void execListOmitsAnotherExecsCustomer() throws Exception {
         mvc.perform(get("/api/v1/customers").header(AUTH, bearer(execAToken)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(theirs.toString()))));
+            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(theirs.toString()))))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(mine.toString())))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(pool.toString())));
     }
 
     /** WRITE coverage. Without this the layer is cosmetic: a read filter alone still lets
@@ -117,7 +122,13 @@ class CustomerVisibilityTest extends IntegrationTest {
     void activeFilterStillWorksForAnOwner() throws Exception {
         mvc.perform(get("/api/v1/customers?active=false").header(AUTH, bearer(ownerToken)))
             .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(inactive.toString())))
             .andExpect(jsonPath("$.content[*].id").value(not(hasItem(mine.toString()))));
+
+        mvc.perform(get("/api/v1/customers?active=true").header(AUTH, bearer(ownerToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(mine.toString())))
+            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(inactive.toString()))));
     }
 
     /**

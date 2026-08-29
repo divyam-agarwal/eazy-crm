@@ -15,12 +15,10 @@ import java.util.UUID;
 @Service
 public class OrderService {
 
-    private final OrderRepository orders;
     private final ApplicationEventPublisher events;
     private final VisibleFinder finder;
 
-    public OrderService(OrderRepository orders, ApplicationEventPublisher events, VisibleFinder finder) {
-        this.orders = orders;
+    public OrderService(ApplicationEventPublisher events, VisibleFinder finder) {
         this.events = events;
         this.finder = finder;
     }

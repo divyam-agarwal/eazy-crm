@@ -96,7 +96,9 @@ class EnquiryVisibilityTest extends IntegrationTest {
         mvc.perform(get("/api/v1/enquiries").header(AUTH, bearer(execAToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.content[*].id")
-                .value(not(hasItem(execBEnquiry.toString()))));
+                .value(not(hasItem(execBEnquiry.toString()))))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(mine.toString())))
+            .andExpect(jsonPath("$.content[*].id").value(hasItem(pool.toString())));
     }
 
     /** WRITE coverage — a read-only filter would leave this path open. */

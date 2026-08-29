@@ -88,16 +88,26 @@ This is fail-open, and it is safe only because this layer is not a security boun
 applies to every query built here, so failing open means "sees the whole tenant", never "sees another
 tenant". Two things depend on it:
 
-- **Internal flows with no principal, and flows that install a synthetic one.** Async event
-  listeners and tenant provisioning (`TestTokens.provisionOwner` uses a `SYSTEM` role today) run with
-  no `TenantContext` principal at all, landing on `unrestricted()`'s `orElse(true)`. The public share
-  route is a different case, not the same one under another name: `PublicShareController` installs a
-  **synthetic principal with role `"PUBLIC"`** via `TenantContext.runAs` before rendering, so it is
-  unrestricted for the ordinary reason any non-`SALES_EXEC` role is — `"PUBLIC" != "SALES_EXEC"` —
-  not because the principal is absent. If anything this is a *stronger* argument for the
-  restrict-`SALES_EXEC`-only framing: a role added later is unrestricted for free, with no separate
-  "absent principal" case to maintain. A fail-closed default would break all of these silently and
-  in ways that look like data loss.
+- **Internal flows with no principal, and flows that install a synthetic one.** Tenant provisioning
+  (`TestTokens.provisionOwner` uses a `SYSTEM` role today) runs with a synthetic principal, not an
+  absent one — same reasoning as the public-share case below. A request where nothing ever set a
+  `TenantContext` principal lands on `unrestricted()`'s `orElse(true)` for the more literal reason:
+  there is no principal to restrict against. The public share route is a different case, not the
+  same one under another name: `PublicShareController` installs a **synthetic principal with role
+  `"PUBLIC"`** via `TenantContext.runAs` before rendering, so it is unrestricted for the ordinary
+  reason any non-`SALES_EXEC` role is — `"PUBLIC" != "SALES_EXEC"` — not because the principal is
+  absent. If anything this is a *stronger* argument for the restrict-`SALES_EXEC`-only framing: a
+  role added later is unrestricted for free, with no separate "absent principal" case to maintain. A
+  fail-closed default would break all of these silently and in ways that look like data loss.
+- **Async work inherits the submitter's principal — it does not run principal-less.**
+  `TenantAwareTaskDecorator.decorate`, wired onto the pool executor by `AsyncConfig`, captures the
+  submitting thread's `TenantContext.TenantPrincipal` before handing the task to the pool and
+  reinstalls it on the pool thread, clearing it once the task completes. A future `@Async` method
+  triggered by a `SALES_EXEC` therefore runs **restricted**, not unrestricted — the opposite of what
+  an earlier version of this section claimed. Inheriting the submitter's principal is arguably the
+  right behaviour, since work triggered by someone should not see more than they could; the point
+  here is only that the spec must describe the mechanism correctly. Nothing depends on this today:
+  both `@EventListener`s in this codebase are synchronous, and neither reads a guarded aggregate.
 - **Any role added later** must not start hiding rows from users who could see them the day before.
   Restricting a new role should be an explicit edit, not something it inherits by not being on a list.
 
@@ -148,6 +158,17 @@ Why derive rather than add `assigned_to` to `quotation` and `sales_order`:
 The accepted consequence: **reassigning a customer moves that customer's entire quotation and order
 history between reps.** For this product — one rep owns an account — that is arguably correct rather
 than merely tolerable, but it is a consequence, not an accident.
+
+A quotation's own visibility and its source enquiry's visibility can diverge, since the table above
+attributes them differently — a quotation via its customer, an enquiry via its own `assigned_to` — so
+a `SALES_EXEC` can hold a visible quotation whose `enquiryId` points at an enquiry that 404s for them
+if fetched directly, and vice versa; only the id crosses that boundary, never enquiry data, but the
+attribution split is not as clean as the table makes it look.
+
+The `assigned_to = :me OR assigned_to IS NULL` predicate has no index behind it — it's a sequential
+scan within the tenant partition, currently masked because every existing row satisfies the `IS NULL`
+arm. Fine at today's scale; it's the first thing to look at once a tenant's `customer` or `enquiry`
+table grows large enough for a scan to show up in a slow-query log.
 
 ## 5. Architecture
 
