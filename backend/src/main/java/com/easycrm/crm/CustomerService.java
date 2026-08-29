@@ -7,6 +7,7 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.gst.Gstin;
 import com.easycrm.platform.gst.StateCode;
+import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -18,8 +19,12 @@ import java.util.UUID;
 public class CustomerService {
 
     private final CustomerRepository customers;
+    private final VisibleFinder finder;
 
-    public CustomerService(CustomerRepository customers) { this.customers = customers; }
+    public CustomerService(CustomerRepository customers, VisibleFinder finder) {
+        this.customers = customers;
+        this.finder = finder;
+    }
 
     @Transactional
     public CustomerResponse create(CustomerRequest req) {
@@ -40,10 +45,9 @@ public class CustomerService {
 
     @Transactional(readOnly = true)
     public PageResponse<CustomerResponse> list(Boolean active, Pageable pageable) {
-        var page = (active == null)
-            ? customers.findAll(pageable)
-            : customers.findByActive(active, pageable);
-        return PageResponse.of(page.map(CustomerResponse::of));
+        return PageResponse.of(
+            finder.pageCustomers(CustomerSpecifications.filter(active), pageable)
+                .map(CustomerResponse::of));
     }
 
     @Transactional
@@ -65,8 +69,14 @@ public class CustomerService {
         Customer c = find(id); c.activate(); return CustomerResponse.of(c);
     }
 
+    /**
+     * Cross-tenant rows are invisible to RLS and out-of-scope rows are invisible to the
+     * visibility policy. "Not there", "not this tenant's" and "not yours" all 404 — the
+     * caller must not be able to tell them apart.
+     */
     private Customer find(UUID id) {
-        return customers.findById(id).orElseThrow(() -> new NotFoundException("customer not found"));
+        return finder.findCustomer(id)
+            .orElseThrow(() -> new NotFoundException("customer not found"));
     }
 
     private int creditDays(CustomerRequest req) {
