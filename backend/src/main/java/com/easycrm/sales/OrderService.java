@@ -2,6 +2,7 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
+import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.OrderResponse;
 import org.springframework.context.ApplicationEventPublisher;
@@ -16,10 +17,12 @@ public class OrderService {
 
     private final OrderRepository orders;
     private final ApplicationEventPublisher events;
+    private final VisibleFinder finder;
 
-    public OrderService(OrderRepository orders, ApplicationEventPublisher events) {
+    public OrderService(OrderRepository orders, ApplicationEventPublisher events, VisibleFinder finder) {
         this.orders = orders;
         this.events = events;
+        this.finder = finder;
     }
 
     @Transactional(readOnly = true)
@@ -30,7 +33,7 @@ public class OrderService {
     @Transactional(readOnly = true)
     public PageResponse<OrderResponse> list(OrderStatus status, UUID customerId, Pageable pageable) {
         return PageResponse.of(
-            orders.findAll(OrderSpecifications.filter(status, customerId), pageable)
+            finder.pageOrders(OrderSpecifications.filter(status, customerId), pageable)
                 .map(OrderResponse::of));
     }
 
@@ -68,9 +71,13 @@ public class OrderService {
             o.getStatus(), o.getCancelReason(), actorUserId));
     }
 
-    /** Cross-tenant rows are invisible to RLS, so "not mine" and "not there" both 404. */
+    /**
+     * Cross-tenant rows are invisible to RLS and out-of-scope rows are invisible to the
+     * visibility policy. "Not there", "not this tenant's" and "not yours" all 404 — the
+     * caller must not be able to tell them apart.
+     */
     private Order find(UUID id) {
-        return orders.findById(id)
+        return finder.findOrder(id)
             .orElseThrow(() -> new NotFoundException("order not found"));
     }
 }

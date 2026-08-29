@@ -1,10 +1,10 @@
 package com.easycrm.sales;
 
 import com.easycrm.crm.Customer;
-import com.easycrm.crm.CustomerRepository;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.tenancy.TenantContext;
+import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.sales.web.dto.AcceptRequest;
 import com.easycrm.sales.web.dto.ItemRequest;
 import com.easycrm.sales.web.dto.ItemsRequest;
@@ -37,39 +37,40 @@ public class QuotationService {
     private final QuotationRepository quotations;
     private final QuotationVersionRepository versions;
     private final QuotationItemRepository items;
-    private final CustomerRepository customers;
     private final TenantRepository tenants;
     private final PriceResolver priceResolver;
     private final DocumentNumberService documentNumbers;
     private final OrderRepository orders;
-    private final EnquiryRepository enquiries;
     private final ApplicationEventPublisher events;
+    private final VisibleFinder finder;
 
     public QuotationService(QuotationRepository quotations, QuotationVersionRepository versions,
-                            QuotationItemRepository items, CustomerRepository customers,
+                            QuotationItemRepository items,
                             TenantRepository tenants, PriceResolver priceResolver,
                             DocumentNumberService documentNumbers, OrderRepository orders,
-                            EnquiryRepository enquiries, ApplicationEventPublisher events) {
+                            ApplicationEventPublisher events,
+                            VisibleFinder finder) {
         this.quotations = quotations;
         this.versions = versions;
         this.items = items;
-        this.customers = customers;
         this.tenants = tenants;
         this.priceResolver = priceResolver;
         this.documentNumbers = documentNumbers;
         this.orders = orders;
-        this.enquiries = enquiries;
         this.events = events;
+        this.finder = finder;
     }
 
     @Transactional
     public QuotationResponse create(QuotationCreateRequest req) {
-        Customer customer = customers.findById(req.customerId())
+        // An exec must not be able to raise a quote against a customer (or enquiry) they
+        // cannot see, so both loads go through the finder rather than the raw repository.
+        Customer customer = finder.findCustomer(req.customerId())
             .orElseThrow(() -> new NotFoundException("customer not found"));
         boolean interState = isInterState(customer.getStateCode());
 
         if (req.enquiryId() != null) {
-            Enquiry enquiry = enquiries.findById(req.enquiryId())
+            Enquiry enquiry = finder.findEnquiry(req.enquiryId())
                 .orElseThrow(() -> new NotFoundException("enquiry not found"));
             enquiry.markConverted(); // 422 if the enquiry is already terminal
         }
@@ -90,7 +91,7 @@ public class QuotationService {
 
     @Transactional(readOnly = true)
     public PageResponse<QuotationResponse> list(QuotationStatus status, UUID customerId, Pageable pageable) {
-        Page<Quotation> page = quotations.findAll(
+        Page<Quotation> page = finder.pageQuotations(
             QuotationSpecifications.filter(status, customerId), pageable);
         return PageResponse.of(page.map(this::toResponse));
     }
@@ -124,7 +125,9 @@ public class QuotationService {
         Quotation q = findQuotation(id);
         QuotationVersion v = requireDraft(q);
         items.deleteByVersionId(v.getId());
-        Customer customer = customers.findById(q.getCustomerId())
+        // Reached only from an already-visible quotation, so this cannot change an
+        // outcome -- routed through the finder anyway for guard consistency (Task 8).
+        Customer customer = finder.findCustomer(q.getCustomerId())
             .orElseThrow(() -> new NotFoundException("customer not found"));
         buildItems(v, q.getCustomerId(), req.items(), isInterState(customer.getStateCode()));
         return toResponse(q);
@@ -280,7 +283,8 @@ public class QuotationService {
     }
 
     Quotation findQuotation(UUID id) {
-        return quotations.findById(id).orElseThrow(() -> new NotFoundException("quotation not found"));
+        return finder.findQuotation(id)
+            .orElseThrow(() -> new NotFoundException("quotation not found"));
     }
 
     QuotationResponse toResponse(Quotation q) {
