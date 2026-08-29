@@ -2,6 +2,7 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
+import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.EnquiryCreateRequest;
 import com.easycrm.sales.web.dto.EnquiryResponse;
@@ -16,8 +17,12 @@ import java.util.UUID;
 public class EnquiryService {
 
     private final EnquiryRepository enquiries;
+    private final VisibleFinder finder;
 
-    public EnquiryService(EnquiryRepository enquiries) { this.enquiries = enquiries; }
+    public EnquiryService(EnquiryRepository enquiries, VisibleFinder finder) {
+        this.enquiries = enquiries;
+        this.finder = finder;
+    }
 
     @Transactional
     public EnquiryResponse create(EnquiryCreateRequest req) {
@@ -64,12 +69,17 @@ public class EnquiryService {
     public PageResponse<EnquiryResponse> list(
             EnquiryStage stage, UUID assignedTo, EnquirySource source, Pageable pageable) {
         return PageResponse.of(
-            enquiries.findAll(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
+            finder.pageEnquiries(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
                 .map(EnquiryResponse::of));
     }
 
+    /**
+     * Cross-tenant rows are invisible to RLS and out-of-scope rows are invisible to the
+     * visibility policy. "Not there", "not this tenant's" and "not yours" all 404 — the
+     * caller must not be able to tell them apart.
+     */
     private Enquiry find(UUID id) {
-        return enquiries.findById(id)
+        return finder.findEnquiry(id)
             .orElseThrow(() -> new NotFoundException("enquiry not found"));
     }
 
@@ -84,6 +94,9 @@ public class EnquiryService {
      * UUID, so every active match still blocks.
      */
     private void requireNoActiveDuplicateExcept(String normalizedPhone, UUID selfId) {
+        // Deliberately UNFILTERED: this pre-check must see every active enquiry in the
+        // tenant, not just the caller's. Filtering it would let two reps each create an
+        // active enquiry for the same phone. Spec 2026-08-29-record-visibility-design.md §6.
         enquiries.findByNormalizedPhone(normalizedPhone).stream()
             .filter(e -> e.getStage().isActive())
             .filter(e -> !e.getId().equals(selfId))

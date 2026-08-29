@@ -2600,3 +2600,62 @@ what the version bump was supposed to have done. When a combinator can receive a
 absent operand as a routine, expected input (an unfiltered list view, not an edge
 case), guard for it at the one place that builds the combination, so every future
 caller inherits the safety instead of having to remember to re-derive it.
+
+## Challenge 44 — the two derived queries the visibility filter must NOT touch
+
+**Phase:** Implementation
+
+### The problem
+
+`CustomerService.find` and `EnquiryService.find` both got re-pointed at `VisibleFinder`
+in this slice, and that pattern is repetitive enough that the natural next move is to
+apply it everywhere a service touches its repository — including
+`EnquiryRepository.findByNormalizedPhone`, the pre-check backing "at most one active
+enquiry per phone." That would be wrong in a way that does not show up as a wiring
+error or a compile failure: it produces working-looking code that silently reintroduces
+the invariant violation the pre-check exists to prevent.
+
+The pre-check is check-then-act: look for an existing active row, then save if none is
+found. If it were filtered to the caller's visible rows, exec A and exec B could each
+run the check against their own view, each see nothing, and each successfully create an
+active enquiry for the *same* phone number — because neither rep's filtered view
+contains the other's row. The invariant would only get caught later, by the partial
+unique index and the `DataIntegrityViolation`→409 handler (challenge #15), at whatever
+moment a background job or an unrelated retry happened to trip it — a confusing
+database-level conflict instead of the clean, immediate, field-level 409 the pre-check
+is supposed to produce. A broken implementation that filtered the pre-check and then
+fell through to that index would *also* return 409 to the caller, so the HTTP status
+code alone cannot distinguish "the pre-check caught it" from "the backstop caught it" —
+only the row count can, which is why `dedupeStillTripsAgainstAnInvisibleEnquiry` asserts
+both the 409 and `countActiveEnquiriesFor(phone) == 1`, not just the former.
+
+### The solution
+
+Leave `requireNoActiveDuplicateExcept` calling `enquiries.findByNormalizedPhone` directly
+on the raw repository, never through `VisibleFinder`, with a comment at the call site
+stating why so the next reader does not "fix" it into conformance with the rest of the
+service. The parent spec's guard test allowlists this method (and
+`CustomerRepository.findByGstin`, the GSTIN-uniqueness equivalent) **by name**, so a
+future attempt to route it through the filter — or a new uniqueness check added without
+consulting this lane — has to argue its way past an explicit allowlist entry rather than
+silently pass because nothing noticed.
+
+This is a genuine trade-off, not a free lunch: the unfiltered 409 discloses to exec A
+that *someone* in the tenant already holds that phone number, even though exec A cannot
+see whose record it is or anything else about it. That is accepted because the
+alternative — a uniqueness invariant that silently breaks under concurrent use by two
+reps who cannot see each other's records — is worse than the disclosure.
+
+### Lesson
+
+A uniqueness pre-check and a visibility filter answer different questions — "does this
+value already exist anywhere in the tenant?" versus "can this caller see this record?" —
+and conflating them by routing the former through the latter converts a correctness
+guarantee into a per-user view. The failure mode is not a crash; it is a passing test
+suite and a real duplicate active row sitting in the database until something else (a
+retry, a batch job, a second write) happens to collide with it. When a visibility layer
+is introduced as a blanket rule ("filter every read of these repositories"), the
+exceptions to that rule need to be found by asking "which queries feed a uniqueness
+check rather than return a record to the caller," and then locked down with an
+allowlist and a same-file comment — not left to be rediscovered the next time someone
+"cleans up" the one service that still calls its repository directly.
