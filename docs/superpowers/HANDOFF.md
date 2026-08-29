@@ -1,7 +1,8 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-28 — **Per-IP rate limiting is built on branch `public-rate-limiting`,
-complete and pending merge (not yet on `main`).** It caps abuse of `/public/q/{token}` and the auth
+**Last updated:** 2026-08-29 — **Per-IP rate limiting is built on branch `public-rate-limiting`,
+complete and pending merge (not yet on `main`). Merging it, or deciding not to, is the first thing a
+new session must do — see §0.** It caps abuse of `/public/q/{token}` and the auth
 routes — the two things backlog item #3 and PF19 flagged — with a Bucket4j token bucket per
 `(policy, client-IP)` pair behind a `RateLimitStore` port, an in-memory implementation bounded by a
 Caffeine cache (challenge #41), and a filter that runs ahead of Spring Security so failed-auth
@@ -15,19 +16,41 @@ see §3's "Previous code work" for its detail.
 
 ## 0. Resuming? Start here
 
-**One thing is in flight: `public-rate-limiting` is complete but not merged.** Seven tasks plus a whole-branch fix wave
-(policy value type + config binding, the bounded in-memory store, the filter with its 429/Retry-After
-contract, filter ordering ahead of Spring Security, end-to-end tests, and this docs wrap-up) are done
-on branch `public-rate-limiting`, commits `bc542c2`..`5653bfb` off `main` at `e69d7ac`, every task
-reviewed clean. **It has not been merged to `main`** — run `finishing-a-development-branch` on it
-before starting anything new, unless you're picking this session up specifically to review or merge
-it. Before it, the `rls-force-and-guard` slice ran to completion and **merged to `main` as `3c239d1`**
+### Your first three actions, in order
+
+**You are not starting from a clean `main`. Do these before anything else.**
+
+**Action 1 — check out the right branch and know where you are.**
+`git branch --show-current` will say **`public-rate-limiting`** if nobody has moved it. That branch is
+**finished and unmerged**: 11 commits, `bc542c2`..`5a11f33`, off `main` at `e69d7ac`. Every task was
+reviewed clean, a whole-branch review returned MERGE after its two findings were fixed, and the tree
+is clean. `main` does **not** contain any of it.
+
+**Action 2 — settle the merge with the user.** Do not start new work on top of an unmerged finished
+branch, and do not merge it silently either. Run `superpowers:finishing-a-development-branch`, which
+presents the options (merge locally / open a PR / leave it). The house pattern for the last three
+slices has been: `--no-ff` merge to `main`, then a follow-up docs commit recording the merge hash and
+clearing this section's in-flight note, then delete the branch. If the user merges, **update this §0
+to say nothing is in flight** — a stale "in flight" line is the single most misleading thing this
+document can contain.
+
+**Action 3 — confirm the baseline** (item 1 below) on whatever you ended up on. On the branch it is
+**296 tests**; on unmerged `main` it is **287**. If you merge, it is 296.
+
+**One loose end that is not code:** the Bucket4j entry written for
+`/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that directory is
+not a git repository, so nothing was committed there. Design spec §7 asked for the entry; it exists;
+it is just untracked. Decide with the user whether that repo should be `git init`ed. Do not init it
+unilaterally.
+
+Before this slice, `rls-force-and-guard` ran to completion and **merged to `main` as `3c239d1`**
 (commits `cfc8928`..`b8b2ecb`); that feature branch is deleted, as was `platform-primitives-module`
 before it (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. Expect **296 tests, 0 failures, 0 errors** — 273 in
-   the root project and 23 in `platform-primitives`. Gradle prints no total for a multi-project
+   then `cd backend && ./gradlew clean test`. The number depends on where you are: **296 tests,
+   0 failures, 0 errors** on `public-rate-limiting` (273 root + 23 `platform-primitives`), or **287**
+   on unmerged `main` (264 + 23). Merging the branch makes `main` read 296. Gradle prints no total for a multi-project
    build, so count it yourself:
 
    ```bash
@@ -166,12 +189,18 @@ All under `docs/superpowers/`:
     `X-Forwarded-For`). Source of truth for *what* this slice built.
 30. **`plans/2026-08-28-public-rate-limiting.md`** — the seven-task implementation plan for it.
     **Branch `public-rate-limiting` is complete, reviewed clean, and pending merge** — see §0 and §3.
+    Worth reading even if you never touch rate limiting: the plan's own code was wrong in five
+    separate places that only surfaced during execution (a record that could not bind, a static
+    factory colliding with a record accessor, a Jackson 2 import on a Jackson 3 project, a
+    `BindResult` overload that does not exist in Boot 4.1, and a test-property precedence rule that
+    is the reverse of what the plan assumed). Challenges #38–#42 are the write-ups.
 
 ## 3. Current state
 
 - **Latest code work: per-IP rate limiting on the public and auth routes** — **branch
   `public-rate-limiting`, complete and reviewed clean, NOT YET MERGED to `main`.** Commits
-  `bc542c2`..`5653bfb` off `main` at `e69d7ac`. Seven tasks: a `RateLimitPolicy` value type +
+  `bc542c2`..`5a11f33` off `main` at `e69d7ac` — 11 in total: seven tasks, one whole-branch fix wave
+  (`3bfb99d`), and two docs commits. Seven tasks: a `RateLimitPolicy` value type +
   `RateLimitProperties` `@ConfigurationProperties` binding (challenge #38), a `RateLimitStore` port
   with an `InMemoryRateLimitStore` implementation bounded by a Caffeine cache (challenge #39), a
   `RateLimitFilter` returning 429 + `Retry-After` on exhaustion, registering that filter ahead of
