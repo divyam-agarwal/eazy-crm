@@ -22,7 +22,9 @@ see §3's "Previous code work" for its detail.
 
 **Action 1 — check out the right branch and know where you are.**
 `git branch --show-current` will say **`public-rate-limiting`** if nobody has moved it. That branch is
-**finished and unmerged**: 11 commits, `bc542c2`..`5a11f33`, off `main` at `e69d7ac`. Every task was
+**finished and unmerged**: it starts at `bc542c2` and branches off `main` at `e69d7ac` — run
+`git log --oneline e69d7ac..HEAD` for the current list rather than trusting a head SHA written here,
+since the last commits on it are docs wrap-ups that keep moving the tip. Every task was
 reviewed clean, a whole-branch review returned MERGE after its two findings were fixed, and the tree
 is clean. `main` does **not** contain any of it.
 
@@ -199,8 +201,8 @@ All under `docs/superpowers/`:
 
 - **Latest code work: per-IP rate limiting on the public and auth routes** — **branch
   `public-rate-limiting`, complete and reviewed clean, NOT YET MERGED to `main`.** Commits
-  `bc542c2`..`5a11f33` off `main` at `e69d7ac` — 11 in total: seven tasks, one whole-branch fix wave
-  (`3bfb99d`), and two docs commits. Seven tasks: a `RateLimitPolicy` value type +
+  from `bc542c2` off `main` at `e69d7ac`: seven tasks, one whole-branch fix wave (`3bfb99d`), and
+  the docs wrap-ups after it. Seven tasks: a `RateLimitPolicy` value type +
   `RateLimitProperties` `@ConfigurationProperties` binding (challenge #38), a `RateLimitStore` port
   with an `InMemoryRateLimitStore` implementation bounded by a Caffeine cache (challenge #39), a
   `RateLimitFilter` returning 429 + `Retry-After` on exhaustion, registering that filter ahead of
