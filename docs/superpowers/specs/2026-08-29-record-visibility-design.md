@@ -165,9 +165,14 @@ predicates), matching the idiom `OrderSpecifications.filter` already uses for "n
 class in the codebase permitted to call an inherited repository read method on those four aggregates
 (§8 enforces this). It exposes:
 
-- `Optional<T>` by-id finders: `customer(id)`, `enquiry(id)`, `quotation(id)`, `order(id)`, each
-  AND-ing the policy's specification with an id predicate.
-- Paged list equivalents that AND the policy's specification onto a caller-supplied user filter.
+- `Optional<T>` by-id finders: `findCustomer(id)`, `findEnquiry(id)`, `findQuotation(id)`,
+  `findOrder(id)`, each AND-ing the policy's specification with an id predicate.
+- Paged list equivalents — `pageCustomers`, `pageEnquiries`, `pageQuotations`, `pageOrders` — that
+  AND the policy's specification onto a caller-supplied user filter.
+
+The `find`/`page` prefixes are load-bearing: the class holds fields named `customers`, `enquiries`
+and so on, and a bare `customers(spec, pageable)` beside a `customers` field reads as a collision
+even though Java permits it.
 
 Consequence: the four services stop touching their repositories for reads and use them only for
 `save`. This is invasive-looking but mechanical — four `find` methods and four `list` methods.
