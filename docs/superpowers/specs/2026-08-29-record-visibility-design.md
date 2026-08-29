@@ -36,8 +36,9 @@ consequence worth stating: a bug in this layer is a product bug, not a tenancy b
 **In scope**
 
 - A two-tier visibility rule over four aggregates: `Customer`, `Enquiry`, `Quotation`, `Order`.
-- Applied to **reads and writes alike** — an invisible record 404s on `GET`, `PATCH`, `accept`,
-  `cancel`, `deactivate`, share-link mint and PDF render.
+- Applied to **reads and writes alike** — an invisible record 404s on `GET`, update (`PUT` for
+  `Customer`, `PATCH` for `Enquiry`), `accept`, `cancel`, `deactivate`, share-link mint and PDF
+  render.
 - Applied to **nested reads** reached through a parent (`Contact`, `QuotationVersion`,
   `QuotationItem`).
 - One deliberately **unfiltered lane** for two uniqueness checks, made explicit and guarded (§6), and
@@ -87,9 +88,16 @@ This is fail-open, and it is safe only because this layer is not a security boun
 applies to every query built here, so failing open means "sees the whole tenant", never "sees another
 tenant". Two things depend on it:
 
-- **Internal flows with no principal or a synthetic one** — async event listeners, tenant
-  provisioning (`TestTokens.provisionOwner` uses a `SYSTEM` role today), and the public share route.
-  A fail-closed default would break these silently and in ways that look like data loss.
+- **Internal flows with no principal, and flows that install a synthetic one.** Async event
+  listeners and tenant provisioning (`TestTokens.provisionOwner` uses a `SYSTEM` role today) run with
+  no `TenantContext` principal at all, landing on `unrestricted()`'s `orElse(true)`. The public share
+  route is a different case, not the same one under another name: `PublicShareController` installs a
+  **synthetic principal with role `"PUBLIC"`** via `TenantContext.runAs` before rendering, so it is
+  unrestricted for the ordinary reason any non-`SALES_EXEC` role is — `"PUBLIC" != "SALES_EXEC"` —
+  not because the principal is absent. If anything this is a *stronger* argument for the
+  restrict-`SALES_EXEC`-only framing: a role added later is unrestricted for free, with no separate
+  "absent principal" case to maintain. A fail-closed default would break all of these silently and
+  in ways that look like data loss.
 - **Any role added later** must not start hiding rows from users who could see them the day before.
   Restricting a new role should be an explicit edit, not something it inherits by not being on a list.
 
@@ -205,9 +213,14 @@ that has already been checked. They inherit; they get no predicate of their own.
 
 ### 5.3 What stays outside the layer
 
-**`/public/q/{token}` is unfiltered.** It resolves a tenant from the share token and has no JWT, so
-there is no principal to filter against — the same structural fact that keeps PF19's
-entitlement-metering half open. Its protections are the 128-bit token and the per-IP rate limiter.
+**`/public/q/{token}` is unfiltered.** It has no JWT, so `ShareLinkService.resolve` recovers the
+tenant from the share token rather than from a principal — but before the rendering transaction
+opens, `PublicShareController` installs a **synthetic principal with role `"PUBLIC"`** via
+`TenantContext.runAs`. `VisibilityPolicy.unrestricted()` returns true for it for the same reason it
+does for any non-`SALES_EXEC` role — `"PUBLIC" != "SALES_EXEC"` — not because the principal is
+absent. The no-JWT fact is real, and is the same structural fact that keeps PF19's
+entitlement-metering half open; it just isn't why this route is unfiltered. Its protections are the
+128-bit token and the per-IP rate limiter.
 
 **Not-visible returns 404, not 403.** This matches the existing cross-tenant behaviour and does not
 disclose that a record exists. The two cases are indistinguishable to the caller by design.

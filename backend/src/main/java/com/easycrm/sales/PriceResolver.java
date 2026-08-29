@@ -41,7 +41,8 @@ public class PriceResolver {
     public Resolved resolve(UUID customerId, UUID productId) {
         // Reached only from an already-visible customer (the caller resolved it first), so
         // this cannot change an outcome -- routed through the finder anyway for guard
-        // consistency (Task 8 forbids CustomerRepository.findById outside VisibleFinder).
+        // consistency (VisibilityScopingArchTest forbids CustomerRepository.findById
+        // outside VisibleFinder).
         Customer customer = finder.findCustomer(customerId)
             .orElseThrow(() -> new NotFoundException("customer not found"));
         Product product = products.findById(productId)

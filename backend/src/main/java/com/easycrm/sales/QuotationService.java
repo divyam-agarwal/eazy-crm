@@ -126,7 +126,8 @@ public class QuotationService {
         QuotationVersion v = requireDraft(q);
         items.deleteByVersionId(v.getId());
         // Reached only from an already-visible quotation, so this cannot change an
-        // outcome -- routed through the finder anyway for guard consistency (Task 8).
+        // outcome -- routed through the finder anyway for guard consistency
+        // (VisibilityScopingArchTest).
         Customer customer = finder.findCustomer(q.getCustomerId())
             .orElseThrow(() -> new NotFoundException("customer not found"));
         buildItems(v, q.getCustomerId(), req.items(), isInterState(customer.getStateCode()));
