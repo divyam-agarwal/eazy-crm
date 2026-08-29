@@ -1,5 +1,9 @@
 package com.easycrm.sales;
 
+import com.easycrm.iam.Role;
+import com.easycrm.iam.User;
+import com.easycrm.iam.UserRepository;
+import com.easycrm.iam.UserStatus;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
@@ -11,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
 
@@ -37,6 +42,8 @@ class EnquiryVisibilityTest extends IntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired TestTokens tokens;
     @Autowired EnquiryRepository enquiries;
+    @Autowired UserRepository users;
+    @Autowired TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID execAId = UUID.randomUUID();
@@ -152,6 +159,55 @@ class EnquiryVisibilityTest extends IntegrationTest {
         assertThat(countActiveEnquiriesFor(EXEC_B_PHONE)).isEqualTo(1);
     }
 
+    /**
+     * A typo'd or stale assignedTo is not a visibility question -- it never reaches the
+     * finder -- it's a write-time validation question. Unassigned-means-visible only
+     * applies to NULL, so an unresolvable id would otherwise make the record visible to
+     * nobody below manager, silently and permanently. Spec 2026-08-29-record-visibility-
+     * design.md §7.
+     */
+    @Test
+    void rejectsAnAssignedToThatIsNotAUserInThisTenant() throws Exception {
+        mvc.perform(post("/api/v1/enquiries")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(enquiryJsonAssignedTo("9876500011", UUID.randomUUID())))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void rejectsAnAssignedToThatNamesAnInactiveUser() throws Exception {
+        UUID inactive = seedUser(UserStatus.DISABLED);
+        mvc.perform(post("/api/v1/enquiries")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(enquiryJsonAssignedTo("9876500012", inactive)))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void acceptsAnAssignedToThatNamesAnActiveUser() throws Exception {
+        UUID active = seedUser(UserStatus.ACTIVE);
+        mvc.perform(post("/api/v1/enquiries")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(enquiryJsonAssignedTo("9876500013", active)))
+            .andExpect(status().isCreated());
+    }
+
+    /**
+     * Not filler: null is the value on every row today, so an over-eager @NotNull or a
+     * validation that rejects null would break the entire product.
+     */
+    @Test
+    void acceptsANullAssignedTo() throws Exception {
+        mvc.perform(post("/api/v1/enquiries")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(enquiryJsonAssignedTo("9876500014", null)))
+            .andExpect(status().isCreated());
+    }
+
     // --- helpers -------------------------------------------------------------
 
     private Enquiry newEnquiry(String phone, UUID assignedTo) {
@@ -180,5 +236,20 @@ class EnquiryVisibilityTest extends IntegrationTest {
     private String enquiryJsonFor(String phone) {
         return """
             {"contactName":"Dup Test","contactPhone":"%s","source":"MANUAL"}""".formatted(phone);
+    }
+
+    private String enquiryJsonAssignedTo(String phone, UUID assignedTo) {
+        String assignedJson = assignedTo == null ? "null" : "\"" + assignedTo + "\"";
+        return """
+            {"contactName":"Assign Test","contactPhone":"%s","source":"MANUAL","assignedTo":%s}"""
+            .formatted(phone, assignedJson);
+    }
+
+    /** Seeds a real User row in this test's tenant so assignedTo can resolve against it. */
+    private UUID seedUser(UserStatus status) {
+        return TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+            () -> tx.execute(s -> users.save(new User(
+                "user-" + UUID.randomUUID() + "@example.com", null, "hash",
+                Role.SALES_EXEC, status)).getId()));
     }
 }

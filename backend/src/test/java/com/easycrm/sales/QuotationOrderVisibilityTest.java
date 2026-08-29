@@ -3,6 +3,10 @@ package com.easycrm.sales;
 import com.easycrm.crm.Customer;
 import com.easycrm.crm.CustomerRepository;
 import com.easycrm.crm.CustomerSource;
+import com.easycrm.iam.Role;
+import com.easycrm.iam.User;
+import com.easycrm.iam.UserRepository;
+import com.easycrm.iam.UserStatus;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
@@ -14,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -41,13 +46,15 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
     @Autowired QuotationRepository quotations;
     @Autowired QuotationVersionRepository versions;
     @Autowired OrderRepository orders;
+    @Autowired UserRepository users;
+    @Autowired TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
-    private final UUID execAId = UUID.randomUUID();
     private final UUID execBId = UUID.randomUUID();
 
     private String execAToken;
     private String ownerToken;
+    private UUID execAId;
 
     private UUID customerA, customerB, customerPool;
     private UUID quoteUnderA, quoteUnderB, quoteUnderPool;
@@ -56,6 +63,10 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
 
     @BeforeEach
     void seed() {
+        // A real ACTIVE user, not a bare random id: reassignCustomer() below reassigns a
+        // customer TO execAId through the real update endpoint, which now validates
+        // assignedTo (task 7) -- a bare random UUID would 422 there.
+        execAId = seedUser(UserStatus.ACTIVE);
         execAToken = tokens.as(tenantId, execAId, "SALES_EXEC");
         ownerToken = tokens.as(tenantId, UUID.randomUUID(), "OWNER");
 
@@ -223,4 +234,12 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
     }
 
     private String bearer(String token) { return "Bearer " + token; }
+
+    /** Seeds a real User row in this test's tenant so assignedTo can resolve against it. */
+    private UUID seedUser(UserStatus status) {
+        return TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+            () -> tx.execute(s -> users.save(new User(
+                "user-" + UUID.randomUUID() + "@example.com", null, "hash",
+                Role.SALES_EXEC, status)).getId()));
+    }
 }

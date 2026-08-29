@@ -1,5 +1,10 @@
 package com.easycrm.sales;
 
+import com.easycrm.iam.Role;
+import com.easycrm.iam.User;
+import com.easycrm.iam.UserRepository;
+import com.easycrm.iam.UserStatus;
+import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
 import com.jayway.jsonpath.JsonPath;
@@ -10,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
 
@@ -30,6 +36,8 @@ class NestedVisibilityTest extends IntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired TestTokens tokens;
+    @Autowired UserRepository users;
+    @Autowired TransactionTemplate tx;
 
     private String execAToken;
     private String ownerToken;
@@ -45,13 +53,15 @@ class NestedVisibilityTest extends IntegrationTest {
         UUID tenantId = owner.tenantId();
         ownerToken = owner.token();
         UUID execAId = UUID.randomUUID();
-        UUID execBId = UUID.randomUUID();
         execAToken = tokens.as(tenantId, execAId, "SALES_EXEC");
+        // Customer B's assignee must be a real ACTIVE user in this tenant now that
+        // CustomerService validates assignedTo (task 7) -- a bare random UUID 422s.
+        UUID assigneeOfB = seedUser(tenantId, UserStatus.ACTIVE);
 
         customerB = UUID.fromString(JsonPath.read(mvc.perform(post("/api/v1/customers")
                 .header(AUTH, bearer(ownerToken)).contentType(MediaType.APPLICATION_JSON).content("""
                     {"businessName":"Customer B","stateCode":"27","source":"MANUAL","assignedTo":"%s"}"""
-                    .formatted(execBId)))
+                    .formatted(assigneeOfB)))
             .andReturn().getResponse().getContentAsString(), "$.id"));
 
         contactUnderB = UUID.fromString(JsonPath.read(mvc.perform(
@@ -130,4 +140,12 @@ class NestedVisibilityTest extends IntegrationTest {
     }
 
     private String bearer(String token) { return "Bearer " + token; }
+
+    /** Seeds a real User row in the given tenant so assignedTo can resolve against it. */
+    private UUID seedUser(UUID tenantId, UserStatus status) {
+        return TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+            () -> tx.execute(s -> users.save(new User(
+                "user-" + UUID.randomUUID() + "@example.com", null, "hash",
+                Role.SALES_EXEC, status)).getId()));
+    }
 }

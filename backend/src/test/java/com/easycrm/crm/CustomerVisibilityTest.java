@@ -1,5 +1,9 @@
 package com.easycrm.crm;
 
+import com.easycrm.iam.Role;
+import com.easycrm.iam.User;
+import com.easycrm.iam.UserRepository;
+import com.easycrm.iam.UserStatus;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
@@ -11,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
 
@@ -33,6 +38,8 @@ class CustomerVisibilityTest extends IntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired TestTokens tokens;
     @Autowired CustomerRepository customers;
+    @Autowired UserRepository users;
+    @Autowired TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID execAId = UUID.randomUUID();
@@ -113,6 +120,55 @@ class CustomerVisibilityTest extends IntegrationTest {
             .andExpect(jsonPath("$.content[*].id").value(not(hasItem(mine.toString()))));
     }
 
+    /**
+     * A typo'd or stale assignedTo is not a visibility question -- it never reaches the
+     * finder -- it's a write-time validation question. Unassigned-means-visible only
+     * applies to NULL, so an unresolvable id would otherwise make the record visible to
+     * nobody below manager, silently and permanently. Spec 2026-08-29-record-visibility-
+     * design.md §7.
+     */
+    @Test
+    void rejectsAnAssignedToThatIsNotAUserInThisTenant() throws Exception {
+        mvc.perform(post("/api/v1/customers")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(customerJsonAssignedTo(UUID.randomUUID())))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void rejectsAnAssignedToThatNamesAnInactiveUser() throws Exception {
+        UUID inactive = seedUser(UserStatus.DISABLED);
+        mvc.perform(post("/api/v1/customers")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(customerJsonAssignedTo(inactive)))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void acceptsAnAssignedToThatNamesAnActiveUser() throws Exception {
+        UUID active = seedUser(UserStatus.ACTIVE);
+        mvc.perform(post("/api/v1/customers")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(customerJsonAssignedTo(active)))
+            .andExpect(status().isCreated());
+    }
+
+    /**
+     * Not filler: null is the value on every row today, so an over-eager @NotNull or a
+     * validation that rejects null would break the entire product.
+     */
+    @Test
+    void acceptsANullAssignedTo() throws Exception {
+        mvc.perform(post("/api/v1/customers")
+                .header(AUTH, bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(customerJsonAssignedTo(null)))
+            .andExpect(status().isCreated());
+    }
+
     // --- helpers -------------------------------------------------------------
 
     private Customer newCustomer(String name, UUID assignedTo) {
@@ -124,5 +180,20 @@ class CustomerVisibilityTest extends IntegrationTest {
     private String validCustomerJson() {
         return """
             {"businessName":"Theirs Traders Updated","stateCode":"27","source":"MANUAL"}""";
+    }
+
+    private String customerJsonAssignedTo(UUID assignedTo) {
+        String assignedJson = assignedTo == null ? "null" : "\"" + assignedTo + "\"";
+        return """
+            {"businessName":"Assign Test","stateCode":"27","source":"MANUAL","assignedTo":%s}"""
+            .formatted(assignedJson);
+    }
+
+    /** Seeds a real User row in this test's tenant so assignedTo can resolve against it. */
+    private UUID seedUser(UserStatus status) {
+        return TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+            () -> tx.execute(s -> users.save(new User(
+                "user-" + UUID.randomUUID() + "@example.com", null, "hash",
+                Role.SALES_EXEC, status)).getId()));
     }
 }
