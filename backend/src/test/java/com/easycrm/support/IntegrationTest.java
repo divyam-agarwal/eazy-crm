@@ -3,6 +3,7 @@ package com.easycrm.support;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.sql.Connection;
@@ -10,6 +11,24 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 @SpringBootTest
+// The limiter is OFF for the suite at large, and this is correctness, not tidiness. Every
+// @SpringBootTest sharing this configuration shares ONE cached context, hence one
+// RateLimitStore bean, and every MockMvc request originates from the same loopback address.
+// Auth-touching requests from ALL test classes would therefore accumulate into a single
+// bucket and blow the 30/minute auth policy partway through a suite that runs in ~12s —
+// failing on the strength of how many other tests ran first.
+//
+// This default lives in @TestPropertySource, NOT in the @DynamicPropertySource method below,
+// on purpose: @DynamicPropertySource methods declared across a class hierarchy are invoked
+// leaf-class-first, THEN superclass (see ReflectionUtils.doWithMethods), writing into one
+// last-write-wins map keyed by property name. If "easycrm.rate-limit.enabled" were registered
+// here too, THIS class's call would always run last and always win, so no subclass could ever
+// turn the limiter back on no matter what it registered. Spring's own precedence rule cuts the
+// other way for @TestPropertySource: a @DynamicPropertySource registration unconditionally
+// outranks @TestPropertySource, regardless of which class in the hierarchy declares which. So
+// a subclass that needs the limiter on (RateLimitIntegrationTest) can register its own
+// @DynamicPropertySource for this key and be certain it wins over this default.
+@TestPropertySource(properties = "easycrm.rate-limit.enabled=false")
 public abstract class IntegrationTest {
 
     // Singleton container: started ONCE for the whole JVM and shared across every

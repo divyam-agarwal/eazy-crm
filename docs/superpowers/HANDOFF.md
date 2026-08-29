@@ -1,29 +1,58 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-27 — **RLS is now `FORCE`d on all fourteen tenant tables, and layer 3
-has a guard.** That closes PF14 and PF15, the two findings §8 flagged as describing a real isolation
-gap in code that was running; PF19 is the one that remains. Earlier the same day,
-`platform-primitives` was extracted into its own Gradle module, so **the build is no longer one
-project under `backend/`**: it is `backend` plus `backend/platform/platform-primitives`, and every
-test-counting and test-filtering habit in this document changed with it (§0 item 1). Three
-design-only threads still sit under `docs/architecture/` — the AWS re-platform, the
-platform-module/service-split thread that continues it, and the four remaining module LLDs that
-close its queue (§0 item 3) — and the first of the six modules those LLDs describe is now built
-rather than merely designed (§8).
+**Last updated:** 2026-08-29 — **Per-IP rate limiting is built on branch `public-rate-limiting`,
+complete and pending merge (not yet on `main`). Merging it, or deciding not to, is the first thing a
+new session must do — see §0.** It caps abuse of `/public/q/{token}` and the auth
+routes — the two things backlog item #3 and PF19 flagged — with a Bucket4j token bucket per
+`(policy, client-IP)` pair behind a `RateLimitStore` port, an in-memory implementation bounded by a
+Caffeine cache (challenge #41), and a filter that runs ahead of Spring Security so failed-auth
+traffic is capped too. **PF19 is only partly addressed:** this slice stops the route from being
+hammered; it does not give it entitlement metering, which PF19 is actually about — see §8. The
+previous slice (RLS `FORCE`d + a layer-3 guard, closing PF14/PF15) is now **merged to `main`**;
+see §3's "Previous code work" for its detail.
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-**Nothing is in flight.** The `rls-force-and-guard` slice ran to completion and **merged to `main`
-as `3c239d1`** (commits `cfc8928`..`b8b2ecb`); the feature branch is deleted, as was
-`platform-primitives-module` before it (merged as `210545e`). All code work is merged and the next
-session begins by choosing what to build — there is no half-finished task to rescue.
+### Your first three actions, in order
+
+**You are not starting from a clean `main`. Do these before anything else.**
+
+**Action 1 — check out the right branch and know where you are.**
+`git branch --show-current` will say **`public-rate-limiting`** if nobody has moved it. That branch is
+**finished and unmerged**: it starts at `bc542c2` and branches off `main` at `e69d7ac` — run
+`git log --oneline e69d7ac..HEAD` for the current list rather than trusting a head SHA written here,
+since the last commits on it are docs wrap-ups that keep moving the tip. Every task was
+reviewed clean, a whole-branch review returned MERGE after its two findings were fixed, and the tree
+is clean. `main` does **not** contain any of it.
+
+**Action 2 — settle the merge with the user.** Do not start new work on top of an unmerged finished
+branch, and do not merge it silently either. Run `superpowers:finishing-a-development-branch`, which
+presents the options (merge locally / open a PR / leave it). The house pattern for the last three
+slices has been: `--no-ff` merge to `main`, then a follow-up docs commit recording the merge hash and
+clearing this section's in-flight note, then delete the branch. If the user merges, **update this §0
+to say nothing is in flight** — a stale "in flight" line is the single most misleading thing this
+document can contain.
+
+**Action 3 — confirm the baseline** (item 1 below) on whatever you ended up on. On the branch it is
+**296 tests**; on unmerged `main` it is **287**. If you merge, it is 296.
+
+**One loose end that is not code:** the Bucket4j entry written for
+`/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that directory is
+not a git repository, so nothing was committed there. Design spec §7 asked for the entry; it exists;
+it is just untracked. Decide with the user whether that repo should be `git init`ed. Do not init it
+unilaterally.
+
+Before this slice, `rls-force-and-guard` ran to completion and **merged to `main` as `3c239d1`**
+(commits `cfc8928`..`b8b2ecb`); that feature branch is deleted, as was `platform-primitives-module`
+before it (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. Expect **264 tests, 0 failures, 0 errors** — 241 in
-   the root project and 23 in `platform-primitives`. Gradle prints no total for a multi-project
+   then `cd backend && ./gradlew clean test`. The number depends on where you are: **296 tests,
+   0 failures, 0 errors** on `public-rate-limiting` (273 root + 23 `platform-primitives`), or **287**
+   on unmerged `main` (264 + 23). Merging the branch makes `main` read 296. Gradle prints no total for a multi-project
    build, so count it yourself:
 
    ```bash
@@ -98,7 +127,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (36 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (41 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -154,9 +183,50 @@ All under `docs/superpowers/`:
     (**DONE** — see §3). Task 5's brief is the one worth reading even if you never touch this
     module: its mandatory prove-it-can-fail step is the only reason challenge #33 was caught.
 
+**Not a platform-LLD module — a hardening slice off the `rls-force-and-guard` baseline:**
+
+29. **`specs/2026-08-27-public-rate-limiting-design.md`** — per-IP rate limiting design spec
+    (Bucket4j token buckets per `(policy, client-IP)`, the public/auth policy set, the
+    `RateLimitStore` port, and the deliberate choice to key on socket address rather than
+    `X-Forwarded-For`). Source of truth for *what* this slice built.
+30. **`plans/2026-08-28-public-rate-limiting.md`** — the seven-task implementation plan for it.
+    **Branch `public-rate-limiting` is complete, reviewed clean, and pending merge** — see §0 and §3.
+    Worth reading even if you never touch rate limiting: the plan's own code was wrong in five
+    separate places that only surfaced during execution (a record that could not bind, a static
+    factory colliding with a record accessor, a Jackson 2 import on a Jackson 3 project, a
+    `BindResult` overload that does not exist in Boot 4.1, and a test-property precedence rule that
+    is the reverse of what the plan assumed). Challenges #38–#42 are the write-ups.
+
 ## 3. Current state
 
-- **Latest code work: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
+- **Latest code work: per-IP rate limiting on the public and auth routes** — **branch
+  `public-rate-limiting`, complete and reviewed clean, NOT YET MERGED to `main`.** Commits
+  from `bc542c2` off `main` at `e69d7ac`: seven tasks, one whole-branch fix wave (`3bfb99d`), and
+  the docs wrap-ups after it. Seven tasks: a `RateLimitPolicy` value type +
+  `RateLimitProperties` `@ConfigurationProperties` binding (challenge #38), a `RateLimitStore` port
+  with an `InMemoryRateLimitStore` implementation bounded by a Caffeine cache (challenge #39), a
+  `RateLimitFilter` returning 429 + `Retry-After` on exhaustion, registering that filter ahead of
+  Spring Security so failed-auth traffic is capped too, end-to-end integration tests proving the
+  filter ordering, and this docs wrap-up. **296 tests, 0 failures, 0 errors** — 273 in the root
+  project, 23 in `platform-primitives`, up from the 264-test `rls-force-and-guard` baseline (+23).
+  Delivered: token-bucket limits (Bucket4j) keyed on `(policy name, client IP)` so one policy's
+  allowance can't drain another's exhausted client's traffic against a different route (challenge
+  #39); buckets keyed on `getRemoteAddr()` only — never `X-Forwarded-For`, which is client-supplied
+  and would let any caller mint a fresh bucket per request (challenge #41); the bounded cache itself
+  closing the mirror-image risk, an attacker-rotated-IP memory-exhaustion vector (challenge #41);
+  and a `@DynamicPropertySource`-vs-`@TestPropertySource` fix so the limiter can default OFF for the
+  other 62 integration test classes sharing one cached context while turning ON only for
+  `RateLimitIntegrationTest` (challenge #40). New challenges #38–#41; annotations-reference gained
+  `@ConfigurationProperties`, `@EnableConfigurationProperties`, `@DefaultValue`, and
+  `@TestPropertySource` rows during the branch's own tasks (checked, not re-added, by this
+  docs task). **What this slice does *not* do:** it caps request *rate*, not request
+  *entitlement* — **PF19 remains open** (§8). **What multi-instance deployment now needs:** the
+  store is in-process, so each app instance keeps its own buckets — with N instances behind a load
+  balancer the effective limit for any client is N × the configured value, not the configured value.
+  The design's Redis-backed `RateLimitStore` implementation is the prerequisite for running more
+  than one instance; it does not exist yet.
+
+- **Previous code work: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
   to `main` as `3c239d1`**. Branch `rls-force-and-guard`, commits `cfc8928`..`b8b2ecb` off `main`
   at `455c237`, closing **PF14 and PF15**. `V26__force_rls.sql` adds
   `FORCE ROW LEVEL SECURITY` to every tenant table (previously all fourteen were `ENABLE`d and
@@ -171,7 +241,7 @@ All under `docs/superpowers/`:
   Note this closes the gap *in the schema* — a deployment must still connect as `easycrm_app`;
   forcing removes the silent-failure mode, not the requirement.
 
-- **Previous code work: `platform-primitives` extracted into its own Gradle module** — **merged to
+- **Before that: `platform-primitives` extracted into its own Gradle module** — **merged to
   `main` as `210545e`**. Branch `platform-primitives-module`, eight tasks, commits
   `4d43d75`..`6c255d4` off `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took
   one fix round; Task 7 returned zero findings at any severity), and the whole-branch review found
@@ -349,7 +419,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 264 tests run in ~12s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 296 tests run in ~13s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -365,6 +435,7 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **ArchUnit 1.4.1** (not 1.3.0) — 1.3.0 silently skips Java 25 bytecode. Two further traps, both hit in one afternoon and both producing a rule that passes while checking nothing: (a) **`noClasses().should(customCondition)` inverts every event the condition emits**, so a hand-rolled condition must emit `SimpleConditionEvent.satisfied(...)` for the case it forbids — challenge #33; (b) **`importPackages("com.easycrm")` now spans two build outputs**, since the `platform-primitives` jar shares the prefix, so an `isNotEmpty()` vacuity guard no longer proves the root project's own bytecode was read — challenge #36. **Never add an ArchUnit rule without deliberately introducing a violation and watching it fail.**
 - **Jackson 3 moved the date/timestamp serialization switches.** `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS` and `WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS` **do not exist**; they are now on `tools.jackson.databind.cfg.DateTimeFeature` (a `DatatypeFeature`), reached via `disable(DatatypeFeature...)`. `JsonWriteFeature.WRITE_NUMBERS_AS_STRINGS` is **off** by default (verified directly against `jackson-core-3.1.4`), whatever secondary sources claim.
 - **Testcontainers BOM pinned to 1.21.3** (Boot 4 BOM doesn't manage those versions).
+- **`BindResult<T>.orElseThrow()` lost its zero-arg overload.** Only `orElseThrow(Supplier<? extends X>)` exists in Boot 4.1 — call `.get()` instead when you just want the bound value or a `NoSuchElementException` if binding failed (`RateLimitDefaultsTest`).
 - **RLS + custom GUC:** a referenced custom GUC resets to `''` not NULL, so policies use `NULLIF(current_setting('app.current_tenant', true), '')::uuid`. An RLS `USING` clause also acts as `WITH CHECK` for inserts.
 - **Two DB roles:** Flyway runs as the **owner** (Testcontainers superuser); the app connects as **`easycrm_app`** (non-owner, no BYPASSRLS) — this is what makes RLS real. `IntegrationTest` wires both datasources.
 - **`ddl-auto: validate`** is on — migration column types must match entity mappings exactly (e.g. `VARCHAR` not `CHAR` for a `String`).
@@ -392,11 +463,14 @@ the workflow from §0 step 4.
    to hang activity listeners on.
 2. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
    today; nothing runs on a schedule. Small, introduces the first scheduled job.
-3. **P0-auth follow-up** — user invitations + **record-level visibility filtering** (`assigned_to`,
-   still open from P1a — every user in a tenant reads every record) + **rate limiting**, which is
-   now overdue: `/public/q/{token}` is the app's only unauthenticated route and its most expensive
-   uncapped operation (a PDF render per hit, off a 128-bit token an attacker could in principle
-   brute-force offline).
+3. **P0-auth follow-up** — now **only** user invitations + **record-level visibility filtering**
+   (`assigned_to`, still open from P1a — every user in a tenant reads every record). Its
+   rate-limiting third is **done** on branch `public-rate-limiting` (§0/§3, pending merge):
+   `/public/q/{token}` and the auth routes are capped per-IP with a 429 + `Retry-After` contract.
+   That closes the *abuse-of-rate* half of PF19 and **not** the *entitlement-metering* half — PF19
+   stays open below. Record-level visibility is the larger and more overdue of the two remainders:
+   it is a **tenant-internal confidentiality gap that exists in code running today**, which is the
+   same category of claim that made PF14/PF15 outrank everything else two slices ago.
 4. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
    `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
 
@@ -424,18 +498,43 @@ code running **today**, not the future split. **Two of the three are now closed*
   tenant table naming it something else would slip past. Nothing in the repo does that today.
 - **PF19** — the entitlement metric set does not respect the create/read boundary, and
   `/public/q/{token}` renders a PDF with no JWT, so there is structurally nowhere to put an
-  entitlement check on the app's most expensive uncapped operation.
+  entitlement check on the app's most expensive uncapped operation. **PF19 REMAINS OPEN** even
+  after `public-rate-limiting`: that slice caps how *often* the route can be hit, which closes the
+  abuse-of-rate reading of this finding, but it adds no entitlement metering at all — there is
+  still nowhere in the request path that knows or charges *whose* quota a render came out of. Do
+  not infer PF19 is finished from the rate-limiting slice landing; it addresses a different half of
+  the same finding.
 
-**PF19 is also a second, independent argument for #3's rate-limiting half** — arriving from
-billing/COGS rather than from security, which is what makes it worth weighing.
+**PF19 was also a second, independent argument for #3's rate-limiting half** — arriving from
+billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
+half PF19 is actually about is still unstarted.
 
-**Suggested default:** with PF14/PF15 closed, the field narrows to two real contenders.
-**#3's rate-limiting half** has two independent arguments behind it (the only unauthenticated route
-in the app is uncapped, and PF19 says it is also the most expensive metered one), and it is the
-natural continuation of the hardening thread the RLS slice started. **#1 (activity/follow-up)** is
-the next spec-scoped product surface, and the right pick if product progress outranks hardening.
-`platform-web` is next by dependency order, but "next in the queue" remains the weakest of these
-claims. Confirm with the user rather than assuming.
+**Suggested default — read this before proposing anything.** Three slices in a row have now been
+hardening (RLS forcing, then rate limiting). The security items that described *running code* are
+closed or downgraded, so the honest ranking has changed:
+
+- **Record-level visibility filtering (the rest of #3) is the last "it is wrong in code that runs
+  today" item on this list.** Every user in a tenant currently reads every record — a
+  tenant-internal confidentiality gap, the same category of claim that put PF14/PF15 ahead of
+  everything else two slices ago. It is also a prerequisite the frontend will assume exists.
+- **#1 (activity/follow-up) is the strongest product claim** and the wedge's most conspicuous
+  missing surface: "never lose a follow-up" is a headline promise with no implementation. The accept
+  event seam already exists to hang listeners on. Pick this if the next slice should move the
+  product rather than the platform.
+- **PF19's entitlement-metering half** is now the only part of PF19 left, and it is genuinely
+  blocked on design, not effort: the public route has no JWT, so there is nowhere to hang a
+  per-tenant check. It needs the billing thread's decisions before code.
+- **`platform-web`** is next by dependency order, which remains the weakest of these claims.
+
+A reasonable reading is: **visibility filtering if you want the last correctness gap closed, #1 if
+three hardening slices is enough and the product needs to move.** Confirm with the user rather than
+assuming — and note that #2 (scheduled auto-expiry) is still the cheapest item on the board if a
+small slice is wanted between two large ones.
+
+**Before any second app instance:** the rate limiter's store is in-process (§3) — running N
+instances behind a load balancer multiplies every configured limit by N, silently. Build the
+design's Redis-backed `RateLimitStore` implementation before multi-instance deployment, not after;
+today it does not exist.
 
 ### Smaller deferred-Minor backlog
 
@@ -460,10 +559,12 @@ first *within* each slice's block; 23–24 are not lower-value than 22, they are
    reasoning. Fix: embed a Unicode-capable font (Noto Sans or DejaVu Sans, subset) — the
    jar-weight/font-licensing trade-off §2 already declined once for the `₹` glyph alone, now with
    its real cost visible.
-3. **No rate limiting on `/public/q/{token}`** — the app's **only unauthenticated route**, and its
-   most expensive uncapped operation: every hit renders a PDF from scratch, and the 128-bit token
-   space, while not guessable, is nothing an attacker is prevented from hammering. Already flagged
-   in §8 above as a candidate to pull forward rather than leave purely on the backlog.
+3. ~~**No rate limiting on `/public/q/{token}`**~~ — **DONE.** Closed by the `public-rate-limiting`
+   slice (§3, pending merge): a per-IP Bucket4j token bucket in front of `/public/q/{token}` and the
+   auth routes, 429 + `Retry-After` on exhaustion. **This closes only the rate half of PF19, not the
+   entitlement-metering half** — PF19 stays open above. It also does not yet support more than one
+   app instance: the store is in-process, so N instances multiply the effective limit by N until the
+   Redis-backed `RateLimitStore` is built.
 4. **No expiry or revoke on a share link, and no way to invalidate one by any means today.** A
    link minted once renders forever. Resharing the same version does **not** replace anything —
    `ShareLinkService.share()` returns the version's existing stored token (that is the point of
@@ -566,3 +667,40 @@ when module 2 lands and there are three places to keep in step instead of two.
     one of two". The right fix is a Gradle version catalog (`gradle/libs.versions.toml`) or a shared
     convention plugin — a build-structure decision worth making **once**, at module 2, rather than
     twice.
+
+**From the `public-rate-limiting` slice (2026-08-28).** Items 25–28 are per-task review findings;
+29–32 came from the whole-branch review, which triaged all four as genuinely safe to defer (its two
+must-fix findings — the eviction window and the context path — were fixed on the branch, not deferred).
+
+25. **Jackson's `AUTO_CLOSE_TARGET` closes the servlet output stream** when `RateLimitFilter.reject`
+    writes the 429 body via `writeValue(response.getOutputStream(), …)`. Harmless today because the
+    deny path is terminal — nothing runs after it. It stops being harmless the moment anything is
+    layered after the limiter in the chain.
+26. **`org.springframework.lang.NonNull` is `@Deprecated` since Spring 7.0** (JSpecify annotations are
+    the replacement). `RateLimitFilter` is its only use in `src/main/java`. Cosmetic, but it is the
+    kind of thing that becomes a compile warning wall later; fix it when JSpecify is adopted repo-wide.
+27. **Three of the five `RateLimitFilterTest` cases would also pass against a pass-through filter**
+    (allowed / unmatched / disabled). They are negative controls. The two load-bearing cases — deny,
+    and the bucket key — are properly falsifiable, and four integration tests cover the rest, so this
+    is thin rather than wrong.
+28. **`HarnessRateLimitDisabledTest` guards the shared context only.** It proves the suite-wide
+    `enabled=false` default still applies to a plain `IntegrationTest` subclass, and the re-review
+    proved it falsifiable by deleting the annotation and watching it go red. It cannot catch a future
+    test class that forks its own context with the limiter ON, nor a new `@SpringBootTest` base that
+    does not extend `IntegrationTest`. All 64 current subclasses inherit cleanly.
+29. **`UrlPathHelper.getPathWithinApplication` URL-decodes the path**, so a `%2F` inside a share token
+    would split into segments and miss the `/public/q/*` pattern where the raw URI matched. Not
+    reachable today: Tomcat rejects encoded slashes with a 400 before the filter runs. It becomes
+    reachable if `ALLOW_ENCODED_SLASH` is ever turned on, or behind a proxy that normalises differently.
+30. **`refillPeriod` carries `@NotNull` but no positivity constraint,** so `refill-period: 0s` binds
+    successfully at startup and then throws inside Bucket4j on the first request — the one
+    misconfiguration in this properties class that still fails late rather than fast. `capacity` is
+    correctly `@Positive`.
+31. **CGNAT collateral: customers behind one carrier NAT share a bucket.** A share link forwarded to
+    several people on the same mobile carrier can 429 legitimate recipients. This is inherent to the
+    per-IP keying decision (design spec §3 argues why per-token is worse), not a defect — but it is the
+    failure mode to look for first if a distributor ever reports "my customer says the link is broken."
+32. **The shipped `auth` policy is never exercised end-to-end.** `RateLimitIntegrationTest` overrides
+    `policies[1]` with its throwaway `api-protected` policy, so the 30/minute login cap is covered only
+    by `RateLimitDefaultsTest`'s matching assertions. Adequate — the mechanism is identical and proven
+    on the other policy — but no test ever drives a real login to 429.

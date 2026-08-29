@@ -40,6 +40,14 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 
+    // Token-bucket rate limiting. The artifact id is JDK-qualified as of 8.10:
+    // com.bucket4j:bucket4j-core is a stale coordinate that resolves to 8.1.x.
+    implementation("com.bucket4j:bucket4j_jdk17-core:8.19.0")
+    // Bounded bucket storage. The key is a client IP — attacker-controlled — so an
+    // unbounded map would make the rate limiter its own memory-exhaustion vector.
+    // Version comes from the Boot BOM; do not pin it here.
+    implementation("com.github.ben-manes.caffeine:caffeine")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     // Boot 4 split MockMvc test auto-config (@AutoConfigureMockMvc) into its own module;

@@ -48,7 +48,9 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Profile` | `org.springframework.context.annotation` | Bean only active under a given profile (`DemoSeeder` runs only in `dev`). | — |
 | `@Primary` | `org.springframework.context.annotation` | When multiple beans of a type exist, prefer this one (our `TenantAwareTransactionManager`). | — |
 | `@ConfigurationPropertiesScan` | `org.springframework.boot.context.properties` | On the main class; scans for `@ConfigurationProperties` records/classes to bind. | — |
-| `@ConfigurationProperties` | `org.springframework.boot.context.properties` | Binds a group of `easycrm.*` YAML keys to a typed record (`JwtProperties`). | — |
+| `@ConfigurationProperties` | `org.springframework.boot.context.properties` | Binds a group of `easycrm.*` YAML keys to a typed record (`JwtProperties`, `RateLimitProperties`). | — |
+| `@EnableConfigurationProperties` | `org.springframework.boot.context.properties` | On a `@Configuration` class, explicitly registers a named `@ConfigurationProperties` type as a bean. `RateLimitConfig` declares it for `RateLimitProperties` so the config class is self-contained and correct on its own even though `EasyCrmApplication`'s package-wide `@ConfigurationPropertiesScan` would also pick the type up — Spring de-dupes the resulting bean definition, so declaring both is harmless. | Imports `EnableConfigurationPropertiesRegistrar` |
+| `@DefaultValue` | `org.springframework.boot.context.properties.bind` | On a `@ConfigurationProperties` record component, supplies the value used when the YAML key is absent, since records have no field initializers for the binder to fall back on. `RateLimitProperties.enabled` uses `@DefaultValue("true")` so a missing key still ships rate limiting on; `policies` uses the no-argument form (empty list) so an unmatched path is simply unlimited rather than a `NullPointerException`. | — |
 | `@Value` | `org.springframework.beans.factory.annotation` | Injects a single resolved property/SpEL expression into a constructor or field parameter; `ShareLinkService`'s constructor takes `@Value("${easycrm.public-base-url}") String publicBaseUrl` — a lighter-weight alternative to `@ConfigurationProperties` for a single scalar. | — |
 
 ## 2. Persistence — JPA (jakarta.persistence)
@@ -122,6 +124,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Email` | `jakarta.validation.constraints` | String must look like an email address (`SignupRequest.email`). | Meta-annotated `@Constraint` |
 | `@Size` | `jakarta.validation.constraints` | Length/size bounds (`password` min 8). | Meta-annotated `@Constraint` |
 | `@Pattern` | `jakarta.validation.constraints` | String must match a regex (`slug` charset, 2-digit `stateCode`). | Meta-annotated `@Constraint` |
+| `@Positive` | `jakarta.validation.constraints` | Numeric value must be > 0 (`RateLimitPolicy.capacity` — `capacity: 0` would otherwise bind happily and then deny every request on that policy's route, a startup-time catch for what would else be a production outage). | Meta-annotated `@Constraint` |
+| `@Validated` | `org.springframework.validation.annotation` | On a `@ConfigurationProperties` class, tells `ConfigurationPropertiesBindingPostProcessor` to run Bean Validation on the bound instance so a bad value (e.g. `RateLimitProperties`' `capacity: 0`) fails application startup instead of binding silently. Paired with `@Valid` on the `List<RateLimitPolicy> policies` field to cascade validation into each element. | Meta-annotated with Spring's `@Validated` machinery (not JSR-303 `@Constraint`) |
 | `@Transactional` | `org.springframework.transaction.annotation` | Method/class transaction boundary (`AuditService.record`, `RefreshTokenService`, the RLS-scoped derived finders, `AuthService.me`). `readOnly = true` for reads. Runs through the `@Primary` `TenantAwareTransactionManager`, which sets the tenant GUC at `doBegin`. See challenges #8/#9. | — |
 
 ## 7. Testing (JUnit 5, Spring Test, Testcontainers)
@@ -134,7 +138,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@SpringBootTest` | `org.springframework.boot.test.context` | Boots the full application context for integration tests. | Meta-annotated with `@ExtendWith(SpringExtension.class)` etc. |
 | `@Testcontainers` | `org.testcontainers.junit.jupiter` | JUnit 5 extension that manages container lifecycle. | `@ExtendWith(TestcontainersExtension.class)` |
 | `@Container` | `org.testcontainers.junit.jupiter` | Marks a container field for the extension to start/stop. | — |
-| `@DynamicPropertySource` | `org.springframework.test.context` | Injects runtime values (container JDBC URL) into the Spring `Environment` before context start. | — |
+| `@DynamicPropertySource` | `org.springframework.test.context` | Injects runtime values (container JDBC URL) into the Spring `Environment` before context start. Always outranks `@TestPropertySource`, but among several `@DynamicPropertySource` methods in one class hierarchy the superclass's runs *last* and wins on a shared key — see challenge log #40. | — |
+| `@TestPropertySource` | `org.springframework.test.context` | Adds inline test properties (`properties = "..."`) to the `Environment`, lower precedence than `@DynamicPropertySource` and than any same-key `@DynamicPropertySource` registration from any class in the hierarchy. Used on `IntegrationTest` to default `easycrm.rate-limit.enabled=false` so a subclass's `@DynamicPropertySource` can reliably override it (challenge log #40). | — |
 | `@Autowired` | `org.springframework.beans.factory.annotation` | Injects a bean into a field/constructor. | — |
 | `@AutoConfigureMockMvc` | `org.springframework.boot.webmvc.test.autoconfigure` (Boot 4 module `spring-boot-webmvc-test`) | Wires a `MockMvc` for controller tests without a live server. | — |
 

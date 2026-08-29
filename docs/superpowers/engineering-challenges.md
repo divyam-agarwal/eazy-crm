@@ -2187,6 +2187,368 @@ Both were cheap; without them the guard would have been decoration.
 
 ---
 
+## Challenge 38 — A `@ConfigurationProperties` record can't carry a derived, uncompilable field
+
+**Phase:** Design
+
+### The problem
+
+`RateLimitPolicy` needs a compiled `PathPattern` alongside its four configured fields
+(`name`, `path`, `capacity`, `refillPeriod`), and compiling that pattern once — in the
+constructor — instead of per request matters, because this type sits in front of every
+request the application serves. The obvious design is a fifth record component,
+`PathPattern compiled`, populated by a non-canonical constructor that calls
+`PathPatternParser.defaultInstance.parse(path)`.
+
+That design is fine for a value type built directly in Java (`new RateLimitPolicy("test",
+path, 10, Duration.ofMinutes(1))` happily resolves to the 4-arg constructor). It breaks
+the moment the same record is also a `@ConfigurationProperties` binding target.
+Spring Boot's relaxed binder always binds records through their **canonical**
+constructor — the one matching all declared components, `compiled` included — because
+that is the only constructor reflection can locate unambiguously. For a YAML list of
+policies, there is no `compiled:` key in configuration and no `Converter<String,
+PathPattern>` registered to produce one from a string that also isn't there. The bind
+fails, and it fails at the exact boundary the type exists to feed: `RateLimitProperties.
+policies`.
+
+### The solution
+
+Drop `compiled` as a record component entirely and resolve it lazily, keyed on `path`,
+through a `static final ConcurrentHashMap<String, PathPattern>` and `computeIfAbsent`.
+The record goes back to four components — `name`, `path`, `capacity`, `refillPeriod` —
+so the canonical constructor is the same one hand-written test code already calls, and
+the binder now has a real value for every component it needs to populate.
+
+The cache is safe to make static and unbounded-in-practice because its key space is
+bounded by construction, not by runtime input: `path` comes only from configuration
+(the policies a deployment operator writes into `application.yml`), never from a
+request. A caller cannot grow this map — the number of distinct keys tops out at the
+number of configured policies, typically single digits. `computeIfAbsent` gives the
+same one-compile-per-pattern behaviour the discarded `compiled` field was chasing,
+without the field.
+
+### Lesson
+
+A type that is both a domain value object *and* a `@ConfigurationProperties` binding
+target must stay bindable through its canonical constructor — derived, non-serializable
+fields (compiled patterns, parsed regexes, opened resources) don't belong as record
+components no matter how natural they look next to the data they're derived from. Push
+the derivation into a method backed by a cache keyed on the actual configuration value,
+and audit any such cache's key source before trusting it to stay bounded: "keyed by
+something only an operator writes" and "keyed by something a request supplies" look
+identical in the code until an attacker discovers the difference.
+
+---
+
+## Challenge 39 — A bucket cache keyed on the client alone lets one policy drain another's allowance
+
+**Phase:** Implementation
+
+### The problem
+
+`InMemoryRateLimitStore.tryConsume(String key, RateLimitPolicy policy)` caches one
+Bucket4j `Bucket` per cache key, built lazily via `Cache.get(key, k ->
+newBucket(policy))`. The natural-looking implementation uses the caller-supplied
+`key` (a bare client IP, e.g. `"1.2.3.4"`) as that cache key directly. It compiles,
+and it passes the single-policy tests (capacity, refill, per-IP isolation) without
+any hint of a problem — the bug only shows up the moment a *second* policy asks
+about the *same* client.
+
+`Cache.get(key, mappingFunction)` only invokes the mapping function on a cache
+miss; once a key is present, every subsequent `get` — regardless of which
+`RateLimitPolicy` is passed alongside it — returns the same cached `Bucket`. So a
+client that had already exhausted the `auth` policy's 3-per-minute bucket for
+`1.2.3.4` would, on its very next request against the unrelated `public-share`
+policy for the same IP, be handed back that same exhausted bucket and denied —
+even though `public-share` has never seen this client before. One rate limit
+silently drains an unrelated one, purely because they share a client address.
+
+### Why it's hard
+
+Nothing about `buckets.get(key, k -> newBucket(policy))` looks wrong locally: it
+reads as "get-or-create the bucket for this key," and `newBucket(policy)` clearly
+*does* build a bucket shaped for the right policy — on the first call. The mistake
+is invisible until a test exercises two policies against one identical client
+key, because every other test in the suite (capacity, refill, distinct clients)
+only ever varies one axis (requests over time, or client identity) and happens to
+pass regardless of whether the cache key includes the policy. The interface's own
+javadoc already stated the intended key shape — `policyName + '|' + clientIp` —
+but nothing enforced that the *implementation* actually built the key that way;
+the compiler has no way to check "this string was assembled from both an IP and a
+policy name."
+
+### The solution
+
+Build the Caffeine cache key inside `InMemoryRateLimitStore` by combining both
+axes — `policy.name() + '|' + key` — instead of trusting the raw `key` parameter
+as-is. Every `(policy, client)` pair now maps to its own `Bucket`, so
+`separatePoliciesDoNotShareABucket` (three `auth`-policy consumes exhaust
+`1.2.3.4`, then a `public-share`-policy consume for the same `1.2.3.4` must still
+be allowed) passes for the right reason instead of by coincidence.
+
+### Lesson
+
+When a cache's real identity is a *composite* of several inputs, build the cache
+key from all of them explicitly inside the component that owns the cache — never
+from whichever single argument happens to look identifier-shaped, and never by
+assuming a caller will pre-compose the key correctly just because a javadoc says
+so. And write the one test that varies the axis the implementation is most likely
+to have dropped (here: same client, different policy) — the axis a naive
+single-parameter cache key silently collapses is exactly the one that every
+single-axis test is structurally unable to catch.
+
+---
+
+## Challenge 40 — `@DynamicPropertySource` in a subclass loses to its own superclass
+
+**Phase:** Implementation
+
+### The problem
+
+`RateLimitIntegrationTest` needs the limiter turned ON with its own tiny, test-scoped
+policies, but its superclass, `IntegrationTest`, turns the limiter OFF for every other
+test in the suite via a `@DynamicPropertySource` method (`registry.add("easycrm.rate-
+limit.enabled", () -> "false")`) — necessary so 62 unrelated integration test classes
+sharing one cached context don't accumulate MockMvc's fixed loopback-address traffic
+into one bucket and blow the auth policy partway through the run. The obvious fix —
+give `RateLimitIntegrationTest` its own `@DynamicPropertySource` method that adds
+`"easycrm.rate-limit.enabled" -> "true"` — compiles, looks correct, and is exactly what
+Spring's own reference docs seem to promise ("dynamic properties take higher precedence
+than `@TestPropertySource`, ... regardless of declaration order or class hierarchy").
+It fails anyway: every 429 assertion in the class saw 404/401 instead, because the
+limiter was still off. `RateLimitProperties.enabled()` resolved to `false` even though
+the subclass had explicitly, unconditionally registered `true`.
+
+### Why it's hard
+
+That Spring doc quote is about `@DynamicPropertySource` **vs.** `@TestPropertySource` —
+a real, one-directional guarantee — not about ordering **among multiple
+`@DynamicPropertySource` methods within one class hierarchy**, which the docs don't
+spell out and which behaves the opposite of the intuitive "subclass overrides
+superclass" mental model borrowed from method overriding. Tracing
+`DynamicPropertiesContextCustomizerFactory` into `MethodIntrospector.selectMethods` →
+`ReflectionUtils.doWithMethods` shows the actual mechanics: methods are collected
+**leaf-class first, then superclass**, into one ordered set, and
+`DynamicPropertiesContextCustomizer.customizeContext` invokes them in that same order
+into a single `Map<String, Supplier<Object>>` (`DynamicValuesPropertySource`) where
+`registry.add(name, supplier)` is a plain `map.put` — last write for a given key wins.
+So for any property key both a subclass and its superclass register, **the superclass's
+call always runs last and always wins**, unconditionally — the exact inverse of what
+"a subclass overrides its superclass" would lead you to expect, and invisible from
+reading either method in isolation. `ClassUtils.getMostSpecificMethod` doesn't collapse
+a same-named override either: it explicitly treats static methods as non-overridable
+(`NON_OVERRIDABLE_MODIFIER` includes `Modifier.STATIC`), so even declaring an
+identically-named, identically-signed method in the subclass still yields two distinct
+`Method` objects, both invoked, superclass still last.
+
+### The solution
+
+Don't fight the ordering — sidestep it. Move the *default* out of `IntegrationTest`'s
+`@DynamicPropertySource` method and into a class-level `@TestPropertySource(properties
+= "easycrm.rate-limit.enabled=false")` instead. That default is no longer a
+`@DynamicPropertySource` registration at all, so there is no same-key race to lose.
+`RateLimitIntegrationTest` then registers `"easycrm.rate-limit.enabled" -> "true"`
+through its own `@DynamicPropertySource` method — and per the *actually-applicable*
+Spring guarantee (`@DynamicPropertySource` unconditionally outranks
+`@TestPropertySource`, regardless of which class in the hierarchy declares which), that
+override wins deterministically, with no shared mutable state and no dependency on
+reflection enumeration order.
+
+### Lesson
+
+"Dynamic property sources beat `@TestPropertySource`, hierarchy be damned" is a real,
+documented, one-directional rule — but it says nothing about precedence **between**
+multiple `@DynamicPropertySource` methods in one hierarchy, and that gap is exactly
+where intuition (subclass overrides superclass, like method dispatch) points the wrong
+way. When a subclass needs to override a superclass's `@DynamicPropertySource` value,
+don't add a second `@DynamicPropertySource` registration for the same key and assume
+declaration order helps you — verify the actual invocation order for the framework
+version in use (here: leaf-first collection, so superclass wins last), and if it cuts
+against you, move the default to a strictly lower-precedence mechanism instead of
+trying to out-order the higher-precedence one.
+
+---
+
+## Challenge 41 — A security control keyed on attacker input can be turned against itself, twice
+
+**Phase:** Design & Implementation
+
+### The problem
+
+The per-IP rate limiter (challenges #38–#40) exists to stop one class of abuse — a
+client hammering `/public/q/{token}` or the auth routes — but its own design gave an
+attacker two separate ways to turn the limiter itself into the weapon, and both slipped
+past every test written against the feature's stated purpose before anyone asked "what
+can the *attacker* make this component do?"
+
+The first: `RateLimitStore` caches one Bucket4j bucket per client key, and the client
+key is a bare IP address the caller controls the volume of, not the identity of. A
+`ConcurrentHashMap`-backed cache with no bound grows by exactly one entry per distinct
+IP an attacker presents. Rotating source addresses — trivial from a botnet, a proxy
+pool, or plain IPv6 — costs the attacker nothing and costs the server one live
+`Bucket` object forever. The feature meant to defend against resource exhaustion would,
+implemented naively, become an unbounded allocator driven directly by attacker input:
+a memory-exhaustion vector wearing a rate limiter's clothes.
+
+The second, independent from the first: the filter decides *which* IP a request came
+from before it can decide whether to allow it. `X-Forwarded-For` looks like the more
+correct source for that decision — it is, after all, what a load balancer sets to carry
+the real client address through a proxy hop — but the header ships in the HTTP request
+itself, and nothing about receiving it proves who's in front of the socket. Any direct
+caller may set it to whatever it likes, without a proxy in the loop at all. A limiter
+that trusts it lets a single attacker mint a fresh, full bucket on every single request
+just by varying one header value, which is strictly worse than not rate-limiting at
+all: it looks like protection while providing none, and the attacker doesn't even need
+a second IP address to defeat it — one socket, an infinite header, done.
+
+### Why it's hard
+
+Both mistakes make the component *look* more correct while removing its protection,
+and both leave every obvious test green. An unbounded cache passes every capacity,
+refill, and per-client-isolation test that exercises a handful of clients — the failure
+mode only exists at a cardinality no unit test runs at. Reading `X-Forwarded-For`
+"to be more accurate about the real client" is the natural next thought once you know
+requests may arrive through a proxy, and a test written from the defender's assumptions
+(one client, one header value, does the bucket correctly track it) confirms the code
+does exactly what it was asked to do — it just never asks who's allowed to set that
+header. In both cases the review question that actually catches the bug isn't "does
+this work?" but "what happens if the input this control keys on is chosen by the
+attacker specifically to defeat it?" — a question orthogonal to functional correctness,
+and easy to never ask because the code that would fail it reads as the more careful,
+more accurate implementation.
+
+### The solution
+
+Bound the thing the attacker can grow. `InMemoryRateLimitStore` caches buckets in a
+Caffeine `Cache` with `maximumSize(50_000)` and `expireAfterAccess(Duration.ofHours(2))`
+instead of an unbounded map. Eviction under this design is safe to be aggressive about,
+because an evicted bucket and a bucket that simply refilled while idle are
+indistinguishable to any caller: both mean "this client currently has its full
+allowance." There is no state a legitimate client can lose by being evicted — eviction
+only ever gives back capacity, never takes it away — so capping the cache trades
+unbounded memory for, at worst, a slightly-early refill for the coldest 0.002% of
+tracked clients, not a correctness or fairness regression.
+
+Don't trust the header. `RateLimitFilter` keys exclusively on
+`HttpServletRequest.getRemoteAddr()` — the actual TCP peer address, which nothing the
+client sends can override — and never reads `X-Forwarded-For` itself. Getting the real
+client address through an actual reverse proxy is Spring's job, not application code's:
+`server.forward-headers-strategy: framework` tells the servlet container itself to
+rewrite `getRemoteAddr()` (and the request's scheme/port) from the forwarded headers,
+*before* any filter — including this one — ever sees the request. The property is left
+off by default with a comment in `application.yml` explaining why: nothing trusted sits
+in front of this app today, so honouring the header would only be handing the attacker
+what they were asking for. The moment a real reverse proxy is deployed, turning the
+property on is the entire fix, applied once, for every consumer of the socket address —
+not a per-filter judgment call about which headers to believe.
+
+### Lesson
+
+When a security control's cache key or trust decision is built from attacker-controlled
+input, the design review has to include the question a purely functional review never
+asks: *what can the attacker make the control itself do* — not just what can it fail to
+stop? An identifier the caller supplies volume or content for (a rotatable IP, a
+spoofable header) is a lever on the control's own resource usage or trust boundary,
+not just a dimension of the traffic it's watching. And prefer a framework-level
+mechanism that states a *deployment fact* (`forward-headers-strategy` says "a trusted
+proxy terminates in front of me, so believe its headers") over application code that
+*guesses* the same fact from a header value with no way to verify who sent it — the
+framework's version is an assertion the operator makes deliberately at deploy time; the
+application's version is a default trust decision baked into code that runs identically
+whether or not the assumption holds.
+
+---
+
+## Challenge 42 — A whole-branch review found two more ways the rate limiter goes quiet while every test stays green
+
+**Phase:** Implementation (post-merge fix wave)
+
+### The problem
+
+A final review of the rate-limiting branch (challenges #38–#41) found two further
+defects in the same failure family as #41: each one turns the control into a no-op
+under a condition no existing test exercises, so the entire suite — including the
+tests specifically written to catch a misordered or ineffective limiter — stays green.
+
+The first: `InMemoryRateLimitStore`'s Caffeine cache hardcoded
+`expireAfterAccess(Duration.ofHours(2))`, and its own javadoc claimed entries are
+evicted only after "at least twice the longest configured refill period." Nothing
+enforced that relationship — the `2h` was just a number that happened to equal twice
+the shipped `public-share` policy's `1h` refill period. `application.yml`'s own
+comments actively invite an operator to retune `refill-period` to something longer
+(there's a worked comment about credential-stuffing thresholds right next to it). Retune
+`public-share` to `6h` and the eviction window is still `2h`: an attacker burns the
+60-request allowance, waits two hours (not six), and the bucket has been evicted and
+recreated full. The configured 60-per-6-hours cap silently becomes 60-per-2-hours, with
+no code change, no failing test, and a javadoc comment that is now simply false.
+
+The second: `RateLimitFilter` matched policies against `request.getRequestURI()`, which
+**includes** the servlet context path. Set `server.servlet.context-path=/crm` — a
+one-line, entirely ordinary deployment configuration change — and every request path
+becomes `/crm/public/q/...`, `/crm/api/v1/auth/...`, etc. None of the configured
+`RateLimitPolicy` patterns (`/public/q/*`, `/api/v1/auth/**`) match a URI with that
+prefix, `policyFor(...)` returns empty for every request, and the entire limiter
+becomes a permanent no-op — not degraded, not misconfigured-but-present, just gone.
+No test in the suite sets a context path, so nothing catches it.
+
+### Why it's hard
+
+Both bugs are invisible to the exact kind of test the branch already had discipline
+about writing. `RateLimitIntegrationTest.limiterRunsBeforeSpringSecurity` proves the
+filter is *positioned* correctly; it says nothing about whether the filter still
+*matches* anything once an orthogonal piece of configuration (context path) changes
+the string it matches against. `InMemoryRateLimitStoreTest.refillsAfterThePeriodElapses`
+proves the bucket refills correctly for a fixed test policy; it says nothing about
+whether the eviction window *stays correct* when that policy's refill period is later
+retuned in production configuration the test never sees. In both cases the defect
+lives in the gap between "this policy" (what the unit test hardcodes) and "any policy
+this configuration could describe" (what production actually runs) — a gap unit tests
+that construct their own fixed `RateLimitPolicy` structurally cannot see, no matter how
+thorough they are about the one policy they did construct.
+
+### The solution
+
+For the eviction window: stop hardcoding it. `InMemoryRateLimitStore.evictionWindowFor`
+derives the window from the live `RateLimitProperties` — twice the longest configured
+`refillPeriod` across all policies, floored at `MIN_EVICTION_WINDOW` (10 minutes) so a
+deliberately tiny test policy can't produce an absurdly short window. `RateLimitConfig`
+now constructs the store with `new InMemoryRateLimitStore(properties)` instead of the
+no-arg constructor, so production always ties the two together; the no-arg and
+`TimeMeter`-only constructors are kept, but explicitly scoped to unit tests that supply
+no configuration and therefore get a fixed fallback with no configuration-tracking
+promise attached to it.
+
+For the context path: match on the path *within* the application, not the raw URI.
+`RateLimitFilter` now resolves the match target via
+`UrlPathHelper.defaultInstance.getPathWithinApplication(request)` instead of
+`request.getRequestURI()` — the same framework helper Spring MVC's own routing uses
+internally to strip the context path before pattern-matching, rather than
+hand-rolling a `substring(getContextPath().length())` that would need to independently
+get empty-context-path and trailing-slash edge cases right.
+
+Both fixes came with a test built specifically to fail on the *previous* code: one
+constructs an `InMemoryRateLimitStore` from a `RateLimitProperties` with a `6h` policy
+and asserts the resulting eviction window is `12h`, not the old fixed `2h`; the other
+drives `RateLimitFilter` with a `MockHttpServletRequest` carrying `setContextPath("/crm")`
+and a matching `setRequestURI("/crm/public/q/tok")`, and asserts the request still hits
+its policy.
+
+### Lesson
+
+"Every test passes" proves a control works for the inputs its tests hardcode, not for
+the space of configuration the control is supposed to keep working across. A javadoc
+comment describing an invariant ("evicted after twice the longest refill period") is
+not the same as code that maintains it — if the number and the description can drift
+independently, they will, the moment someone acts on the config file's own invitation
+to retune a value. And any control that matches or keys on a request property derived
+from more than one source (a URI plus a context path, a header plus a trust boundary,
+per challenge #41) needs a test that varies the *other* source, not just the one the
+control's happy path exercises — because "no test sets a context path" is not evidence
+the context path doesn't matter, it's the specific blind spot an attacker or an ordinary
+deployment change will eventually land in.
+
+---
+
 <!-- Append new challenges below. Template:
 
 ## Challenge N — <title>
