@@ -897,6 +897,13 @@ The eighth case is the one this task exists for:
      * exec B already holds -- breaking one-active-per-phone, the invariant the check
      * exists to protect. The 409 does disclose that SOMEONE holds the number. That
      * disclosure is the accepted trade; a broken invariant is not.
+     *
+     * <p>The discriminator is the error MESSAGE, not the row count. The partial unique
+     * index forbids a second active row unconditionally, so if the pre-check were
+     * filtered and let the insert through, the index would reject it at commit and
+     * Postgres would roll back the whole transaction -- the row count would still land
+     * on 1, identical to the correct behaviour. Only the message distinguishes
+     * "the pre-check caught it" from "the backstop caught it."
      */
     @Test
     void dedupeStillTripsAgainstAnInvisibleEnquiry() throws Exception {
@@ -908,16 +915,27 @@ The eighth case is the one this task exists for:
                 .header(AUTH, bearer(execAToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(enquiryJsonFor(EXEC_B_PHONE)))
-            .andExpect(status().isConflict());
+            .andExpect(status().isConflict())
+            // The discriminator: only the app-level pre-check's ConflictException carries
+            // this message. The unique-index backstop's handler returns the generic
+            // "the request conflicts with existing data" and would NOT match.
+            .andExpect(jsonPath("$.error.message")
+                .value(containsString("active enquiry already exists for this phone")));
 
-        // and no duplicate row was created
+        // Secondary sanity check only -- NOT a discriminator. See doc-comment above.
         assertThat(countActiveEnquiriesFor(EXEC_B_PHONE)).isEqualTo(1);
     }
 ```
 
-Both halves matter. The 409 alone would also be produced by a *broken* implementation that filtered
-the check and then hit the database unique index — the row count is what distinguishes "the
-pre-check saw it" from "the backstop caught it."
+Both halves matter, but not for the reason it might first appear. The 409 alone would also be
+produced by a *broken* implementation that filtered the check and then hit the database unique
+index — but so would the row count staying at 1: a unique-constraint violation rolls back the
+*entire* enclosing transaction, not just the failed insert, so a broken pre-check that let the
+duplicate through still ends with the count back at 1, indistinguishable from the correct case.
+The row count is a sanity check on the schema, not a discriminator between the two code paths.
+What actually distinguishes "the pre-check saw it" from "the backstop caught it" is the error
+**message**: the pre-check's `ConflictException` names the conflict specifically; the backstop's
+`DataIntegrityViolationException` handler returns a generic string. Assert on the message.
 
 - [ ] **Step 2: Run the test to verify it fails**
 

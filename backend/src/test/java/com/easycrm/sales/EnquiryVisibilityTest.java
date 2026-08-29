@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -117,6 +118,16 @@ class EnquiryVisibilityTest extends IntegrationTest {
      * exec B already holds -- breaking one-active-per-phone, the invariant the check
      * exists to protect. The 409 does disclose that SOMEONE holds the number. That
      * disclosure is the accepted trade; a broken invariant is not.
+     *
+     * <p>The discriminator is the error MESSAGE, not the row count. The partial unique
+     * index ({@code uq_enquiry_tenant_active_phone}) forbids a second active row
+     * unconditionally, so if the pre-check were filtered and let the insert through, the
+     * index would reject it at commit and Postgres would roll back the whole transaction
+     * -- the row count would still land on 1, identical to the correct behaviour. Only the
+     * message distinguishes "the pre-check caught it"
+     * ({@code EnquiryService.requireNoActiveDuplicateExcept}'s "an active enquiry already
+     * exists...") from "the backstop caught it" ({@code ApiExceptionHandler}'s generic
+     * "the request conflicts with existing data").
      */
     @Test
     void dedupeStillTripsAgainstAnInvisibleEnquiry() throws Exception {
@@ -128,9 +139,16 @@ class EnquiryVisibilityTest extends IntegrationTest {
                 .header(AUTH, bearer(execAToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(enquiryJsonFor(EXEC_B_PHONE)))
-            .andExpect(status().isConflict());
+            .andExpect(status().isConflict())
+            // The discriminator: this message only comes from the app-level pre-check.
+            // The unique-index backstop's message is the generic "the request conflicts
+            // with existing data" (ApiExceptionHandler.dataIntegrity) and would NOT match.
+            .andExpect(jsonPath("$.error.message")
+                .value(containsString("active enquiry already exists for this phone")));
 
-        // and no duplicate row was created
+        // Secondary sanity check only -- NOT a discriminator. A constraint violation rolls
+        // back the whole transaction, so this count would also read 1 if the pre-check
+        // were broken and the unique index caught the duplicate instead.
         assertThat(countActiveEnquiriesFor(EXEC_B_PHONE)).isEqualTo(1);
     }
 

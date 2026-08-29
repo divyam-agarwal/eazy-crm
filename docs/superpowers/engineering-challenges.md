@@ -2617,28 +2617,46 @@ the invariant violation the pre-check exists to prevent.
 
 The pre-check is check-then-act: look for an existing active row, then save if none is
 found. If it were filtered to the caller's visible rows, exec A and exec B could each
-run the check against their own view, each see nothing, and each successfully create an
-active enquiry for the *same* phone number — because neither rep's filtered view
-contains the other's row. The invariant would only get caught later, by the partial
+run the check against their own view, each see nothing, and each successfully attempt to
+create an active enquiry for the *same* phone number — because neither rep's filtered
+view contains the other's row. The invariant would only get caught later, by the partial
 unique index and the `DataIntegrityViolation`→409 handler (challenge #15), at whatever
 moment a background job or an unrelated retry happened to trip it — a confusing
 database-level conflict instead of the clean, immediate, field-level 409 the pre-check
-is supposed to produce. A broken implementation that filtered the pre-check and then
-fell through to that index would *also* return 409 to the caller, so the HTTP status
-code alone cannot distinguish "the pre-check caught it" from "the backstop caught it" —
-only the row count can, which is why `dedupeStillTripsAgainstAnInvisibleEnquiry` asserts
-both the 409 and `countActiveEnquiriesFor(phone) == 1`, not just the former.
+is supposed to produce.
+
+A broken implementation that filtered the pre-check and then fell through to that index
+would *also* return 409 to the caller, so the HTTP status code alone cannot distinguish
+"the pre-check caught it" from "the backstop caught it." The tempting next assumption —
+that the *row count* can make up the difference, since a broken pre-check would let a
+duplicate row actually get inserted — is also wrong, and finding out why is the real
+substance of this entry. The unique index rejects the second row at commit, and a
+constraint violation rolls back the *entire enclosing transaction*, not just the failed
+`INSERT`. `create()`'s pre-check, build, and `save()` all run inside one `@Transactional`
+method, so a broken pre-check that let the insert through still ends with the duplicate
+row gone and the count back at 1 — identical to the correct behavior. A test asserting
+only `countActiveEnquiriesFor(phone) == 1` would pass whether the implementation was
+correct or silently broken, which defeats the point of writing it. The only place the two
+paths actually differ is the error *message*: the pre-check's `ConflictException` carries
+"an active enquiry already exists for this phone," while the index backstop's handler
+returns the generic "the request conflicts with existing data"
+(`ApiExceptionHandler.dataIntegrity`). `dedupeStillTripsAgainstAnInvisibleEnquiry` asserts
+on that message, with the row count kept only as a secondary sanity check, not the
+discriminator.
 
 ### The solution
 
 Leave `requireNoActiveDuplicateExcept` calling `enquiries.findByNormalizedPhone` directly
 on the raw repository, never through `VisibleFinder`, with a comment at the call site
 stating why so the next reader does not "fix" it into conformance with the rest of the
-service. The parent spec's guard test allowlists this method (and
-`CustomerRepository.findByGstin`, the GSTIN-uniqueness equivalent) **by name**, so a
-future attempt to route it through the filter — or a new uniqueness check added without
-consulting this lane — has to argue its way past an explicit allowlist entry rather than
-silently pass because nothing noticed.
+service. The parent spec (§8) calls for a later guard test,
+`VisibilityScopingArchTest`, to allowlist this method (and `CustomerRepository.findByGstin`,
+the GSTIN-uniqueness equivalent) **by name** — that test is a separate task's deliverable
+and does not exist yet in this tree, so today the call-site comment is the only thing
+stopping a future "cleanup" from routing it through the filter. Once the guard test lands,
+a future attempt to do that — or a new uniqueness check added without consulting this
+lane — will have to argue its way past an explicit allowlist entry rather than silently
+pass because nothing noticed.
 
 This is a genuine trade-off, not a free lunch: the unfiltered 409 discloses to exec A
 that *someone* in the tenant already holds that phone number, even though exec A cannot
@@ -2651,11 +2669,29 @@ reps who cannot see each other's records — is worse than the disclosure.
 A uniqueness pre-check and a visibility filter answer different questions — "does this
 value already exist anywhere in the tenant?" versus "can this caller see this record?" —
 and conflating them by routing the former through the latter converts a correctness
-guarantee into a per-user view. The failure mode is not a crash; it is a passing test
-suite and a real duplicate active row sitting in the database until something else (a
-retry, a batch job, a second write) happens to collide with it. When a visibility layer
-is introduced as a blanket rule ("filter every read of these repositories"), the
-exceptions to that rule need to be found by asking "which queries feed a uniqueness
-check rather than return a record to the caller," and then locked down with an
-allowlist and a same-file comment — not left to be rediscovered the next time someone
-"cleans up" the one service that still calls its repository directly.
+guarantee into a per-user view. The failure mode is not silent data corruption — the
+database-level unique index is still there and still rolls back the offending
+transaction, so no duplicate row survives either way. The failure mode is a *worse
+error experience at an unpredictable moment*: a clean, immediate, field-level 409 from
+the pre-check degrades into a generic database-conflict 409 from the backstop, thrown
+from wherever the second `save()` happens to land, with no guarantee that's even in the
+original request path (a retry, a batch job, a queued write). When a visibility layer is
+introduced as a blanket rule ("filter every read of these repositories"), the exceptions
+to that rule need to be found by asking "which queries feed a uniqueness check rather
+than return a record to the caller," and then locked down with an allowlist and a
+same-file comment — not left to be rediscovered the next time someone "cleans up" the
+one service that still calls its repository directly.
+
+A second, sharper lesson sits inside the first: when two code paths (a correct one and a
+broken one) both end in a 409 and both leave the row count unchanged, a test that only
+checks the row count is not a regression test for the difference between them — it is a
+regression test for the database constraint, which was never in question. The database
+guarantees the *count*; only the application guarantees *which layer caught the problem
+and what it tells the caller*. A test meant to prove "the app-level check is still doing
+its job, not just riding on the schema's coattails" has to assert on something the schema
+can't produce on its own — here, the distinct error message each path emits. Whenever a
+test's purpose is to catch an app-level check being silently bypassed in favor of a
+database-level backstop, checking that the operation *failed* (or that a side effect
+count is unchanged) is not enough if the backstop fails and unwinds the same way the
+correct path does; identify what's true in the correct case but not in the degraded one,
+and assert on that specifically.
