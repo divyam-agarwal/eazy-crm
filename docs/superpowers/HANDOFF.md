@@ -722,13 +722,17 @@ must-fix findings — the eviction window and the context path — were fixed on
     by `RateLimitDefaultsTest`'s matching assertions. Adequate — the mechanism is identical and proven
     on the other policy — but no test ever drives a real login to 429.
 
-**From the `record-visibility` slice (2026-08-29).** Items 33–36 are open; three other per-task
+**From the `record-visibility` slice (2026-08-29).** Items 33–36 are open; four other per-task
 `minor (deferred)` findings from this slice's ledger resolved themselves before the slice ended
 (`VisibilityPolicy.enquiries()` lacked a direct test in Task 1 — covered end-to-end by Task 4;
 `VisibleFinder`'s javadoc forward-referenced `VisibilityScopingArchTest` before Task 8 created it;
 no test drove a `page*` method with a non-null caller filter — covered by Task 3's `?active=` list
-test) and are not carried forward as open items. The `PriceResolver`/`QuotationService` comment
-sweep this same ledger flagged for Task 9 is also done — see §3.
+test; and Task 3's reviewer flagged that `CustomerService`'s changed constructor arity was checked
+for other direct-construction call sites but not independently re-verified — Task 5's reviewer did
+that independent check two tasks later, grepping the whole codebase and confirming no manual
+`new XService(...)` call site exists anywhere, closing the concern) and are not carried forward as
+open items. The `PriceResolver`/`QuotationService` comment sweep this same ledger flagged for Task 9
+is also done — see §3.
 
 33. **Unused `@Autowired TestTokens` field in `VisibilityPolicyIntegrationTest`.** Inherited from the
     plan text verbatim, not introduced by the implementer. Cosmetic, harmless.
