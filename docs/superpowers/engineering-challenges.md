@@ -2742,3 +2742,75 @@ first checking how that ID is generated; if it's time-ordered, either use the wh
 value, take entropy from the *tail*, or — the more robust fix, used here — stop
 depending on the ID's structure at all and mint uniqueness from something the test
 owns outright, like a counter.
+
+## Challenge 46 — An allowlist is a forcing function; a blocklist is a decaying guarantee
+
+**Phase:** Implementation
+
+### The problem
+
+`VisibilityScopingArchTest` closes the layer this slice built: every read of
+`CustomerRepository`, `EnquiryRepository`, `QuotationRepository`, and `OrderRepository`
+must go through `VisibleFinder`, or it silently returns rows the caller cannot see. The
+obvious way to write that guard is a blocklist — enumerate the known-dangerous read
+methods (`findById`, `findAll`, `findOne`, ...) and fail on those. It would have passed
+today, with the same green result as the allowlist this entry is about. The difference
+only shows up a year from now, when someone adds `EnquiryRepository.findByAssignedTo`
+for a new report. A blocklist doesn't know that method exists; it passes silently, and
+the new query bypasses the finder from the day it's written, with no test, no reviewer
+comment, and no build failure to say so — the exact decay this guard exists to prevent.
+
+Phrased as an allowlist instead, that same new method defaults to **forbidden**. The
+build breaks the moment it's added, and the failure message names the call site. Its
+author is forced to open this file and argue, in a comment, which lane the new query
+belongs in — the same forcing function `TenantScopingArchTest.GLOBAL_TABLES` already
+provides for tenant scoping. The guard's value isn't in today's four allowlisted method
+names; it's in what happens to the *next* name nobody has thought of yet. A rule that
+protects against unknown-future cases has to default to "forbidden, argue your way in,"
+not "permitted, argue your way out" — that's the whole design decision, and it's
+invisible if you only look at which rule passes on the classes that exist right now.
+
+That same argument applies recursively to the allowlist's own contents: this task's
+brief carried a `deleteAll` entry the design spec's authoritative allowlist (§8) does
+not have, and grepping the actual call sites turned up zero callers of `saveAndFlush`,
+`delete`, or `deleteAll` on any of the four guarded repositories today — only `save`,
+`findByGstin`, `findByNormalizedPhone`, and `findByQuotationId` are actually reached.
+An allowlist is only a forcing function if every entry in it was argued for, not carried
+over from a template; an unused or undocumented entry is a silent door left ajar in the
+same way a missing one is, just in the other direction. The spec's list was followed as
+written and `deleteAll` was dropped, rather than trusting the brief as pre-verified.
+
+### The solution
+
+Write the condition as an allowlist keyed on method name, matched against calls whose
+target owner is one of the four guarded repository interfaces, with a comment at each
+allowlist entry stating the specific invariant that requires it to stay unfiltered
+(GSTIN uniqueness, phone dedupe, or the quotation→order same-customer no-op) — not
+merely "this one's fine." Then prove the rule can actually fail: temporarily route
+`CustomerService.find` back through `CustomerRepository.findById` directly, rerun the
+test, and confirm the reported violation names `CustomerService` and `findById` before
+reverting. The literal condition object here is the one Challenge 33 already worked out
+in detail — `noClasses().should(condition)` inverts every event the condition emits, so
+the "bad" case has to be reported as `SimpleConditionEvent.satisfied(...)`, which reads
+backwards until you've internalized the inversion — and this task reused that fix
+rather than rediscovering it. What's new here is *why* the drill matters even when you
+already trust the polarity: a guard's forcing function is only as real as the last time
+someone watched it actually stop a bad change, and an allowlist that has never been
+proven to reject anything is a syntax tree, not a guarantee.
+
+### Lesson
+
+An allowlist and a blocklist can produce an identical pass/fail result for every case
+that exists today and still be opposite in what they guarantee about tomorrow — the
+difference is which side of "unknown new case" the design defaults to, and that
+choice has to be made deliberately, not backed into by whichever enumeration was
+easier to write first. Anywhere a structural guard exists specifically to catch a
+mistake nobody has made yet (a new derived query, a new entity, a new global table),
+default to forbidden-until-argued, matching the pattern this repo already established
+in `TenantScopingArchTest.GLOBAL_TABLES`. And because `noClasses().should(customCondition)`
+silently inverts a hand-rolled condition's events (Challenge 33), a guard like this one
+is not "known correct" from a passing run alone — the mandatory prove-it-can-fail drill
+is the only check that would catch either bug: an inverted condition that vacuously
+passes, or an allowlist copied from a template with an entry nothing calls and a spec
+entry silently dropped.
+
