@@ -2559,3 +2559,44 @@ deployment change will eventually land in.
 ### The solution
 ### Lesson
 -->
+
+## Challenge 43 — `Specification.and(null)` is not the null-safe no-op the plan assumed
+
+**Phase:** Implementation
+
+### The problem
+
+`VisibleFinder`'s paging methods AND a policy-derived `Specification` onto a
+caller-supplied filter that is routinely `null` — "list everything visible to me" has
+no user filter to combine with. The implementation plan asserted this combinator was
+safe: "`Specification.and(null)` is null-safe in Spring Data JPA 3+." Written naively
+as `policy.customers().and(filter)`, the very first paging test — the one exercising
+exactly this no-filter case — threw `IllegalArgumentException: Other specification
+must not be null` at `Specification.and`, not a wrong result.
+
+The plan's assumption was about the wrong axis: whether `and(null)` is safe is a
+property of the Spring Data JPA *version on the classpath*, not of the major line
+("3+"). This project is on Spring Boot 4.1.0, and the `Specification.and` it ships
+still asserts its argument non-null. A behavior claim tied to a library version needs
+verifying against the actual dependency in the actual build, not against a general
+belief about where a change landed — the same failure mode as trusting a changelog
+without pinning the version it describes.
+
+### The solution
+
+Push the null check into `VisibleFinder` itself rather than onto every call site or,
+worse, onto the test: a private `and(Specification<T> base, Specification<T> filter)`
+helper returns `base` unchanged when `filter` is `null` and only calls `base.and(filter)`
+otherwise. The test that exercises the no-filter path (`pageCustomers(null, ...)`) was
+kept as originally written — TDD is what caught the false assumption, so weakening the
+test to route around it would have discarded the exact signal the plan needed.
+
+### Lesson
+
+A plan's "this is null-safe in library version X" is a claim about the dependency that
+is actually resolved in *this* build, not about the library's changelog in the
+abstract — verify it by running the test that exercises the null case, not by reading
+what the version bump was supposed to have done. When a combinator can receive an
+absent operand as a routine, expected input (an unfiltered list view, not an edge
+case), guard for it at the one place that builds the combination, so every future
+caller inherits the safety instead of having to remember to re-derive it.
