@@ -1,8 +1,7 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-29 — **Per-IP rate limiting is built on branch `public-rate-limiting`,
-complete and pending merge (not yet on `main`). Merging it, or deciding not to, is the first thing a
-new session must do — see §0.** It caps abuse of `/public/q/{token}` and the auth
+**Last updated:** 2026-08-29 — **Per-IP rate limiting is built and merged to `main` as `d7725b0`.
+Nothing is in flight; `main` is the baseline for new work.** It caps abuse of `/public/q/{token}` and the auth
 routes — the two things backlog item #3 and PF19 flagged — with a Bucket4j token bucket per
 `(policy, client-IP)` pair behind a `RateLimitStore` port, an in-memory implementation bounded by a
 Caffeine cache (challenge #41), and a filter that runs ahead of Spring Security so failed-auth
@@ -16,28 +15,12 @@ see §3's "Previous code work" for its detail.
 
 ## 0. Resuming? Start here
 
-### Your first three actions, in order
+### Nothing is in flight
 
-**You are not starting from a clean `main`. Do these before anything else.**
-
-**Action 1 — check out the right branch and know where you are.**
-`git branch --show-current` will say **`public-rate-limiting`** if nobody has moved it. That branch is
-**finished and unmerged**: it starts at `bc542c2` and branches off `main` at `e69d7ac` — run
-`git log --oneline e69d7ac..HEAD` for the current list rather than trusting a head SHA written here,
-since the last commits on it are docs wrap-ups that keep moving the tip. Every task was
-reviewed clean, a whole-branch review returned MERGE after its two findings were fixed, and the tree
-is clean. `main` does **not** contain any of it.
-
-**Action 2 — settle the merge with the user.** Do not start new work on top of an unmerged finished
-branch, and do not merge it silently either. Run `superpowers:finishing-a-development-branch`, which
-presents the options (merge locally / open a PR / leave it). The house pattern for the last three
-slices has been: `--no-ff` merge to `main`, then a follow-up docs commit recording the merge hash and
-clearing this section's in-flight note, then delete the branch. If the user merges, **update this §0
-to say nothing is in flight** — a stale "in flight" line is the single most misleading thing this
-document can contain.
-
-**Action 3 — confirm the baseline** (item 1 below) on whatever you ended up on. On the branch it is
-**296 tests**; on unmerged `main` it is **287**. If you merge, it is 296.
+**`main` is clean and is the baseline for new work.** The `public-rate-limiting` branch was merged
+`--no-ff` as **`d7725b0`** on 2026-08-29 and deleted; the merged result was verified green
+(**296 tests, 0 failures, 0 errors**) before the branch went away. There is no unmerged feature
+branch to settle. Start at item 1 below, then go to §8 and pick the next chunk with the user.
 
 **One loose end that is not code:** the Bucket4j entry written for
 `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that directory is
@@ -45,14 +28,13 @@ not a git repository, so nothing was committed there. Design spec §7 asked for 
 it is just untracked. Decide with the user whether that repo should be `git init`ed. Do not init it
 unilaterally.
 
-Before this slice, `rls-force-and-guard` ran to completion and **merged to `main` as `3c239d1`**
+Before it, `rls-force-and-guard` ran to completion and **merged to `main` as `3c239d1`**
 (commits `cfc8928`..`b8b2ecb`); that feature branch is deleted, as was `platform-primitives-module`
 before it (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. The number depends on where you are: **296 tests,
-   0 failures, 0 errors** on `public-rate-limiting` (273 root + 23 `platform-primitives`), or **287**
-   on unmerged `main` (264 + 23). Merging the branch makes `main` read 296. Gradle prints no total for a multi-project
+   then `cd backend && ./gradlew clean test`. On `main` this is **296 tests, 0 failures, 0 errors**
+   (273 root + 23 `platform-primitives`). Gradle prints no total for a multi-project
    build, so count it yourself:
 
    ```bash
@@ -190,7 +172,7 @@ All under `docs/superpowers/`:
     `RateLimitStore` port, and the deliberate choice to key on socket address rather than
     `X-Forwarded-For`). Source of truth for *what* this slice built.
 30. **`plans/2026-08-28-public-rate-limiting.md`** — the seven-task implementation plan for it.
-    **Branch `public-rate-limiting` is complete, reviewed clean, and pending merge** — see §0 and §3.
+    **Merged to `main` as `d7725b0`** — see §3.
     Worth reading even if you never touch rate limiting: the plan's own code was wrong in five
     separate places that only surfaced during execution (a record that could not bind, a static
     factory colliding with a record accessor, a Jackson 2 import on a Jackson 3 project, a
@@ -199,9 +181,9 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: per-IP rate limiting on the public and auth routes** — **branch
-  `public-rate-limiting`, complete and reviewed clean, NOT YET MERGED to `main`.** Commits
-  from `bc542c2` off `main` at `e69d7ac`: seven tasks, one whole-branch fix wave (`3bfb99d`), and
+- **Latest code work: per-IP rate limiting on the public and auth routes** — **merged to `main`
+  as `d7725b0`.** Branch `public-rate-limiting`, commits `bc542c2`..`18eaccd` off `main` at
+  `e69d7ac`, now deleted: seven tasks, one whole-branch fix wave (`3bfb99d`), and
   the docs wrap-ups after it. Seven tasks: a `RateLimitPolicy` value type +
   `RateLimitProperties` `@ConfigurationProperties` binding (challenge #38), a `RateLimitStore` port
   with an `InMemoryRateLimitStore` implementation bounded by a Caffeine cache (challenge #39), a
@@ -465,7 +447,7 @@ the workflow from §0 step 4.
    today; nothing runs on a schedule. Small, introduces the first scheduled job.
 3. **P0-auth follow-up** — now **only** user invitations + **record-level visibility filtering**
    (`assigned_to`, still open from P1a — every user in a tenant reads every record). Its
-   rate-limiting third is **done** on branch `public-rate-limiting` (§0/§3, pending merge):
+   rate-limiting third is **done and merged** (`d7725b0`; §3):
    `/public/q/{token}` and the auth routes are capped per-IP with a 429 + `Retry-After` contract.
    That closes the *abuse-of-rate* half of PF19 and **not** the *entitlement-metering* half — PF19
    stays open below. Record-level visibility is the larger and more overdue of the two remainders:
@@ -560,7 +542,7 @@ first *within* each slice's block; 23–24 are not lower-value than 22, they are
    jar-weight/font-licensing trade-off §2 already declined once for the `₹` glyph alone, now with
    its real cost visible.
 3. ~~**No rate limiting on `/public/q/{token}`**~~ — **DONE.** Closed by the `public-rate-limiting`
-   slice (§3, pending merge): a per-IP Bucket4j token bucket in front of `/public/q/{token}` and the
+   slice (§3, merged as `d7725b0`): a per-IP Bucket4j token bucket in front of `/public/q/{token}` and the
    auth routes, 429 + `Retry-After` on exhaustion. **This closes only the rate half of PF19, not the
    entitlement-metering half** — PF19 stays open above. It also does not yet support more than one
    app instance: the store is in-process, so N instances multiply the effective limit by N until the
