@@ -33,7 +33,9 @@ class ActivityRepositoryScopingArchTest {
         "org.springframework.data.repository.PagingAndSortingRepository",
         "org.springframework.data.repository.ListPagingAndSortingRepository",
         "org.springframework.data.jpa.repository.JpaRepository",
-        "org.springframework.data.jpa.repository.JpaSpecificationExecutor");
+        "org.springframework.data.jpa.repository.JpaSpecificationExecutor",
+        "org.springframework.data.repository.query.QueryByExampleExecutor",
+        "org.springframework.data.querydsl.QuerydslPredicateExecutor");
 
     private JavaClass activityRepository() {
         JavaClasses classes = new ClassFileImporter()
@@ -51,7 +53,12 @@ class ActivityRepositoryScopingArchTest {
         assertThat(supertypes)
             .as("ActivityRepository must extend the bare Repository marker. Extending "
               + "JpaRepository (or any of these) inherits findById/findAll, which are not "
-              + "declared here and so escape the declared-method rule below — see spec §4.2")
+              + "declared here and so escape the declared-method rule below — see spec §4.2. "
+              + "This also covers mixing in QueryByExampleExecutor or QuerydslPredicateExecutor "
+              + "alongside the bare marker: each brings its own unscoped read "
+              + "(findAll(Example)/findOne(Example) or findAll(Predicate)) that the "
+              + "declared-method rule never sees, because the read is inherited, not declared, "
+              + "and the primary supertype can still be the bare marker while this is true")
             .doesNotContainAnyElementsOf(FORBIDDEN_SUPERTYPES)
             .contains("org.springframework.data.repository.Repository");
     }
