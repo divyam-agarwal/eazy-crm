@@ -1,41 +1,46 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-29 — **Per-IP rate limiting is built and merged to `main` as `d7725b0`.
-Nothing is in flight; `main` is the baseline for new work.** It caps abuse of `/public/q/{token}` and the auth
-routes — the two things backlog item #3 and PF19 flagged — with a Bucket4j token bucket per
-`(policy, client-IP)` pair behind a `RateLimitStore` port, an in-memory implementation bounded by a
-Caffeine cache (challenge #41), and a filter that runs ahead of Spring Security so failed-auth
-traffic is capped too. **PF19 is only partly addressed:** this slice stops the route from being
-hammered; it does not give it entitlement metering, which PF19 is actually about — see §8. The
-previous slice (RLS `FORCE`d + a layer-3 guard, closing PF14/PF15) is now **merged to `main`**;
-see §3's "Previous code work" for its detail.
+**Last updated:** 2026-08-29 — **Record-level visibility filtering is built on branch
+`record-visibility`, complete and pending merge (not yet on `main`).** Every read and write on
+`Customer`, `Enquiry`, `Quotation`, and `Order` is now filtered by `assigned_to` through a single
+`VisibleFinder`, closing backlog item #3's last open piece: the tenant-internal confidentiality gap
+where every user in a tenant could read and mutate every record in it. A `VisibilityScopingArchTest`
+allowlist guard fails the build if a future repository read bypasses the layer. **This does not ship
+the parent spec's three-tier rule** — `SALES_MANAGER` is collapsed into the unrestricted tier for
+want of a team model, and unassigned records are visible to everyone by design (see §3, §8).
+**User invitations are now the sole remaining P0-auth follow-up** — see §8. The previous slice
+(per-IP rate limiting on the public and auth routes) is now **merged to `main` as `d7725b0`**; see
+§3's "Previous code work" for its detail.
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### One thing is in flight
 
-**`main` is clean and is the baseline for new work.** The `public-rate-limiting` branch was merged
-`--no-ff` as **`d7725b0`** on 2026-08-29 and deleted; the merged result was verified green
-(**296 tests, 0 failures, 0 errors**) before the branch went away. There is no unmerged feature
-branch to settle. Start at item 1 below, then go to §8 and pick the next chunk with the user.
+**`record-visibility` is complete but not merged.** Nine tasks (visibility policy, `VisibleFinder`,
+customer/enquiry/quotation+order coverage, the nested-path and `assignedTo`-validation tasks, the
+`VisibilityScopingArchTest` allowlist guard, and this docs wrap-up) are done on branch
+`record-visibility`, off `main` at `29b59ca`, every task reviewed clean.
+**It has not been merged to `main`** — run `finishing-a-development-branch` on it before starting
+anything new, unless you're picking this session up specifically to review or merge it.
 
 **One loose end that is not code:** the Bucket4j entry written for
 `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that directory is
-not a git repository, so nothing was committed there. Design spec §7 asked for the entry; it exists;
-it is just untracked. Decide with the user whether that repo should be `git init`ed. Do not init it
-unilaterally.
+not a git repository, so nothing was committed there. The rate-limiting design spec §7 asked for the
+entry; it exists; it is just untracked. Decide with the user whether that repo should be `git init`ed.
+Do not init it unilaterally.
 
-Before it, `rls-force-and-guard` ran to completion and **merged to `main` as `3c239d1`**
-(commits `cfc8928`..`b8b2ecb`); that feature branch is deleted, as was `platform-primitives-module`
-before it (merged as `210545e`).
+Before it, `public-rate-limiting` ran to completion and **merged to `main` as `d7725b0`** (commits
+`bc542c2`..`18eaccd`); that feature branch is deleted, as was `rls-force-and-guard` before it
+(merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On `main` this is **296 tests, 0 failures, 0 errors**
-   (273 root + 23 `platform-primitives`). Gradle prints no total for a multi-project
-   build, so count it yourself:
+   then `cd backend && ./gradlew clean test`. On this branch (`record-visibility`) this is
+   **350 tests, 0 failures, 0 errors** (327 root + 23 `platform-primitives`), up from `main`'s
+   **296 tests** baseline (273 root + 23 `platform-primitives`). Gradle prints no total for a
+   multi-project build, so count it yourself:
 
    ```bash
    cd backend && ./gradlew clean test
@@ -109,7 +114,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (41 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (46 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -178,10 +183,37 @@ All under `docs/superpowers/`:
     factory colliding with a record accessor, a Jackson 2 import on a Jackson 3 project, a
     `BindResult` overload that does not exist in Boot 4.1, and a test-property precedence rule that
     is the reverse of what the plan assumed). Challenges #38–#42 are the write-ups.
+31. **`specs/2026-08-29-record-visibility-design.md`** — record-level visibility design spec (the
+    two-tier `assigned_to` rule, `VisibilityPolicy`/`VisibleFinder`, why quotation/order visibility
+    derives from the customer rather than adding a column, the deliberately unfiltered dedupe/GSTIN
+    lane, and why `SALES_MANAGER` is deliberately collapsed into the unrestricted tier). Source of
+    truth for *what* this slice built.
+32. **`plans/2026-08-29-record-visibility.md`** — the nine-task implementation plan for it. **Branch
+    `record-visibility` is complete, reviewed clean, and pending merge** — see §0 and §3.
 
 ## 3. Current state
 
-- **Latest code work: per-IP rate limiting on the public and auth routes** — **merged to `main`
+- **Latest code work: intra-tenant record-level visibility filtering** — **branch
+  `record-visibility`, complete and reviewed clean, NOT YET MERGED to `main`.** Off
+  `main` at `29b59ca`. Nine tasks: `VisibilityPolicy` (role → `Specification`
+  per aggregate, `unrestricted()` fail-open for every role but `SALES_EXEC`), `VisibleFinder` (the
+  single permitted reader of the four guarded repositories), customer and enquiry reads/writes
+  re-pointed at it, quotation/order visibility derived from their customer (a correlated `EXISTS`
+  subquery, no new columns), the nested paths (`Contact`, PDF render, share-link mint) gated on
+  their parent, `assignedTo` validated to name an `ACTIVE` user, a `VisibilityScopingArchTest`
+  allowlist guard that fails the build on a new repository read bypassing the layer (prove-it-can-fail
+  verified — see challenge #46), and this docs wrap-up. **350 tests, 0 failures, 0 errors** — 327 in
+  the root project, 23 in `platform-primitives`, up from the 296-test `public-rate-limiting` baseline
+  (+54). New challenges #43–#46; the annotations reference needed no new rows (this slice uses JPA
+  specifications, not method security — `@PreAuthorize` appears nowhere). **What this slice does
+  *not* do:** it does not implement the parent spec §6's three-tier rule — `SALES_MANAGER` is
+  collapsed into the unrestricted tier because no team table or manager→report edge exists, and
+  narrowing it later is a schema-plus-admin-surface slice of its own. It also does not make
+  unassigned records confidential: `assigned_to IS NULL` is visible to every `SALES_EXEC`, the
+  standard CRM shared-pool idiom — confidentiality begins at assignment, not at record creation.
+  Backlog item #3 (§8) is now fully closed except for user invitations.
+
+- **Previous code work: per-IP rate limiting on the public and auth routes** — **merged to `main`
   as `d7725b0`.** Branch `public-rate-limiting`, commits `bc542c2`..`18eaccd` off `main` at
   `e69d7ac`, now deleted: seven tasks, one whole-branch fix wave (`3bfb99d`), and
   the docs wrap-ups after it. Seven tasks: a `RateLimitPolicy` value type +
@@ -208,7 +240,7 @@ All under `docs/superpowers/`:
   The design's Redis-backed `RateLimitStore` implementation is the prerequisite for running more
   than one instance; it does not exist yet.
 
-- **Previous code work: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
+- **Before that: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
   to `main` as `3c239d1`**. Branch `rls-force-and-guard`, commits `cfc8928`..`b8b2ecb` off `main`
   at `455c237`, closing **PF14 and PF15**. `V26__force_rls.sql` adds
   `FORCE ROW LEVEL SECURITY` to every tenant table (previously all fourteen were `ENABLE`d and
@@ -223,7 +255,7 @@ All under `docs/superpowers/`:
   Note this closes the gap *in the schema* — a deployment must still connect as `easycrm_app`;
   forcing removes the silent-failure mode, not the requirement.
 
-- **Before that: `platform-primitives` extracted into its own Gradle module** — **merged to
+- **Earlier still: `platform-primitives` extracted into its own Gradle module** — **merged to
   `main` as `210545e`**. Branch `platform-primitives-module`, eight tasks, commits
   `4d43d75`..`6c255d4` off `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took
   one fix round; Task 7 returned zero findings at any severity), and the whole-branch review found
@@ -445,14 +477,17 @@ the workflow from §0 step 4.
    to hang activity listeners on.
 2. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
    today; nothing runs on a schedule. Small, introduces the first scheduled job.
-3. **P0-auth follow-up** — now **only** user invitations + **record-level visibility filtering**
-   (`assigned_to`, still open from P1a — every user in a tenant reads every record). Its
-   rate-limiting third is **done and merged** (`d7725b0`; §3):
-   `/public/q/{token}` and the auth routes are capped per-IP with a 429 + `Retry-After` contract.
-   That closes the *abuse-of-rate* half of PF19 and **not** the *entitlement-metering* half — PF19
-   stays open below. Record-level visibility is the larger and more overdue of the two remainders:
-   it is a **tenant-internal confidentiality gap that exists in code running today**, which is the
-   same category of claim that made PF14/PF15 outrank everything else two slices ago.
+3. **P0-auth follow-up** — **fully closed except for user invitations.** This item started as three
+   things: rate limiting, record-level visibility, and user invitations. Rate limiting landed in the
+   `public-rate-limiting` slice (`d7725b0`; §3): `/public/q/{token}` and the auth routes are capped
+   per-IP with a 429 + `Retry-After` contract — that closed the *abuse-of-rate* half of PF19 and
+   **not** the *entitlement-metering* half, which stays open below. Record-level visibility landed in
+   the `record-visibility` slice (complete, reviewed clean, pending merge — §0/§3): every read and
+   write on `Customer`, `Enquiry`, `Quotation`, and `Order` is now filtered by `assigned_to` through
+   a single `VisibleFinder`, guarded by `VisibilityScopingArchTest`. **User invitations are now the
+   sole remaining P0-auth follow-up.**
+   Note what visibility filtering did *not* ship, in §3's slice detail: `SALES_MANAGER` is collapsed
+   into the unrestricted tier, so the parent spec §6's three-tier rule is not yet built.
 4. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
    `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
 
@@ -491,27 +526,25 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested default — read this before proposing anything.** Three slices in a row have now been
-hardening (RLS forcing, then rate limiting). The security items that described *running code* are
-closed or downgraded, so the honest ranking has changed:
+**Suggested default — read this before proposing anything.** Four slices in a row have now been
+hardening (RLS forcing, rate limiting, then record-level visibility). **The last "it is wrong in code
+that runs today" item on this list is now closed** — see §3's `record-visibility` entry — so the
+honest ranking has genuinely changed, not just rotated:
 
-- **Record-level visibility filtering (the rest of #3) is the last "it is wrong in code that runs
-  today" item on this list.** Every user in a tenant currently reads every record — a
-  tenant-internal confidentiality gap, the same category of claim that put PF14/PF15 ahead of
-  everything else two slices ago. It is also a prerequisite the frontend will assume exists.
-- **#1 (activity/follow-up) is the strongest product claim** and the wedge's most conspicuous
-  missing surface: "never lose a follow-up" is a headline promise with no implementation. The accept
-  event seam already exists to hang listeners on. Pick this if the next slice should move the
-  product rather than the platform.
-- **PF19's entitlement-metering half** is now the only part of PF19 left, and it is genuinely
-  blocked on design, not effort: the public route has no JWT, so there is nowhere to hang a
-  per-tenant check. It needs the billing thread's decisions before code.
-- **`platform-web`** is next by dependency order, which remains the weakest of these claims.
+- **#1 (activity/follow-up) is now the strongest claim on the board.** With the last
+  correctness gap closed, this is the wedge's most conspicuous missing surface: "never lose a
+  follow-up" is a headline promise with no implementation. The accept event seam already exists to
+  hang listeners on. Pick this if the next slice should move the product.
+- **#2 (scheduled auto-expiry) stays the cheapest small slice** if a small slice is wanted between
+  two large ones — nothing about this ranking round changed its size or its position.
+- **PF19's entitlement-metering half stays blocked on design, not effort.** The public route has no
+  JWT, so there is nowhere to hang a per-tenant check; it needs the billing thread's decisions before
+  code, same as before this slice.
+- **`platform-web` stays the weakest claim.** Next by dependency order only; nothing in this slice
+  changed that.
 
-A reasonable reading is: **visibility filtering if you want the last correctness gap closed, #1 if
-three hardening slices is enough and the product needs to move.** Confirm with the user rather than
-assuming — and note that #2 (scheduled auto-expiry) is still the cheapest item on the board if a
-small slice is wanted between two large ones.
+A reasonable reading is: **#1 by default now that the correctness backlog is empty, #2 if a cheap
+slice is wanted first.** Confirm with the user rather than assuming.
 
 **Before any second app instance:** the rate limiter's store is in-process (§3) — running N
 instances behind a load balancer multiplies every configured limit by N, silently. Build the
@@ -571,10 +604,12 @@ first *within* each slice's block; 23–24 are not lower-value than 22, they are
    the frontend lands and can state what it needs. This semantic is documented on
    `Tenant.updateProfile` (the PDF/share slice's new tenant-profile PATCH) but, house-wide, is
    asserted by no test — a regression test would be cheap if this is ever revisited.
-9. **`OrderSpecifications`, `EnquirySpecifications`, and now `QuotationSpecifications` all use
-   string-keyed `root.get(...)`** rather than a JPA static metamodel, so a field rename fails at
-   runtime rather than compile time. All three have immediate test coverage. If fixed, fix them
-   together — doing one alone just makes the others inconsistent.
+9. **`OrderSpecifications`, `EnquirySpecifications`, `QuotationSpecifications`, and now
+   `CustomerSpecifications` (added by the record-visibility slice, §3) all use string-keyed
+   `root.get(...)`** rather than a JPA static metamodel, so a field rename fails at runtime rather
+   than compile time. All four have immediate test coverage. If fixed, fix them together — doing
+   one alone just makes the others inconsistent. Fixing this now means touching four classes, not
+   three.
 10. **Only `Seller`'s optional fields have a null-render test in `QuotationPdfRendererTest`.**
    `Buyer.gstin`, `Buyer.address`, `validUntil`, payment/delivery terms and notes are all
    `th:if`-guarded in `quotation.xhtml`, but no test renders any of them absent — the same
@@ -686,3 +721,30 @@ must-fix findings — the eviction window and the context path — were fixed on
     `policies[1]` with its throwaway `api-protected` policy, so the 30/minute login cap is covered only
     by `RateLimitDefaultsTest`'s matching assertions. Adequate — the mechanism is identical and proven
     on the other policy — but no test ever drives a real login to 429.
+
+**From the `record-visibility` slice (2026-08-29).** Items 33–36 are open; four other per-task
+`minor (deferred)` findings from this slice's ledger resolved themselves before the slice ended
+(`VisibilityPolicy.enquiries()` lacked a direct test in Task 1 — covered end-to-end by Task 4;
+`VisibleFinder`'s javadoc forward-referenced `VisibilityScopingArchTest` before Task 8 created it;
+no test drove a `page*` method with a non-null caller filter — covered by Task 3's `?active=` list
+test; and Task 3's reviewer flagged that `CustomerService`'s changed constructor arity was checked
+for other direct-construction call sites but not independently re-verified — Task 5's reviewer did
+that independent check two tasks later, grepping the whole codebase and confirming no manual
+`new XService(...)` call site exists anywhere, closing the concern) and are not carried forward as
+open items. The `PriceResolver`/`QuotationService` comment sweep this same ledger flagged for Task 9
+is also done — see §3.
+
+33. **Unused `@Autowired TestTokens` field in `VisibilityPolicyIntegrationTest`.** Inherited from the
+    plan text verbatim, not introduced by the implementer. Cosmetic, harmless.
+34. **`activeFilterStillWorksForAnOwner` never creates an inactive customer.** It catches total
+    breakage of `?active=` but cannot distinguish correct filtering from a filter that silently
+    returns nothing. Inherited from the plan text verbatim.
+35. **`CustomerService.update` validates `assignedTo` before `find(id)`; `EnquiryService.update`
+    validates it after.** Considered as an existence oracle and dismissed during Task 7's review — a
+    plain `GET` already discloses visible-vs-not, so the ordering leaks nothing incremental.
+    Cosmetic inconsistency only.
+36. **The two ArchUnit tests in `com.easycrm.arch` now use visibly different idioms** —
+    `TenantScopingArchTest` uses declarative built-in rules, while `VisibilityScopingArchTest`
+    (Task 8) needs a hand-rolled `ArchCondition` because method-call inspection has no built-in
+    predicate for "was this call routed through class X." Noted for a future reader only, not a
+    defect.

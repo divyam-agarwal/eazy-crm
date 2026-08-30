@@ -6,6 +6,7 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.format.IndianFormats;
 import com.easycrm.platform.tenancy.TenantContext;
+import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.sales.web.dto.ShareResponse;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
@@ -30,21 +31,21 @@ public class ShareLinkService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final ShareLinkRepository links;
-    private final QuotationRepository quotations;
     private final QuotationVersionRepository versions;
     private final ContactRepository contacts;
     private final TenantRepository tenants;
+    private final VisibleFinder finder;
     private final String publicBaseUrl;
 
-    public ShareLinkService(ShareLinkRepository links, QuotationRepository quotations,
-                            QuotationVersionRepository versions, ContactRepository contacts,
-                            TenantRepository tenants,
+    public ShareLinkService(ShareLinkRepository links, QuotationVersionRepository versions,
+                            ContactRepository contacts, TenantRepository tenants,
+                            VisibleFinder finder,
                             @Value("${easycrm.public-base-url}") String publicBaseUrl) {
         this.links = links;
-        this.quotations = quotations;
         this.versions = versions;
         this.contacts = contacts;
         this.tenants = tenants;
+        this.finder = finder;
         this.publicBaseUrl = publicBaseUrl;
     }
 
@@ -53,7 +54,7 @@ public class ShareLinkService {
 
     @Transactional
     public ShareResponse share(UUID quotationId) {
-        Quotation q = quotations.findById(quotationId)
+        Quotation q = finder.findQuotation(quotationId)
             .orElseThrow(() -> new NotFoundException("quotation not found"));
         if (q.getCurrentVersionId() == null || q.getQuoteNo() == null) {
             throw new ValidationException("status", "send the quotation before sharing it");

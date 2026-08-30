@@ -3,6 +3,7 @@ package com.easycrm.crm;
 import com.easycrm.crm.web.dto.ContactRequest;
 import com.easycrm.crm.web.dto.ContactResponse;
 import com.easycrm.platform.error.NotFoundException;
+import com.easycrm.platform.visibility.VisibleFinder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,11 +14,11 @@ import java.util.UUID;
 public class ContactService {
 
     private final ContactRepository contacts;
-    private final CustomerRepository customers;
+    private final VisibleFinder finder;
 
-    public ContactService(ContactRepository contacts, CustomerRepository customers) {
+    public ContactService(ContactRepository contacts, VisibleFinder finder) {
         this.contacts = contacts;
-        this.customers = customers;
+        this.finder = finder;
     }
 
     @Transactional
@@ -48,11 +49,12 @@ public class ContactService {
     }
 
     private void requireCustomer(UUID customerId) {
-        customers.findById(customerId)
+        finder.findCustomer(customerId)
             .orElseThrow(() -> new NotFoundException("customer not found"));
     }
 
     private Contact find(UUID customerId, UUID contactId) {
+        requireCustomer(customerId);          // gate on the parent FIRST
         Contact c = contacts.findById(contactId)
             .orElseThrow(() -> new NotFoundException("contact not found"));
         if (!c.getCustomerId().equals(customerId)) {

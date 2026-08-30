@@ -5,8 +5,8 @@ import com.easycrm.catalog.PriceListItemRepository;
 import com.easycrm.catalog.Product;
 import com.easycrm.catalog.ProductRepository;
 import com.easycrm.crm.Customer;
-import com.easycrm.crm.CustomerRepository;
 import com.easycrm.platform.error.NotFoundException;
+import com.easycrm.platform.visibility.VisibleFinder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,22 +24,26 @@ public class PriceResolver {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
 
-    private final CustomerRepository customers;
     private final ProductRepository products;
     private final PriceListItemRepository priceListItems;
+    private final VisibleFinder finder;
 
-    public PriceResolver(CustomerRepository customers, ProductRepository products,
-                         PriceListItemRepository priceListItems) {
-        this.customers = customers;
+    public PriceResolver(ProductRepository products, PriceListItemRepository priceListItems,
+                         VisibleFinder finder) {
         this.products = products;
         this.priceListItems = priceListItems;
+        this.finder = finder;
     }
 
     public record Resolved(BigDecimal rate, String name, String hsn, String uom, BigDecimal gstRate) {}
 
     @Transactional(readOnly = true)
     public Resolved resolve(UUID customerId, UUID productId) {
-        Customer customer = customers.findById(customerId)
+        // Reached only from an already-visible customer (the caller resolved it first), so
+        // this cannot change an outcome -- routed through the finder anyway for guard
+        // consistency (VisibilityScopingArchTest forbids CustomerRepository.findById
+        // outside VisibleFinder).
+        Customer customer = finder.findCustomer(customerId)
             .orElseThrow(() -> new NotFoundException("customer not found"));
         Product product = products.findById(productId)
             .orElseThrow(() -> new NotFoundException("product not found"));

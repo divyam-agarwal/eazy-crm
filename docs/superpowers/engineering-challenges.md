@@ -2559,3 +2559,262 @@ deployment change will eventually land in.
 ### The solution
 ### Lesson
 -->
+
+## Challenge 43 — `Specification.and(null)` is not the null-safe no-op the plan assumed
+
+**Phase:** Implementation
+
+### The problem
+
+`VisibleFinder`'s paging methods AND a policy-derived `Specification` onto a
+caller-supplied filter that is routinely `null` — "list everything visible to me" has
+no user filter to combine with. The implementation plan asserted this combinator was
+safe: "`Specification.and(null)` is null-safe in Spring Data JPA 3+." Written naively
+as `policy.customers().and(filter)`, the very first paging test — the one exercising
+exactly this no-filter case — threw `IllegalArgumentException: Other specification
+must not be null` at `Specification.and`, not a wrong result.
+
+The plan's assumption was about the wrong axis: whether `and(null)` is safe is a
+property of the Spring Data JPA *version on the classpath*, not of the major line
+("3+"). This project is on Spring Boot 4.1.0, and the `Specification.and` it ships
+still asserts its argument non-null. A behavior claim tied to a library version needs
+verifying against the actual dependency in the actual build, not against a general
+belief about where a change landed — the same failure mode as trusting a changelog
+without pinning the version it describes.
+
+### The solution
+
+Push the null check into `VisibleFinder` itself rather than onto every call site or,
+worse, onto the test: a private `and(Specification<T> base, Specification<T> filter)`
+helper returns `base` unchanged when `filter` is `null` and only calls `base.and(filter)`
+otherwise. The test that exercises the no-filter path (`pageCustomers(null, ...)`) was
+kept as originally written — TDD is what caught the false assumption, so weakening the
+test to route around it would have discarded the exact signal the plan needed.
+
+### Lesson
+
+A plan's "this is null-safe in library version X" is a claim about the dependency that
+is actually resolved in *this* build, not about the library's changelog in the
+abstract — verify it by running the test that exercises the null case, not by reading
+what the version bump was supposed to have done. When a combinator can receive an
+absent operand as a routine, expected input (an unfiltered list view, not an edge
+case), guard for it at the one place that builds the combination, so every future
+caller inherits the safety instead of having to remember to re-derive it.
+
+## Challenge 44 — the two derived queries the visibility filter must NOT touch
+
+**Phase:** Implementation
+
+### The problem
+
+`CustomerService.find` and `EnquiryService.find` both got re-pointed at `VisibleFinder`
+in this slice, and that pattern is repetitive enough that the natural next move is to
+apply it everywhere a service touches its repository — including
+`EnquiryRepository.findByNormalizedPhone`, the pre-check backing "at most one active
+enquiry per phone." That would be wrong in a way that does not show up as a wiring
+error or a compile failure: it produces working-looking code that silently reintroduces
+the invariant violation the pre-check exists to prevent.
+
+The pre-check is check-then-act: look for an existing active row, then save if none is
+found. If it were filtered to the caller's visible rows, exec A and exec B could each
+run the check against their own view, each see nothing, and each successfully attempt to
+create an active enquiry for the *same* phone number — because neither rep's filtered
+view contains the other's row. The invariant would only get caught later, by the partial
+unique index and the `DataIntegrityViolation`→409 handler (challenge #15), at whatever
+moment a background job or an unrelated retry happened to trip it — a confusing
+database-level conflict instead of the clean, immediate, field-level 409 the pre-check
+is supposed to produce.
+
+A broken implementation that filtered the pre-check and then fell through to that index
+would *also* return 409 to the caller, so the HTTP status code alone cannot distinguish
+"the pre-check caught it" from "the backstop caught it." The tempting next assumption —
+that the *row count* can make up the difference, since a broken pre-check would let a
+duplicate row actually get inserted — is also wrong, and finding out why is the real
+substance of this entry. The unique index rejects the second row at commit, and a
+constraint violation rolls back the *entire enclosing transaction*, not just the failed
+`INSERT`. `create()`'s pre-check, build, and `save()` all run inside one `@Transactional`
+method, so a broken pre-check that let the insert through still ends with the duplicate
+row gone and the count back at 1 — identical to the correct behavior. A test asserting
+only `countActiveEnquiriesFor(phone) == 1` would pass whether the implementation was
+correct or silently broken, which defeats the point of writing it. The only place the two
+paths actually differ is the error *message*: the pre-check's `ConflictException` carries
+"an active enquiry already exists for this phone," while the index backstop's handler
+returns the generic "the request conflicts with existing data"
+(`ApiExceptionHandler.dataIntegrity`). `dedupeStillTripsAgainstAnInvisibleEnquiry` asserts
+on that message, with the row count kept only as a secondary sanity check, not the
+discriminator.
+
+### The solution
+
+Leave `requireNoActiveDuplicateExcept` calling `enquiries.findByNormalizedPhone` directly
+on the raw repository, never through `VisibleFinder`, with a comment at the call site
+stating why so the next reader does not "fix" it into conformance with the rest of the
+service. The parent spec (§8) calls for a later guard test,
+`VisibilityScopingArchTest`, to allowlist this method (and `CustomerRepository.findByGstin`,
+the GSTIN-uniqueness equivalent) **by name** — that test is a separate task's deliverable
+and does not exist yet in this tree, so today the call-site comment is the only thing
+stopping a future "cleanup" from routing it through the filter. Once the guard test lands,
+a future attempt to do that — or a new uniqueness check added without consulting this
+lane — will have to argue its way past an explicit allowlist entry rather than silently
+pass because nothing noticed.
+
+This is a genuine trade-off, not a free lunch: the unfiltered 409 discloses to exec A
+that *someone* in the tenant already holds that phone number, even though exec A cannot
+see whose record it is or anything else about it. That is accepted because the
+alternative — a uniqueness invariant that silently breaks under concurrent use by two
+reps who cannot see each other's records — is worse than the disclosure.
+
+### Lesson
+
+A uniqueness pre-check and a visibility filter answer different questions — "does this
+value already exist anywhere in the tenant?" versus "can this caller see this record?" —
+and conflating them by routing the former through the latter converts a correctness
+guarantee into a per-user view. The failure mode is not silent data corruption — the
+database-level unique index is still there and still rolls back the offending
+transaction, so no duplicate row survives either way. The failure mode is a *worse
+error experience at an unpredictable moment*: a clean, immediate, field-level 409 from
+the pre-check degrades into a generic database-conflict 409 from the backstop, thrown
+from wherever the second `save()` happens to land, with no guarantee that's even in the
+original request path (a retry, a batch job, a queued write). When a visibility layer is
+introduced as a blanket rule ("filter every read of these repositories"), the exceptions
+to that rule need to be found by asking "which queries feed a uniqueness check rather
+than return a record to the caller," and then locked down with an allowlist and a
+same-file comment — not left to be rediscovered the next time someone "cleans up" the
+one service that still calls its repository directly.
+
+A second, sharper lesson sits inside the first: when two code paths (a correct one and a
+broken one) both end in a 409 and both leave the row count unchanged, a test that only
+checks the row count is not a regression test for the difference between them — it is a
+regression test for the database constraint, which was never in question. The database
+guarantees the *count*; only the application guarantees *which layer caught the problem
+and what it tells the caller*. A test meant to prove "the app-level check is still doing
+its job, not just riding on the schema's coattails" has to assert on something the schema
+can't produce on its own — here, the distinct error message each path emits. Whenever a
+test's purpose is to catch an app-level check being silently bypassed in favor of a
+database-level backstop, checking that the operation *failed* (or that a side effect
+count is unchanged) is not enough if the backstop fails and unwinds the same way the
+correct path does; identify what's true in the correct case but not in the degraded one,
+and assert on that specifically.
+
+## Challenge 45 — Truncating a "unique-looking" ID for a test fixture, when the ID is time-sortable
+
+**Phase:** Implementation
+
+### The problem
+
+`QuotationOrderVisibilityTest` seeds three quotations and three orders in one
+`@BeforeEach`, each needing a distinct `quote_no` / `order_no` to satisfy
+`uq_quotation_tenant_no` / `uq_order_tenant_no`. The obvious fixture shortcut —
+`"Q-" + quotation.getId().toString().substring(0, 8)` — first failed on `value too long
+for type character varying(32)` (a full UUID plus prefix overruns the column; an easy,
+expected fixture bug, fixed by truncating). The truncated version then failed
+differently and far more surprisingly: `duplicate key value violates unique constraint
+"uq_quotation_tenant_no"`, even though the three source UUIDs were all distinct
+`UUID.randomUUID()`-style values as far as the test author assumed.
+
+They weren't fully random. `BaseEntity.id` is generated with
+`@UuidGenerator(style = UuidGenerator.Style.TIME)` — a UUIDv7-style, time-sortable ID
+whose leading bytes encode a millisecond timestamp specifically so IDs sort and index
+well by creation order. Three quotations created in the same `@BeforeEach`, milliseconds
+apart, share that timestamp prefix; only the *trailing* bits carry the per-record
+randomness. Truncating to the first 8 hex characters (`substring(0, 8)`) kept exactly
+the part that repeats across near-simultaneous inserts and discarded the part that
+doesn't — turning a "these are UUIDs, collisions are astronomically unlikely" intuition
+into an almost-guaranteed collision for anything seeded in a tight loop.
+
+### The solution
+
+Stop deriving the fixture's uniqueness from the entity's own ID at all. Use an explicit
+per-test sequence counter (`docSeq`, incremented once per seeded quotation/order) to
+build `"Q-SEED-" + seq` / `"O-SEED-" + seq`. This is both simpler and actually correct:
+uniqueness now comes from a value the test controls directly, not from a substring of an
+ID whose internal structure the test wasn't reasoning about at all.
+
+### Lesson
+
+"It's a UUID, so any slice of it is unique enough" is only true for names generated by
+`Style.RANDOM`. A time-sortable ID generator (UUIDv7, ULID, Snowflake, and this
+project's `Style.TIME`) makes exactly the opposite trade deliberately — front-loading
+shared, low-entropy bits (a timestamp) in exchange for index/sort locality — and every
+one of them concentrates that low-entropy region in the same place: the front. Never
+truncate a generated ID for a "just needs to be unique enough" fixture value without
+first checking how that ID is generated; if it's time-ordered, either use the whole
+value, take entropy from the *tail*, or — the more robust fix, used here — stop
+depending on the ID's structure at all and mint uniqueness from something the test
+owns outright, like a counter.
+
+## Challenge 46 — An allowlist is a forcing function; a blocklist is a decaying guarantee
+
+**Phase:** Implementation
+
+### The problem
+
+`VisibilityScopingArchTest` closes the layer this slice built: every read of
+`CustomerRepository`, `EnquiryRepository`, `QuotationRepository`, and `OrderRepository`
+must go through `VisibleFinder`, or it silently returns rows the caller cannot see. The
+obvious way to write that guard is a blocklist — enumerate the known-dangerous read
+methods (`findById`, `findAll`, `findOne`, ...) and fail on those. It would have passed
+today, with the same green result as the allowlist this entry is about. The difference
+only shows up a year from now, when someone adds `EnquiryRepository.findByAssignedTo`
+for a new report. A blocklist doesn't know that method exists; it passes silently, and
+the new query bypasses the finder from the day it's written, with no test, no reviewer
+comment, and no build failure to say so — the exact decay this guard exists to prevent.
+
+Phrased as an allowlist instead, that same new method defaults to **forbidden**. The
+build breaks the moment it's added, and the failure message names the call site. Its
+author is forced to open this file and argue, in a comment, which lane the new query
+belongs in — the same forcing function `TenantScopingArchTest.GLOBAL_TABLES` already
+provides for tenant scoping. The guard's value isn't in today's four allowlisted method
+names; it's in what happens to the *next* name nobody has thought of yet. A rule that
+protects against unknown-future cases has to default to "forbidden, argue your way in,"
+not "permitted, argue your way out" — that's the whole design decision, and it's
+invisible if you only look at which rule passes on the classes that exist right now.
+
+That same argument applies recursively to the allowlist's own contents: this task's
+brief carried a `deleteAll` entry the design spec's authoritative allowlist (§8) does
+not have, and grepping the actual call sites turned up zero callers of `saveAndFlush`,
+`delete`, or `deleteAll` on any of the four guarded repositories today — only `save`,
+`findByGstin`, `findByNormalizedPhone`, and `findByQuotationId` are actually reached.
+An allowlist is only a forcing function if every entry in it was argued for, not carried
+over from a template; an unused or undocumented entry is a silent door left ajar in the
+same way a missing one is, just in the other direction. The spec's list was followed as
+written and `deleteAll` was dropped, rather than trusting the brief as pre-verified. The
+whole-branch review that closed out this slice re-ran the same grep against `saveAndFlush`
+and `delete` and found the same answer — still zero callers — so both were dropped from
+`ALLOWED_METHODS` too; the allowlist now names exactly the four methods that are actually
+reached: `save`, `findByGstin`, `findByNormalizedPhone`, `findByQuotationId`.
+
+### The solution
+
+Write the condition as an allowlist keyed on method name, matched against calls whose
+target owner is one of the four guarded repository interfaces, with a comment at each
+allowlist entry stating the specific invariant that requires it to stay unfiltered
+(GSTIN uniqueness, phone dedupe, or the quotation→order same-customer no-op) — not
+merely "this one's fine." Then prove the rule can actually fail: temporarily route
+`CustomerService.find` back through `CustomerRepository.findById` directly, rerun the
+test, and confirm the reported violation names `CustomerService` and `findById` before
+reverting. The literal condition object here is the one Challenge 33 already worked out
+in detail — `noClasses().should(condition)` inverts every event the condition emits, so
+the "bad" case has to be reported as `SimpleConditionEvent.satisfied(...)`, which reads
+backwards until you've internalized the inversion — and this task reused that fix
+rather than rediscovering it. What's new here is *why* the drill matters even when you
+already trust the polarity: a guard's forcing function is only as real as the last time
+someone watched it actually stop a bad change, and an allowlist that has never been
+proven to reject anything is a syntax tree, not a guarantee.
+
+### Lesson
+
+An allowlist and a blocklist can produce an identical pass/fail result for every case
+that exists today and still be opposite in what they guarantee about tomorrow — the
+difference is which side of "unknown new case" the design defaults to, and that
+choice has to be made deliberately, not backed into by whichever enumeration was
+easier to write first. Anywhere a structural guard exists specifically to catch a
+mistake nobody has made yet (a new derived query, a new entity, a new global table),
+default to forbidden-until-argued, matching the pattern this repo already established
+in `TenantScopingArchTest.GLOBAL_TABLES`. And because `noClasses().should(customCondition)`
+silently inverts a hand-rolled condition's events (Challenge 33), a guard like this one
+is not "known correct" from a passing run alone — the mandatory prove-it-can-fail drill
+is the only check that would catch either bug: an inverted condition that vacuously
+passes, or an allowlist copied from a template with an entry nothing calls and a spec
+entry silently dropped.
+

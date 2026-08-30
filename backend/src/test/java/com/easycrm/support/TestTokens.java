@@ -20,6 +20,15 @@ public class TestTokens {
     }
 
     /**
+     * A bearer token for an explicit principal. Visibility filtering keys on userId and
+     * role, so a test that exercises it cannot use owner()/provisionOwner() — those mint a
+     * random user id and always the unrestricted OWNER role.
+     */
+    public String as(UUID tenantId, UUID userId, String role) {
+        return jwt.mint(tenantId, userId, role);
+    }
+
+    /**
      * Provision a REAL tenant row with the given GST state code and return an OWNER bearer
      * token bound to it. Quotation flows load the Tenant to read state_code for the
      * CGST/SGST-vs-IGST split, so a phantom tenant (owner(randomUUID)) is not enough.

@@ -1,15 +1,14 @@
 package com.easycrm.sales.pdf;
 
 import com.easycrm.crm.Customer;
-import com.easycrm.crm.CustomerRepository;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.format.IndianFormats;
 import com.easycrm.platform.tenancy.TenantContext;
+import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.sales.Quotation;
 import com.easycrm.sales.QuotationItem;
 import com.easycrm.sales.QuotationItemRepository;
-import com.easycrm.sales.QuotationRepository;
 import com.easycrm.sales.QuotationVersion;
 import com.easycrm.sales.QuotationVersionRepository;
 import com.easycrm.sales.VersionStatus;
@@ -26,28 +25,27 @@ import java.util.UUID;
 @Service
 public class QuotationPdfService {
 
-    private final QuotationRepository quotations;
     private final QuotationVersionRepository versions;
     private final QuotationItemRepository items;
-    private final CustomerRepository customers;
     private final TenantRepository tenants;
+    private final VisibleFinder finder;
     private final QuotationPdfRenderer renderer;
 
-    public QuotationPdfService(QuotationRepository quotations, QuotationVersionRepository versions,
-                               QuotationItemRepository items, CustomerRepository customers,
-                               TenantRepository tenants, QuotationPdfRenderer renderer) {
-        this.quotations = quotations;
+    public QuotationPdfService(QuotationVersionRepository versions,
+                               QuotationItemRepository items,
+                               TenantRepository tenants, VisibleFinder finder,
+                               QuotationPdfRenderer renderer) {
         this.versions = versions;
         this.items = items;
-        this.customers = customers;
         this.tenants = tenants;
+        this.finder = finder;
         this.renderer = renderer;
     }
 
     /** Latest SENT version when versionNo is null, otherwise that specific frozen version. */
     @Transactional(readOnly = true)
     public byte[] renderByQuotation(UUID quotationId, Integer versionNo) {
-        Quotation q = quotations.findById(quotationId)
+        Quotation q = finder.findQuotation(quotationId)
             .orElseThrow(() -> new NotFoundException("quotation not found"));
         QuotationVersion v = versionNo == null
             ? versions.findById(requireCurrentVersion(q))
@@ -64,7 +62,7 @@ public class QuotationPdfService {
     public byte[] renderByVersionId(UUID versionId) {
         QuotationVersion v = versions.findById(versionId)
             .orElseThrow(() -> new NotFoundException("quotation version not found"));
-        Quotation q = quotations.findById(v.getQuotationId())
+        Quotation q = finder.findQuotation(v.getQuotationId())
             .orElseThrow(() -> new NotFoundException("quotation not found"));
         return render(q, v);
     }
@@ -82,7 +80,7 @@ public class QuotationPdfService {
         }
         Tenant tenant = tenants.findById(TenantContext.tenantId())
             .orElseThrow(() -> new NotFoundException("tenant not found"));
-        Customer customer = customers.findById(q.getCustomerId())
+        Customer customer = finder.findCustomer(q.getCustomerId())
             .orElseThrow(() -> new NotFoundException("customer not found"));
         List<QuotationItem> lines = items.findByVersionId(v.getId());
 

@@ -1,5 +1,9 @@
 package com.easycrm.sales.web;
 
+import com.easycrm.iam.Role;
+import com.easycrm.iam.User;
+import com.easycrm.iam.UserRepository;
+import com.easycrm.iam.UserStatus;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
@@ -11,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
 
@@ -23,6 +28,8 @@ class EnquiryListTest extends IntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired TestTokens tokens;
+    @Autowired UserRepository users;
+    @Autowired TransactionTemplate tx;
 
     @AfterEach void clear() { TenantContext.clear(); }
 
@@ -48,9 +55,12 @@ class EnquiryListTest extends IntegrationTest {
     @Test
     void twoFiltersCombineCorrectly() throws Exception {
         // Regression guard: order-list dropped one filter when two were supplied.
-        String auth = "Bearer " + tokens.provisionOwner("27").token();
-        String userA = UUID.randomUUID().toString();
-        String userB = UUID.randomUUID().toString();
+        TestTokens.ProvisionedOwner owner = tokens.provisionOwner("27");
+        String auth = "Bearer " + owner.token();
+        // Real ACTIVE users, not bare random ids: EnquiryService now validates assignedTo
+        // (task 7) -- a bare random UUID would 422 on create.
+        String userA = seedUser(owner.tenantId(), UserStatus.ACTIVE).toString();
+        String userB = seedUser(owner.tenantId(), UserStatus.ACTIVE).toString();
         create(auth, "A", "9000000001", "PHONE", userA);      // source=PHONE, assignee=A
         create(auth, "B", "9000000002", "WHATSAPP", userA);   // source=WHATSAPP, assignee=A
         create(auth, "C", "9000000003", "PHONE", userB);      // source=PHONE, assignee=B
@@ -74,5 +84,13 @@ class EnquiryListTest extends IntegrationTest {
         mvc.perform(get("/api/v1/enquiries").header("Authorization", authB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    /** Seeds a real User row in the given tenant so assignedTo can resolve against it. */
+    private UUID seedUser(UUID tenantId, UserStatus status) {
+        return TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+            () -> tx.execute(s -> users.save(new User(
+                "user-" + UUID.randomUUID() + "@example.com", null, "hash",
+                Role.SALES_EXEC, status)).getId()));
     }
 }

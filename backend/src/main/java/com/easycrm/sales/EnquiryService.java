@@ -1,7 +1,11 @@
 package com.easycrm.sales;
 
+import com.easycrm.iam.UserRepository;
+import com.easycrm.iam.UserStatus;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
+import com.easycrm.platform.error.ValidationException;
+import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.EnquiryCreateRequest;
 import com.easycrm.sales.web.dto.EnquiryResponse;
@@ -16,13 +20,20 @@ import java.util.UUID;
 public class EnquiryService {
 
     private final EnquiryRepository enquiries;
+    private final VisibleFinder finder;
+    private final UserRepository users;
 
-    public EnquiryService(EnquiryRepository enquiries) { this.enquiries = enquiries; }
+    public EnquiryService(EnquiryRepository enquiries, VisibleFinder finder, UserRepository users) {
+        this.enquiries = enquiries;
+        this.finder = finder;
+        this.users = users;
+    }
 
     @Transactional
     public EnquiryResponse create(EnquiryCreateRequest req) {
         String normalized = PhoneNormalizer.normalize(req.contactPhone());
         requireNoActiveDuplicateExcept(normalized, null);
+        requireAssignableUser(req.assignedTo());
         Enquiry saved = enquiries.save(new Enquiry(
             req.customerId(), req.contactName(), req.contactPhone(), normalized,
             req.contactEmail(), req.source(), req.requirementText(),
@@ -40,6 +51,7 @@ public class EnquiryService {
         Enquiry e = find(id);
         String normalized = PhoneNormalizer.normalize(req.contactPhone());
         requireNoActiveDuplicateExcept(normalized, id);
+        requireAssignableUser(req.assignedTo());
         e.updateHeader(req.customerId(), req.contactName(), req.contactPhone(), normalized,
             req.contactEmail(), req.source(), req.requirementText(),
             req.assignedTo(), req.expectedValue());
@@ -64,13 +76,33 @@ public class EnquiryService {
     public PageResponse<EnquiryResponse> list(
             EnquiryStage stage, UUID assignedTo, EnquirySource source, Pageable pageable) {
         return PageResponse.of(
-            enquiries.findAll(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
+            finder.pageEnquiries(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
                 .map(EnquiryResponse::of));
     }
 
+    /**
+     * Cross-tenant rows are invisible to RLS and out-of-scope rows are invisible to the
+     * visibility policy. "Not there", "not this tenant's" and "not yours" all 404 — the
+     * caller must not be able to tell them apart.
+     */
     private Enquiry find(UUID id) {
-        return enquiries.findById(id)
+        return finder.findEnquiry(id)
             .orElseThrow(() -> new NotFoundException("enquiry not found"));
+    }
+
+    /**
+     * A non-null assignedTo must name an ACTIVE user in this tenant. User is tenant-scoped,
+     * so RLS already makes a cross-tenant id come back empty -- no tenant check is needed
+     * here and adding one would be hand-written tenant filtering.
+     *
+     * <p>Without this, a typo'd UUID makes a record visible to nobody below manager,
+     * silently and permanently, because unassigned-means-visible only applies to NULL.
+     */
+    private void requireAssignableUser(UUID assignedTo) {
+        if (assignedTo == null) return;
+        users.findById(assignedTo)
+            .filter(u -> u.getStatus() == UserStatus.ACTIVE)
+            .orElseThrow(() -> new ValidationException("assignedTo", "must be an active user"));
     }
 
     /**
@@ -84,6 +116,9 @@ public class EnquiryService {
      * UUID, so every active match still blocks.
      */
     private void requireNoActiveDuplicateExcept(String normalizedPhone, UUID selfId) {
+        // Deliberately UNFILTERED: this pre-check must see every active enquiry in the
+        // tenant, not just the caller's. Filtering it would let two reps each create an
+        // active enquiry for the same phone. Spec 2026-08-29-record-visibility-design.md §6.
         enquiries.findByNormalizedPhone(normalizedPhone).stream()
             .filter(e -> e.getStage().isActive())
             .filter(e -> !e.getId().equals(selfId))
