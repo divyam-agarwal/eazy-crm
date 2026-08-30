@@ -5,6 +5,8 @@ import com.easycrm.crm.CustomerRepository;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.sales.Enquiry;
 import com.easycrm.sales.EnquiryRepository;
+import com.easycrm.sales.FollowUp;
+import com.easycrm.sales.FollowUpRepository;
 import com.easycrm.sales.Order;
 import com.easycrm.sales.OrderRepository;
 import com.easycrm.sales.Quotation;
@@ -31,15 +33,17 @@ public class VisibleFinder {
     private final EnquiryRepository enquiries;
     private final QuotationRepository quotations;
     private final OrderRepository orders;
+    private final FollowUpRepository followUps;
 
     public VisibleFinder(VisibilityPolicy policy, CustomerRepository customers,
                          EnquiryRepository enquiries, QuotationRepository quotations,
-                         OrderRepository orders) {
+                         OrderRepository orders, FollowUpRepository followUps) {
         this.policy = policy;
         this.customers = customers;
         this.enquiries = enquiries;
         this.quotations = quotations;
         this.orders = orders;
+        this.followUps = followUps;
     }
 
     public Optional<Customer> findCustomer(UUID id) {
@@ -72,6 +76,14 @@ public class VisibleFinder {
 
     public Page<Order> pageOrders(Specification<Order> filter, Pageable pageable) {
         return orders.findAll(and(policy.orders(), filter), pageable);
+    }
+
+    public Optional<FollowUp> findFollowUp(UUID id) {
+        return followUps.findOne(policy.followUps().and(hasId(id)));
+    }
+
+    public Page<FollowUp> pageFollowUps(Specification<FollowUp> filter, Pageable pageable) {
+        return followUps.findAll(and(policy.followUps(), filter), pageable);
     }
 
     private static <T> Specification<T> hasId(UUID id) {
