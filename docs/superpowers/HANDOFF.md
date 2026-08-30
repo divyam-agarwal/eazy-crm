@@ -1,7 +1,7 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-29 — **Record-level visibility filtering is built on branch
-`record-visibility`, complete and pending merge (not yet on `main`).** Every read and write on
+**Last updated:** 2026-08-30 — **Record-level visibility filtering is built and merged to `main`
+as `c81f59f`. Nothing is in flight; `main` is the baseline for new work.** Every read and write on
 `Customer`, `Enquiry`, `Quotation`, and `Order` is now filtered by `assigned_to` through a single
 `VisibleFinder`, closing backlog item #3's last open piece: the tenant-internal confidentiality gap
 where every user in a tenant could read and mutate every record in it. A `VisibilityScopingArchTest`
@@ -17,14 +17,15 @@ want of a team model, and unassigned records are visible to everyone by design (
 
 ## 0. Resuming? Start here
 
-### One thing is in flight
+### Nothing is in flight
 
-**`record-visibility` is complete but not merged.** Nine tasks (visibility policy, `VisibleFinder`,
-customer/enquiry/quotation+order coverage, the nested-path and `assignedTo`-validation tasks, the
-`VisibilityScopingArchTest` allowlist guard, and this docs wrap-up) are done on branch
-`record-visibility`, off `main` at `29b59ca`, every task reviewed clean.
-**It has not been merged to `main`** — run `finishing-a-development-branch` on it before starting
-anything new, unless you're picking this session up specifically to review or merge it.
+**`main` is clean and is the baseline for new work.** The `record-visibility` branch — nine tasks
+(visibility policy, `VisibleFinder`, customer/enquiry/quotation+order coverage, the nested-path and
+`assignedTo`-validation tasks, the `VisibilityScopingArchTest` allowlist guard, and its docs
+wrap-up) — was merged `--no-ff` as **`c81f59f`** on 2026-08-30 and deleted. Every task was reviewed
+clean, the whole-branch review returned MERGE after one fix wave, and the merged result was verified
+green (**352 tests, 0 failures, 0 errors**) before the branch went away. There is no unmerged feature
+branch to settle. Start at item 1 below, then go to §8 and pick the next chunk with the user.
 
 **One loose end that is not code:** the Bucket4j entry written for
 `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that directory is
@@ -37,10 +38,9 @@ Before it, `public-rate-limiting` ran to completion and **merged to `main` as `d
 (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On this branch (`record-visibility`) this is
-   **350 tests, 0 failures, 0 errors** (327 root + 23 `platform-primitives`), up from `main`'s
-   **296 tests** baseline (273 root + 23 `platform-primitives`). Gradle prints no total for a
-   multi-project build, so count it yourself:
+   then `cd backend && ./gradlew clean test`. On `main` this is **352 tests, 0 failures, 0 errors**
+   (329 root + 23 `platform-primitives`), up from the 296 that preceded the visibility slice.
+   Gradle prints no total for a multi-project build, so count it yourself:
 
    ```bash
    cd backend && ./gradlew clean test
@@ -188,23 +188,23 @@ All under `docs/superpowers/`:
     derives from the customer rather than adding a column, the deliberately unfiltered dedupe/GSTIN
     lane, and why `SALES_MANAGER` is deliberately collapsed into the unrestricted tier). Source of
     truth for *what* this slice built.
-32. **`plans/2026-08-29-record-visibility.md`** — the nine-task implementation plan for it. **Branch
-    `record-visibility` is complete, reviewed clean, and pending merge** — see §0 and §3.
+32. **`plans/2026-08-29-record-visibility.md`** — the nine-task implementation plan for it.
+    **Merged to `main` as `c81f59f`** — see §3.
 
 ## 3. Current state
 
-- **Latest code work: intra-tenant record-level visibility filtering** — **branch
-  `record-visibility`, complete and reviewed clean, NOT YET MERGED to `main`.** Off
-  `main` at `29b59ca`. Nine tasks: `VisibilityPolicy` (role → `Specification`
+- **Latest code work: intra-tenant record-level visibility filtering** — **merged to `main` as
+  `c81f59f`.** Branch `record-visibility`, off `main` at `29b59ca`, now deleted. Nine tasks: `VisibilityPolicy` (role → `Specification`
   per aggregate, `unrestricted()` fail-open for every role but `SALES_EXEC`), `VisibleFinder` (the
   single permitted reader of the four guarded repositories), customer and enquiry reads/writes
   re-pointed at it, quotation/order visibility derived from their customer (a correlated `EXISTS`
   subquery, no new columns), the nested paths (`Contact`, PDF render, share-link mint) gated on
   their parent, `assignedTo` validated to name an `ACTIVE` user, a `VisibilityScopingArchTest`
   allowlist guard that fails the build on a new repository read bypassing the layer (prove-it-can-fail
-  verified — see challenge #46), and this docs wrap-up. **350 tests, 0 failures, 0 errors** — 327 in
-  the root project, 23 in `platform-primitives`, up from the 296-test `public-rate-limiting` baseline
-  (+54). New challenges #43–#46; the annotations reference needed no new rows (this slice uses JPA
+  verified — see challenge #46), and this docs wrap-up, plus one whole-branch-review fix wave that
+  strengthened three tests which passed for the wrong reason. **352 tests, 0 failures, 0 errors** —
+  329 in the root project, 23 in `platform-primitives`, up from the 296-test `public-rate-limiting`
+  baseline (+56). New challenges #43–#46; the annotations reference needed no new rows (this slice uses JPA
   specifications, not method security — `@PreAuthorize` appears nowhere). **What this slice does
   *not* do:** it does not implement the parent spec §6's three-tier rule — `SALES_MANAGER` is
   collapsed into the unrestricted tier because no team table or manager→report edge exists, and
@@ -482,7 +482,7 @@ the workflow from §0 step 4.
    `public-rate-limiting` slice (`d7725b0`; §3): `/public/q/{token}` and the auth routes are capped
    per-IP with a 429 + `Retry-After` contract — that closed the *abuse-of-rate* half of PF19 and
    **not** the *entitlement-metering* half, which stays open below. Record-level visibility landed in
-   the `record-visibility` slice (complete, reviewed clean, pending merge — §0/§3): every read and
+   the `record-visibility` slice (merged as `c81f59f`; §3): every read and
    write on `Customer`, `Enquiry`, `Quotation`, and `Order` is now filtered by `assigned_to` through
    a single `VisibleFinder`, guarded by `VisibilityScopingArchTest`. **User invitations are now the
    sole remaining P0-auth follow-up.**
