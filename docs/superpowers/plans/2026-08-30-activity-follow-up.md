@@ -1230,9 +1230,12 @@ public class ActivityService {
      * synthetic principal that VisibilityPolicy treats as unrestricted-but-userless.
      *
      * <p>The safety argument is therefore "the caller already passed the gate", which is
-     * only sound because this method is package-visible in intent and has exactly two call
-     * sites — QuotationAcceptedActivityListener and FollowUpService.complete. Any new
-     * caller must be able to make the same claim.
+     * only sound because this method has exactly ONE call site —
+     * QuotationAcceptedActivityListener, added in a later task. Any new caller must be
+     * able to make the same claim; one that cannot wants create() and the full gate.
+     * (The activity written when a follow-up is completed does NOT come through here: a
+     * user typed that one, so it must stay editable and goes through
+     * logManualForGatedCaller instead.)
      */
     @Transactional
     public void logSystem(SubjectType subjectType, UUID subjectId, ActivityType type,
