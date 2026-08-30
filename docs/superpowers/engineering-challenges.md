@@ -2818,3 +2818,54 @@ is the only check that would catch either bug: an inverted condition that vacuou
 passes, or an allowlist copied from a template with an entry nothing calls and a spec
 entry silently dropped.
 
+---
+
+## Challenge 47 — A `+1hr` test fixture is a hidden bet on when the suite runs
+
+**Phase:** Implementation
+
+### The problem
+
+`FollowUpVisibilityTest` seeds two follow-ups both due `Instant.now().plusSeconds(3600)`
+and asserts the owner's dashboard summary reports them as `upcoming`. The task brief
+that specified this test got that assertion right for the scope's *definition* —
+`UPCOMING` is `due_at >= endOfTodayIST` — but wrong for what a fixed one-hour offset
+actually produces: whether `now + 1hr` lands before or after `endOfTodayIST` depends
+entirely on what wall-clock time IST it is when the suite runs. Run it at 16:09 IST
+(as first attempted here) and `now + 1hr` is 17:09 IST — same day, well before
+midnight — so the row is `DUE_TODAY`, not `UPCOMING`, and the assertion fails. The
+same fixture only passes if the suite happens to run inside the ~1-hour window before
+midnight IST. That is not a flaky test in the usual sense (nondeterministic under
+concurrency); it is a **deterministic function of local time of day** that happens to
+be wrong on every single run except one hour in twenty-four — worse than ordinary
+flakiness, because it fails identically and reproducibly for whoever's timezone or CI
+schedule doesn't line up, and NOTHING in the test's own code reveals that dependency.
+
+The same brief, one file over, had already solved this exact class of problem for
+`FollowUpEndpointTest` — using `±172,800` seconds (2 days) specifically because that
+offset is unambiguous no matter what time of day CI runs, per that file's own comment.
+The fix did not travel to the sibling test that needed it just as much.
+
+### The solution
+
+Change the fixture's offset from `+3600` seconds to `+172,800` seconds (2 days) —
+long enough that `now + offset` cannot land inside the current IST day regardless of
+what the current IST time is, matching the convention already established in
+`FollowUpEndpointTest`. The assertion (`upcoming == 1`) needed no other change: it was
+always the fixture's magnitude that was wrong, not the scope logic being tested.
+
+### Lesson
+
+A time-window boundary test (`OVERDUE` / `DUE_TODAY` / `UPCOMING`, or any midnight- or
+period-edge classification) cannot be exercised safely with an offset whose size is
+comparable to the window itself — "due in one hour" is not a stable proxy for "due
+later today" when the day itself is defined in a fixed timezone independent of when
+the test executes. The only offsets that are safe test fixtures for this shape of
+scope are ones proven to fall unambiguously on one side of every boundary the scope
+cares about, for every possible run time — which for a day-granularity boundary means
+an offset measured in multiple days, not hours. When a design already worked this out
+once in one file (the `±172,800`-second convention here), a reviewer copying the
+pattern to a sibling file needs to copy the *offset*, not just the shape of the test —
+the two are easy to pull apart without noticing, because both compile and both read as
+"due in the future."
+
