@@ -260,13 +260,21 @@ CREATE INDEX idx_follow_up_subject
 predicate is the dashboard's hottest query, run on every login. Getting it right at creation costs
 one line; retrofitting it costs a migration on a live table.
 
-### 5.3 RLS — `V29__rls_activity_follow_up.sql`
+### 5.3 RLS — `V28__rls_activity.sql` and `V30__rls_follow_up.sql`
 
 Both tables get `ENABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL SECURITY`, and a `tenant_isolation`
 policy matching V21/V26. This is self-enforcing rather than a matter of remembering:
 `RlsCoverageIntegrationTest` keys on the presence of a `tenant_id` **column**, so it goes red on its
 own if either table ships unforced. `TenantScopingArchTest` likewise fails the build if either
 entity omits `@TenantId` — both get it by extending `TenantScopedEntity`.
+
+**Four migrations, not one.** This was originally planned as a single combined
+`V29__rls_activity_follow_up.sql`, but `activity` (§5.1) and `follow_up` (§5.2) land in different
+tasks, and each table's RLS migration ships in the same task as the table itself — so the actual
+split is `V27__activity.sql`, `V28__rls_activity.sql`, `V29__follow_up.sql`,
+`V30__rls_follow_up.sql`. A single combined RLS migration would leave `RlsCoverageIntegrationTest`
+red for every task between the one that creates `activity` and the one that creates `follow_up`,
+since the guard checks both tables as soon as either exists.
 
 ---
 

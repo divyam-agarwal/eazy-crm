@@ -2972,3 +2972,139 @@ inside the same class runs with no proxy in the call path at all, so the annotat
 is silently a no-op — the safe way to force a genuinely separate transaction for a
 test is to remove the surrounding boundary, not to add a nested one through
 self-invocation.
+
+---
+
+## Challenge 50 — The polymorphic-subject visibility gate: two tables, two strategies, one structural guard
+
+**Phase:** Implementation (activity/follow-up slice)
+
+### The problem
+
+`activity` and `follow_up` both point polymorphically at one of four already
+visibility-filtered aggregates (`Customer`, `Enquiry`, `Quotation`, `Order`). An
+activity or follow-up hanging off an enquiry I cannot see must be unreachable —
+the visibility layer challenge #46 hardened for the four existing aggregates has to
+extend to two new tables that don't look like the existing four at all.
+
+### Why it's hard
+
+The two tables look symmetrical — same polymorphic `(subject_type, subject_id)`
+pair, same four possible subjects — but they are not. `follow_up` has its own
+`assigned_to`; `activity` does not. So one table has *intrinsic* visibility (filter
+on a column it owns) and the other has *derived* visibility (its access is only as
+visible as whatever it points at) — the same row shape, two genuinely different
+answers to "who can see this."
+
+The derived half is the one that bites. The obvious guard for "every read must
+resolve through the subject's own visibility" is an ArchUnit rule over
+`ActivityRepository`'s *declared* methods — and that guard does not work, for
+exactly the reason challenge #46's own `VisibilityScopingArchTest` had already
+recorded from the other side: a `JpaRepository` sub-interface *inherits*
+`findById`/`findAll`/`findAllById` whether or not it declares them, and a rule that
+only inspects declared methods is blind to everything inherited. `activities
+.findById(id)` would compile, run, and never touch `requireVisibleSubject` at all —
+the exact bypass the gate exists to prevent — while a declared-methods-only rule
+stayed green throughout. This is not a hypothetical: it is the same empirical
+finding `VisibilityScopingArchTest`'s own comment records about a method
+*reference* to an inherited `CrudRepository` method resolving its ArchUnit target
+owner to the Spring Data supertype rather than to the local interface, and so
+escaping any owner-name check built over the local interface. Challenge #46 met
+this from the "guard a repository that has real inherited methods" side; this slice
+meets it from the "design a repository so it has none to inherit" side — same root
+cause, opposite fix.
+
+The gap doesn't stop at the obvious inherited CRUD methods either. `JpaRepository`
+is not the only supertype that smuggles in unscoped reads: mixing
+`QueryByExampleExecutor` or `QuerydslPredicateExecutor` in alongside a bare
+`Repository` marker brings its own inherited `findAll(Example)`/`findOne(Example)`
+or `findAll(Predicate)` — invisible to a declared-method rule for the identical
+reason, and easy to add later without anyone noticing it reopens the hole. This gap
+was not caught while writing the guard; it surfaced in review, and closing it meant
+listing those two executors alongside `JpaRepository` in the forbidden-supertype
+set, not just naming the one obviously dangerous interface.
+
+### The solution
+
+`follow_up` joins the existing guarded set with a plain `Specification` on its own
+`assigned_to` column — one line, because the property it needs (intrinsic
+ownership) is exactly what `VisibilityPolicy`'s existing shape already provides.
+
+`activity` cannot join that set — there is no column to filter on — so it is gated
+at its subject instead: `VisibleFinder.requireVisibleSubject(SubjectType, UUID)`
+switches over the four existing `findX` methods and throws `NotFoundException` on
+an empty result, the same 404-not-403 contract every other visibility check uses.
+The gate is made *unbypassable* rather than merely documented: `ActivityRepository`
+extends the bare `Repository<T, ID>` marker, not `JpaRepository`, and declares
+exactly three methods, none of which is a by-id-alone lookup. There is nothing to
+inherit, so there is nothing left for a declared-method rule to miss —
+`ActivityRepositoryScopingArchTest` asserts the supertype list first (no
+`JpaRepository`/`CrudRepository`/`QueryByExampleExecutor`/`QuerydslPredicateExecutor`
+anywhere in it) and only then asserts every declared method takes a
+`(SubjectType, UUID)` pair. The first assertion is load-bearing; the second is
+worthless without it.
+
+### Lesson
+
+When a guard has to hold a property, prefer removing the capability over policing
+its use — a repository that only has three methods, none of them unscoped, needs no
+rule cleverness at all. And check what a rule can actually *see* before trusting it:
+an ArchUnit assertion over declared members is blind to everything inherited, and
+that is exactly where the dangerous methods live — not just the obvious
+`JpaRepository` CRUD surface, but any mixed-in executor interface that brings its
+own inherited finder along with it. This is the same lesson challenge #46 logged,
+now confirmed from the design side rather than the guard side: the two are the same
+finding, met twice, because the codebase now has one repository built the
+conventional way (many inherited methods, policed by an allowlist) and one built to
+have nothing to police.
+
+---
+
+## Challenge 51 — `OVERDUE` as a predicate, not a status
+
+**Phase:** Implementation (activity/follow-up slice)
+
+### The problem
+
+The parent spec promises `follow_up` is "first-class, with its own reminder
+scheduler," and a scheduled job needs somewhere to send the reminder it computes.
+There is nowhere: WhatsApp is a `wa.me` deep link with no push channel behind it,
+email exists but is the channel these users read least and a nudge needs delivery
+tracking and dedupe no spec has scoped, and there is no frontend yet to receive an
+in-app notification. Building the reminder scheduler anyway would be building a job
+that fires into a void.
+
+### Why it's hard
+
+The tempting move is to build the machinery regardless, because it's the part of
+the promise that *looks* like the feature: an `OVERDUE` status column, a scheduled
+job that flips `PENDING` rows past their `due_at` to `OVERDUE`, maybe an index to
+make the sweep cheap. It compiles, it demos, and "you never lose a follow-up" reads
+as delivered. It is also strictly more moving parts for strictly less truth: a
+status column maintained by a job can fall behind, crash mid-sweep, or simply not
+run — and then the row's own `status` column actively lies about whether it is
+overdue, which is worse than not tracking the concept at all, because a lying flag
+is trusted by definition.
+
+### The solution
+
+Don't store it — compute it. `OVERDUE` is `status = PENDING AND due_at < now()`,
+evaluated at read time by `DueWindow`, with `OVERDUE` / `DUE_TODAY` / `UPCOMING`
+defined as three disjoint, exhaustive scopes over `PENDING` rows in a fixed
+timezone (IST) day boundary — so the dashboard's three counts always sum to the
+total `PENDING` count, by construction, not by convention. No column, no job, no
+sweep to fall behind on. When a real notification channel eventually exists, the
+scheduled job that sends into it reads the exact same predicate this slice already
+implements; nothing here has to be migrated or undone, only wrapped in a sender.
+
+### Lesson
+
+A denormalised flag maintained by a job is a row that can lie about itself — if the
+derived form is fast enough to compute at read time (one index on
+`(tenant_id, assigned_to, status, due_at)` made it so here), the flag is a
+liability, not an optimisation, because it adds a failure mode (the job falls
+behind or dies) without adding any information the predicate didn't already carry.
+Also worth checking deliberately, not assuming: three scopes that each look obvious
+in isolation (`OVERDUE`, `DUE_TODAY`, `UPCOMING`) can still silently overlap or
+leave a gap at their boundary — verify a partition actually partitions before
+trusting that three counts sum to the whole.

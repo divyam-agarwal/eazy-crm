@@ -128,6 +128,12 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Validated` | `org.springframework.validation.annotation` | On a `@ConfigurationProperties` class, tells `ConfigurationPropertiesBindingPostProcessor` to run Bean Validation on the bound instance so a bad value (e.g. `RateLimitProperties`' `capacity: 0`) fails application startup instead of binding silently. Paired with `@Valid` on the `List<RateLimitPolicy> policies` field to cascade validation into each element. | Meta-annotated with Spring's `@Validated` machinery (not JSR-303 `@Constraint`) |
 | `@Transactional` | `org.springframework.transaction.annotation` | Method/class transaction boundary (`AuditService.record`, `RefreshTokenService`, the RLS-scoped derived finders, `AuthService.me`). `readOnly = true` for reads. Runs through the `@Primary` `TenantAwareTransactionManager`, which sets the tenant GUC at `doBegin`. See challenges #8/#9. | — |
 
+## 6a. JSON serialization (Jackson)
+
+| Annotation | Origin | Purpose | Composed of / inherits |
+|---|---|---|---|
+| `@JsonInclude` | `com.fasterxml.jackson.annotation` (the annotations module did not move to `tools.jackson` in the Jackson 3 split — only `jackson-core`/`jackson-databind` did) | Drops fields from the serialized JSON under a given inclusion rule. `ActivityResponse` carries `@JsonInclude(Include.NON_NULL)` at the record level so an activity with no linked follow-up omits `followUpId` from the response rather than serializing it as `null`. Applied class-wide, so it also suppresses any other null field on the same record — today that includes a null `outcome`, which is harmless (the client already treats a missing key and an explicit `null` the same way) but is a blast radius wider than the one field it was added for. | — |
+
 ## 7. Testing (JUnit 5, Spring Test, Testcontainers)
 
 | Annotation | Origin | Purpose | Composed of / inherits |
