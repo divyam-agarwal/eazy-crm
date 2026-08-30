@@ -201,7 +201,7 @@ All under `docs/superpowers/`:
   subquery, no new columns), the nested paths (`Contact`, PDF render, share-link mint) gated on
   their parent, `assignedTo` validated to name an `ACTIVE` user, a `VisibilityScopingArchTest`
   allowlist guard that fails the build on a new repository read bypassing the layer (prove-it-can-fail
-  verified — see challenge #46), and this docs wrap-up, plus one whole-branch-review fix wave that
+  verified — see challenge #46), and a docs wrap-up, plus one whole-branch-review fix wave that
   strengthened three tests which passed for the wrong reason. **352 tests, 0 failures, 0 errors** —
   329 in the root project, 23 in `platform-primitives`, up from the 296-test `public-rate-limiting`
   baseline (+56). New challenges #43–#46; the annotations reference needed no new rows (this slice uses JPA
@@ -212,6 +212,17 @@ All under `docs/superpowers/`:
   unassigned records confidential: `assigned_to IS NULL` is visible to every `SALES_EXEC`, the
   standard CRM shared-pool idiom — confidentiality begins at assignment, not at record creation.
   Backlog item #3 (§8) is now fully closed except for user invitations.
+
+  **If you add a new tenant-scoped aggregate, read this.** The visibility layer does *not* extend
+  itself, and its guard will not tell you so. `VisibilityScopingArchTest.GUARDED_REPOSITORIES` is a
+  hardcoded list of exactly four repository names — a fifth aggregate with an `assigned_to` column
+  gets no filtering at all, and every test stays green, because the rule only ever asks about those
+  four. This is the opposite of how `TenantScopingArchTest` behaves: that one is keyed on the
+  `@Entity` annotation, so a new entity is caught by default and must be *explicitly* allowlisted to
+  escape. Extending visibility to a new aggregate means four deliberate edits: a `Specification`
+  builder on `VisibilityPolicy`, a `find*`/`page*` pair on `VisibleFinder`, the service's by-id
+  choke point re-pointed, and the repository added to `GUARDED_REPOSITORIES`. Miss the last one and
+  the other three are the only thing standing between a new aggregate and a silent leak.
 
 - **Previous code work: per-IP rate limiting on the public and auth routes** — **merged to `main`
   as `d7725b0`.** Branch `public-rate-limiting`, commits `bc542c2`..`18eaccd` off `main` at
@@ -551,12 +562,21 @@ instances behind a load balancer multiplies every configured limit by N, silentl
 design's Redis-backed `RateLimitStore` implementation before multi-instance deployment, not after;
 today it does not exist.
 
+**Before the first large tenant:** the visibility predicate `assigned_to = :me OR assigned_to IS NULL`
+has **no index behind it** on either `customer` or `enquiry` — it is a sequential scan within the
+tenant partition, and today *every* row matches it because nothing has ever written the column. This
+is fine at current volumes and is the one performance consequence the visibility design does not
+otherwise call out. It sits alongside item 15 below (no index supports a status-only order-list
+filter) as the second thing to look at when a tenant's tables grow.
+
 ### Smaller deferred-Minor backlog
 
 Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
-ledgers of **two** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
-items 23–24 from the `platform-primitives` slice (eight tasks) — each cross-checked line-by-line
-against its ledger before that workspace was deleted at merge. So it really is **self-contained**:
+ledgers of **four** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
+items 23–24 from the `platform-primitives` slice (eight tasks), items 25–32 from
+`public-rate-limiting` (seven tasks), and items 33–41 from `record-visibility` (nine tasks plus a
+whole-branch fix wave) — each cross-checked line-by-line against its ledger before that workspace was
+deleted at merge. So it really is **self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
 
@@ -722,7 +742,10 @@ must-fix findings — the eviction window and the context path — were fixed on
     by `RateLimitDefaultsTest`'s matching assertions. Adequate — the mechanism is identical and proven
     on the other policy — but no test ever drives a real login to 429.
 
-**From the `record-visibility` slice (2026-08-29).** Items 33–36 are open; four other per-task
+**From the `record-visibility` slice (2026-08-29/30).** Items 35–41 are open. Items 33 and 34 were
+open when the slice's docs task ran and were **closed afterwards** by the whole-branch review's fix
+wave — that review ran *after* the docs task, which is why items 37–41 below exist at all: they are
+its findings, and they were never going to appear in a handoff written before it. Four other per-task
 `minor (deferred)` findings from this slice's ledger resolved themselves before the slice ended
 (`VisibilityPolicy.enquiries()` lacked a direct test in Task 1 — covered end-to-end by Task 4;
 `VisibleFinder`'s javadoc forward-referenced `VisibilityScopingArchTest` before Task 8 created it;
@@ -734,11 +757,13 @@ that independent check two tasks later, grepping the whole codebase and confirmi
 open items. The `PriceResolver`/`QuotationService` comment sweep this same ledger flagged for Task 9
 is also done — see §3.
 
-33. **Unused `@Autowired TestTokens` field in `VisibilityPolicyIntegrationTest`.** Inherited from the
-    plan text verbatim, not introduced by the implementer. Cosmetic, harmless.
-34. **`activeFilterStillWorksForAnOwner` never creates an inactive customer.** It catches total
-    breakage of `?active=` but cannot distinguish correct filtering from a filter that silently
-    returns nothing. Inherited from the plan text verbatim.
+33. ~~**Unused `@Autowired TestTokens` field in `VisibilityPolicyIntegrationTest`.**~~ **DONE** —
+    removed by the whole-branch fix wave.
+34. ~~**`activeFilterStillWorksForAnOwner` never creates an inactive customer.**~~ **DONE** — the fix
+    wave deactivates a customer in the fixture and asserts both directions (`?active=false` returns
+    it and omits the active one; `?active=true` the reverse). It was the only test of
+    `CustomerSpecifications.filter`, the new code that replaced the deleted
+    `CustomerRepository.findByActive`, so its positive behaviour had been unproven.
 35. **`CustomerService.update` validates `assignedTo` before `find(id)`; `EnquiryService.update`
     validates it after.** Considered as an existence oracle and dismissed during Task 7's review — a
     plain `GET` already discloses visible-vs-not, so the ordering leaks nothing incremental.
@@ -748,3 +773,40 @@ is also done — see §3.
     (Task 8) needs a hand-rolled `ArchCondition` because method-call inspection has no built-in
     predicate for "was this call routed through class X." Noted for a future reader only, not a
     defect.
+
+**From the whole-branch review (2026-08-30).** Three of its findings were fixed before merge (the
+count query that never ran, four list tests that asserted only absence, and `activeFilterStillWorks`
+above). These five were judged safe to defer. **Items 37–39 are all blind spots in the same guard**,
+and they are worth fixing together rather than one at a time.
+
+37. **`VisibilityScopingArchTest`'s allowlist is keyed on a bare method name, not a
+    `(repository, method)` pair.** So `findByQuotationId` is permitted from *any* class, even though
+    its §6.1 justification — "reached only from an already-checked quotation" — is a property of its
+    single current call site, not something the guard enforces. Likewise `findByGstin` and
+    `findByNormalizedPhone` are permitted on all four repositories rather than only the one each
+    belongs to. Fix: allowlist `owner + "." + name` pairs. This is the most substantive of the three
+    and the one that makes the allowlist mean what it says.
+38. **A field declared as `JpaRepository<Customer, UUID>` would be invisible to the guard.** The rule
+    keys on `getTargetOwner()`, which resolves to the *statically declared* receiver type — that is
+    exactly what makes it catch inherited methods like `findById` as calls against
+    `CustomerRepository`. The flip side is that a field typed as the Spring Data supertype (which
+    Spring resolves by type perfectly happily) has a target owner outside `GUARDED_REPOSITORIES`.
+    Obscure, but it is the one way to reach these rows that the allowlist cannot see.
+39. **Method references to *inherited* repository methods still bypass the guard.** The fix wave
+    unioned `getMethodReferencesFromSelf()` into the rule, which closes `someRepo::someDeclaredMethod`
+    — but a reference to an inherited method (`customers::findById`) resolves its ArchUnit target
+    owner to `CrudRepository`, not to the local interface, so it slips through. There are no such
+    references in the codebase today. This residual is disclosed in a comment in the test itself
+    rather than being quietly claimed closed; closing it properly means widening
+    `GUARDED_REPOSITORIES` or matching on the declaring hierarchy.
+40. **`requireAssignableUser` is duplicated verbatim, javadoc included, in `CustomerService` and
+    `EnquiryService`.** Written independently by the two halves of the `assignedTo`-validation task.
+    A future change to the rule — permitting a second `UserStatus`, say — must land in both places,
+    and nothing fails if it lands in only one.
+41. **The three count-query tests assert row *count* but not row *identity*.** After the fix wave,
+    `pagingAppliesVisibilityToBothTheDataAndCountQueries` and its quotation/order siblings page with
+    `PageRequest.of(0, 1)` to force the count supplier to run, and assert `getContent()` has size 1
+    — dropping the `containsExactlyInAnyOrder(mine, pool)` identity check the pre-fix customer test
+    had. A broken filter still surfaces through the total, so the defect they were written for stays
+    covered, but they discriminate less on the data-query side than their own docstrings claim.
+    Asserting the returned row is one of the visible set closes it.
