@@ -3352,10 +3352,14 @@ class FollowUpVisibilityTest extends IntegrationTest {
         ownerToken = tokens.as(tenantId, UUID.randomUUID(), "OWNER");
         TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, execAId, "OWNER"),
             () -> tx.executeWithoutResult(s -> {
+                // +2 days, NOT +1 hour: execsSummaryCountsOnlyTheirOwn asserts these land
+                // in UPCOMING, and a 1-hour offset only does that within an hour of IST
+                // midnight. This is exactly the midnight sensitivity spec §7.3 exists to
+                // avoid — every dueAt in an integration test uses a +/-2-day offset.
                 mine = followUps.saveAndFlush(new FollowUp(SubjectType.ENQUIRY, subject,
-                    Instant.now().plusSeconds(3600), execAId, "mine", execAId)).getId();
+                    Instant.now().plusSeconds(172_800), execAId, "mine", execAId)).getId();
                 theirs = followUps.saveAndFlush(new FollowUp(SubjectType.ENQUIRY, subject,
-                    Instant.now().plusSeconds(3600), execBId, "theirs", execBId)).getId();
+                    Instant.now().plusSeconds(172_800), execBId, "theirs", execBId)).getId();
             }));
     }
 
@@ -3439,6 +3443,27 @@ asserts a sales exec's summary counts only their own."
 ---
 
 ## Task 11: Follow-up transitions — complete, cancel, reschedule
+
+> **Before writing the test: `assignedTo` must be a REAL `ACTIVE` user row.**
+> `FollowUpService.create` validates it through `AssignableUsers` (Task 8), so the bare
+> `UUID.randomUUID()` this task's `ownerId` would otherwise be gets a 422 on every create.
+> Seed a user in `@BeforeEach` and use its id, following the pattern Task 10 established in
+> `FollowUpEndpointTest`:
+>
+> ```java
+> @Autowired UserRepository users;
+>
+> private UUID seedUser(UUID tenantId) {
+>     return TenantContext.runAs(
+>         new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+>         () -> tx.execute(s -> users.save(new User(
+>             "owner-" + UUID.randomUUID() + "@example.com", null, "hash",
+>             Role.OWNER, UserStatus.ACTIVE)).getId()));
+> }
+> ```
+>
+> Imports: `com.easycrm.iam.Role`, `User`, `UserRepository`, `UserStatus`. Set
+> `ownerId = seedUser(tenantId);` as the first line of `seed()`, before minting the token.
 
 **Files:**
 - Create: `backend/src/main/java/com/easycrm/sales/web/dto/FollowUpUpdateRequest.java`, `FollowUpCompleteRequest.java`, `FollowUpCancelRequest.java`
@@ -3853,6 +3878,12 @@ left unmutated after a rejected transition rather than only that it threw."
 ---
 
 ## Task 12: Log-and-schedule in one request
+
+> **Same prerequisite as Task 11: `assignedTo` must be a REAL `ACTIVE` user row.** The
+> nested `nextFollowUp.assignedTo` goes through `AssignableUsers.require`, so a bare random
+> UUID 422s. Seed a user in `@BeforeEach` exactly as Task 11's note shows and use its id for
+> `ownerId`. Note this does NOT apply to `aBadAssigneeRollsBackTheActivityToo`, which passes
+> a deliberately unknown `UUID.randomUUID()` and expects the 422 — that is the point of it.
 
 **Files:**
 - Create: `backend/src/main/java/com/easycrm/sales/web/dto/NextFollowUpRequest.java`
