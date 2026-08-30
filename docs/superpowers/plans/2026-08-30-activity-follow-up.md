@@ -3543,7 +3543,7 @@ class FollowUpTransitionEndpointTest extends IntegrationTest {
         mvc.perform(post("/api/v1/follow-ups/" + id + "/complete")
                 .header(AUTH, "Bearer " + ownerToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"note":"rang, sending a revised quote"}"""))
+                .content("{\"note\":\"rang, sending a revised quote\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("DONE"))
             .andExpect(jsonPath("$.completionNote").value("rang, sending a revised quote"))
@@ -3602,7 +3602,7 @@ class FollowUpTransitionEndpointTest extends IntegrationTest {
         mvc.perform(post("/api/v1/follow-ups/" + id + "/cancel")
                 .header(AUTH, "Bearer " + ownerToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"reason":"   "}"""))
+                .content("{\"reason\":\"   \"}"))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.error.fields.reason").exists());
     }
@@ -3614,7 +3614,7 @@ class FollowUpTransitionEndpointTest extends IntegrationTest {
         mvc.perform(post("/api/v1/follow-ups/" + id + "/cancel")
                 .header(AUTH, "Bearer " + ownerToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"reason":"went with a competitor"}"""))
+                .content("{\"reason\":\"went with a competitor\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("CANCELLED"))
             .andExpect(jsonPath("$.completionNote").value("went with a competitor"));
