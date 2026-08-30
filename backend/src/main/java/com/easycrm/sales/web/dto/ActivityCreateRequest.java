@@ -2,6 +2,7 @@ package com.easycrm.sales.web.dto;
 
 import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.sales.ActivityType;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -22,4 +23,5 @@ public record ActivityCreateRequest(
     @NotNull ActivityType type,
     @Size(max = 2000) String body,
     @Size(max = 200) String outcome,
-    Instant occurredAt) {}
+    Instant occurredAt,
+    @Valid NextFollowUpRequest nextFollowUp) {}

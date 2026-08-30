@@ -2916,3 +2916,59 @@ already-gated helper looks structurally closest, because a test asserting only t
 fields it happened to check (`type`, `body`) cannot distinguish the two paths — only
 reading the aggregate's own edit-guard (`Activity.edit`'s `SYSTEM` rejection) surfaces
 the consequence.
+
+## Challenge 49 — Fail-fast validation would have made the atomicity test tautological
+
+**Phase:** Implementation
+
+### The problem
+
+`ActivityService.create` now optionally writes a `FollowUp` alongside the `Activity`
+in one request (`POST /api/v1/activities` with a nested `nextFollowUp`), and the
+whole point of doing both in one `@Transactional` method is that a bad assignee must
+not leave an orphaned `Activity` behind. The obvious, more conventional shape is to
+validate first and save second: call `assignableUsers.require(next.assignedTo())`
+before `activities.save(...)`, so a bad assignee never touches the database at all.
+
+That shape is a trap for the one test that matters here,
+`aBadAssigneeRollsBackTheActivityToo`. If validation runs before the `Activity` is
+ever saved, the test passes whether or not `@Transactional` rollback works at all —
+the activity row was simply never written, which is a much weaker claim than "the
+transaction rolled it back." A reviewer (or a future refactor) could delete
+`@Transactional` from `create` entirely and this test would keep passing, silently
+losing its entire reason for existing.
+
+### The solution
+
+`create` saves the `Activity` first, *then* validates the assignee and saves the
+`FollowUp`. A bad assignee now means one wasted `INSERT` on a rare error path, which
+`@Transactional`'s default rollback-on-`RuntimeException` discards along with
+everything else the transaction touched. I verified the ordering actually earns its
+keep rather than assuming it, by two separate mutations of the same code, each run
+against the untouched `LogAndScheduleEndpointTest`:
+
+1. First attempt: extract the activity save into a private method annotated
+   `@Transactional(propagation = REQUIRES_NEW)`, called via `this.method(...)`. The
+   test still passed — a false negative. Self-invocation bypasses Spring's
+   proxy, so the new annotation was silently never applied and the method ran
+   inside the same outer transaction as before, proving nothing.
+2. Second attempt: remove `@Transactional` from `create` entirely (no
+   self-invocation involved). `aBadAssigneeRollsBackTheActivityToo` went red
+   immediately — the `Activity` row survived the `ValidationException` because
+   `ActivityRepository.save` got its own implicit transaction from Spring Data and
+   committed before the exception was ever thrown. Restoring `@Transactional`
+   turned it green again.
+
+### Lesson
+
+A rollback test is only as strong as the failure mode you proved it catches, and
+"it currently passes" is not that proof — a broken version of the code can pass a
+correctness test tautologically if the code path never reaches the state the test
+is supposed to catch. Break the invariant on purpose and confirm the test goes red
+before trusting it. And when the chosen way to break it is "remove propagation
+scope," self-invocation is a second, independent way for that experiment to lie to
+you: an `@Transactional` (or any AOP-advised) method called via `this.foo()` from
+inside the same class runs with no proxy in the call path at all, so the annotation
+is silently a no-op — the safe way to force a genuinely separate transaction for a
+test is to remove the surrounding boundary, not to add a nested one through
+self-invocation.

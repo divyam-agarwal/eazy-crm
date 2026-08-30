@@ -1,5 +1,6 @@
 package com.easycrm.sales;
 
+import com.easycrm.iam.AssignableUsers;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.visibility.SubjectType;
@@ -8,6 +9,7 @@ import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.ActivityCreateRequest;
 import com.easycrm.sales.web.dto.ActivityResponse;
 import com.easycrm.sales.web.dto.ActivityUpdateRequest;
+import com.easycrm.sales.web.dto.NextFollowUpRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,23 +22,42 @@ import java.util.UUID;
 public class ActivityService {
 
     private final ActivityRepository activities;
+    private final FollowUpRepository followUps;
     private final VisibleFinder finder;
+    private final AssignableUsers assignableUsers;
     private final Clock clock;
 
-    public ActivityService(ActivityRepository activities, VisibleFinder finder, Clock clock) {
+    public ActivityService(ActivityRepository activities, FollowUpRepository followUps,
+                           VisibleFinder finder, AssignableUsers assignableUsers, Clock clock) {
         this.activities = activities;
+        this.followUps = followUps;
         this.finder = finder;
+        this.assignableUsers = assignableUsers;
         this.clock = clock;
     }
 
+    /**
+     * The subject is resolved ONCE and reused for both rows, and both are written in one
+     * transaction: two round-trips means the second can fail somewhere and the follow-up —
+     * the half this whole feature exists to protect — is what goes missing (spec §6.1).
+     */
     @Transactional
     public ActivityResponse create(ActivityCreateRequest req) {
         finder.requireVisibleSubject(req.subjectType(), req.subjectId());
         Instant now = clock.instant();
         Instant occurredAt = req.occurredAt() == null ? now : req.occurredAt();
-        return ActivityResponse.of(activities.save(Activity.manual(
+        Activity saved = activities.save(Activity.manual(
             req.subjectType(), req.subjectId(), req.type(), req.body(), req.outcome(),
-            occurredAt, currentUserId(), now)));
+            occurredAt, currentUserId(), now));
+
+        UUID followUpId = null;
+        NextFollowUpRequest next = req.nextFollowUp();
+        if (next != null) {
+            assignableUsers.require(next.assignedTo());
+            followUpId = followUps.save(new FollowUp(req.subjectType(), req.subjectId(),
+                next.dueAt(), next.assignedTo(), next.note(), currentUserId())).getId();
+        }
+        return ActivityResponse.of(saved, followUpId);
     }
 
     @Transactional(readOnly = true)
