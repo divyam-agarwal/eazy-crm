@@ -1,11 +1,13 @@
 package com.easycrm.sales;
 
+import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.ActivityCreateRequest;
 import com.easycrm.sales.web.dto.ActivityResponse;
+import com.easycrm.sales.web.dto.ActivityUpdateRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +69,26 @@ public class ActivityService {
                           String body, UUID actorUserId) {
         Instant now = clock.instant();
         activities.save(Activity.system(subjectType, subjectId, type, body, actorUserId, now));
+    }
+
+    /**
+     * Full replace of the two editable fields, matching the house PATCH convention: an
+     * omitted body or outcome is CLEARED, not preserved (see deferred-backlog item 8).
+     *
+     * <p>Note the ordering: the subject gate runs first, so an activity on an invisible
+     * subject 404s before ownership is ever considered. Ownership then yields 422, which
+     * is correct rather than a departure from the 404 rule — the row is already provably
+     * visible to this caller, so a 404 would reveal nothing extra and would actively
+     * mislead a client into retrying a GET that succeeds (spec §7.1).
+     */
+    @Transactional
+    public ActivityResponse update(UUID id, ActivityUpdateRequest req) {
+        finder.requireVisibleSubject(req.subjectType(), req.subjectId());
+        Activity a = activities
+            .findByIdAndSubjectTypeAndSubjectId(id, req.subjectType(), req.subjectId())
+            .orElseThrow(() -> new NotFoundException("activity " + id + " was not found"));
+        a.edit(req.body(), req.outcome(), currentUserId());
+        return ActivityResponse.of(a);
     }
 
     private static UUID currentUserId() {

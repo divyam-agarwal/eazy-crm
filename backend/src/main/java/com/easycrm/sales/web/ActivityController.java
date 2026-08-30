@@ -5,11 +5,14 @@ import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.ActivityService;
 import com.easycrm.sales.web.dto.ActivityCreateRequest;
 import com.easycrm.sales.web.dto.ActivityResponse;
+import com.easycrm.sales.web.dto.ActivityUpdateRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,5 +45,16 @@ public class ActivityController {
                                                @RequestParam UUID subjectId,
                                                Pageable pageable) {
         return service.list(subjectType, subjectId, pageable);
+    }
+
+    /**
+     * Full-header-replace on the two editable fields, per the house convention shared with
+     * EnquiryController.patch and QuotationController.patch: an omitted nullable field is
+     * cleared. Own MANUAL rows only.
+     */
+    @PatchMapping("/{id}")
+    public ActivityResponse update(@PathVariable UUID id,
+                                   @Valid @RequestBody ActivityUpdateRequest req) {
+        return service.update(id, req);
     }
 }
