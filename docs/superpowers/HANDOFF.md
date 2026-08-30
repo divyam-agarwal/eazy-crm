@@ -25,8 +25,9 @@ see §3's "Previous code work" for its detail.
 visibility gate, the `activity` and `follow_up` aggregates + their own RLS migrations, `DueWindow`'s
 IST day-boundary arithmetic, the `AssignableUsers` extraction, log-and-schedule, filter/read/summary,
 complete/cancel/reschedule, editing an activity, the `QuotationAcceptedEvent` → `SYSTEM` activity
-listener, and this docs wrap-up) are done on branch `activity-follow-up`, commits `212099f`..`acf528f`
-off `main` at `830fd47`, every task reviewed clean. **It has not been merged to `main`** — run
+listener, this docs wrap-up, and the final review's fix wave) are done on branch
+`activity-follow-up`, commits `212099f`..`HEAD` off `main` at `830fd47`, every task reviewed
+clean. **It has not been merged to `main`** — run
 `finishing-a-development-branch` on it before starting anything new, unless you're picking this
 session up specifically to review or merge it.
 
@@ -211,7 +212,7 @@ All under `docs/superpowers/`:
 ## 3. Current state
 
 - **Latest code work: activity log and follow-ups** — **branch `activity-follow-up`, complete and
-  reviewed clean, NOT YET MERGED to `main`.** Commits `212099f`..`acf528f` off `main` at `830fd47`.
+  reviewed clean, NOT YET MERGED to `main`.** Commits `212099f`..`HEAD` off `main` at `830fd47`.
   Fourteen tasks delivering the two aggregates the design spec's §data-model names and nothing else
   (§2's out-of-scope recap: no scheduler, no notification table, no `OVERDUE` column, no attachments,
   no global feed). Both entities live under `com.easycrm.sales`, tenant-scoped and RLS-covered, in
@@ -916,3 +917,12 @@ three are ordinary per-task findings judged safe to defer.
     literal deviation from `CLAUDE.md`'s "same change" rule. Accepted because the guard that
     demonstrates *why* the mechanism matters (`ActivityRepositoryScopingArchTest`, Task 3, `642c94c`)
     only landed a task later; logging at Task 2 would have had no guard to point to yet.
+46. **Cross-assignment on `follow_up` is a one-way door, undecided by design, not a bug.** A
+    `SALES_EXEC` who creates a follow-up assigned to a colleague gets a `201` carrying a
+    `followUpId`, then `404`s on `GET /follow-ups/{id}` and cannot cancel or reschedule it — only
+    the assignee or an unrestricted role can, because `VisibilityPolicy.followUps()` filters
+    strictly on `assignedTo = me` (design spec §4.1). The API is coherent with that policy but
+    returns a link the caller cannot follow, and nothing documents or tests the boundary today
+    beyond the spec paragraph added alongside this item. Whether a creator should retain any
+    visibility or control over work they assigned to someone else is an open design question —
+    who may assign work to whom is out of scope for this slice.

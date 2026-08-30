@@ -120,6 +120,18 @@ means beats inheriting a vestigial branch that invites a reader to wonder when i
 `VisibleFinder` gains `findFollowUp(UUID)` and `pageFollowUps(Specification, Pageable)`.
 `FollowUpRepository` joins `VisibilityScopingArchTest.GUARDED_REPOSITORIES` (§8).
 
+**Cross-assignment is a one-way door, and it is deliberate.** A `SALES_EXEC` who creates a
+follow-up assigned to a colleague gets a `201` back carrying a `followUpId` — creation only
+requires the *subject* to be visible, not the assignee to be the caller. But every subsequent
+read or transition (`GET /follow-ups/{id}`, complete, cancel, reschedule) runs through
+`findFollowUp`, which applies `followUps()` above and filters strictly on `assignedTo = me`. The
+creator therefore gets a `404` on the very id the `201` just handed them, and cannot cancel or
+reschedule the follow-up they created — only the assignee, or an unrestricted role, can. The API
+response is coherent with the visibility model but is easy to misread as a bug: it returns a link
+the caller who just created it cannot follow. Whether — and how — one user should be able to see
+or manage work they assigned to another is a design question this slice does not answer; see the
+deferred-backlog item in `HANDOFF.md`.
+
 ### 4.2 `activity` stays out, and the exemption is structural
 
 An activity is **always read in a subject's context** — an enquiry's detail page, a customer 360.
@@ -232,7 +244,7 @@ after the shop closes. The timeline sorts on `occurred_at`; `created_at` remains
 record of when the row was written. A future `occurred_at` is rejected (§7.1) — you cannot log a
 call you have not had.
 
-### 5.2 `follow_up` — `V28__follow_up.sql`
+### 5.2 `follow_up` — `V29__follow_up.sql`
 
 | column | type | notes |
 |---|---|---|
@@ -363,9 +375,12 @@ push users to enter a fake future date, which is worse data.
 DueWindow.today(Instant now)  // -> [startOfTodayIST, endOfTodayIST)
 ```
 
-It reuses `IndianFormats`' existing `ZoneId.of("Asia/Kolkata")` rather than introducing a second
-timezone source. Every tenant is Indian by product definition; a per-tenant timezone column is
-out of scope and would be the wrong thing to add before a non-Indian tenant exists.
+It declares its own `private static final ZoneId IST = ZoneId.of("Asia/Kolkata")` — it cannot reuse
+`IndianFormats`' field of the same value, because that field is private to `IndianFormats`. The two
+classes therefore carry the same zone as two separate literals, not one shared source, and the two
+must be changed together if the zone ever changes. Every tenant is Indian by product definition; a
+per-tenant timezone column is out of scope and would be the wrong thing to add before a non-Indian
+tenant exists.
 
 Services take a `Clock` bean (`Clock.systemUTC()` in production, via a new
 `platform.time.ClockConfig`). This is the first `Clock` in the codebase.

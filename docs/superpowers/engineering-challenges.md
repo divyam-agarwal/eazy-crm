@@ -2917,6 +2917,8 @@ fields it happened to check (`type`, `body`) cannot distinguish the two paths â€
 reading the aggregate's own edit-guard (`Activity.edit`'s `SYSTEM` rejection) surfaces
 the consequence.
 
+---
+
 ## Challenge 49 â€” Fail-fast validation would have made the atomicity test tautological
 
 **Phase:** Implementation
