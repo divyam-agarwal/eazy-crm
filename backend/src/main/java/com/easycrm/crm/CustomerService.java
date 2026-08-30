@@ -2,8 +2,7 @@ package com.easycrm.crm;
 
 import com.easycrm.crm.web.dto.CustomerRequest;
 import com.easycrm.crm.web.dto.CustomerResponse;
-import com.easycrm.iam.UserRepository;
-import com.easycrm.iam.UserStatus;
+import com.easycrm.iam.AssignableUsers;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
@@ -22,18 +21,18 @@ public class CustomerService {
 
     private final CustomerRepository customers;
     private final VisibleFinder finder;
-    private final UserRepository users;
+    private final AssignableUsers assignableUsers;
 
-    public CustomerService(CustomerRepository customers, VisibleFinder finder, UserRepository users) {
+    public CustomerService(CustomerRepository customers, VisibleFinder finder, AssignableUsers assignableUsers) {
         this.customers = customers;
         this.finder = finder;
-        this.users = users;
+        this.assignableUsers = assignableUsers;
     }
 
     @Transactional
     public CustomerResponse create(CustomerRequest req) {
         Resolved r = resolveGstinAndState(req);
-        requireAssignableUser(req.assignedTo());
+        assignableUsers.require(req.assignedTo());
         if (r.gstin() != null) {
             customers.findByGstin(r.gstin()).ifPresent(c -> {
                 throw new ConflictException("customer with this GSTIN already exists");
@@ -58,7 +57,7 @@ public class CustomerService {
     @Transactional
     public CustomerResponse update(UUID id, CustomerRequest req) {
         Resolved r = resolveGstinAndState(req);
-        requireAssignableUser(req.assignedTo());
+        assignableUsers.require(req.assignedTo());
         Customer c = find(id);
         c.update(req.businessName(), r.gstin(), r.stateCode(), req.billingAddress(),
             req.shippingAddress(), creditDays(req), req.assignedTo(), req.priceListId(), req.source());
@@ -87,21 +86,6 @@ public class CustomerService {
 
     private int creditDays(CustomerRequest req) {
         return req.creditDays() == null ? 0 : req.creditDays();
-    }
-
-    /**
-     * A non-null assignedTo must name an ACTIVE user in this tenant. User is tenant-scoped,
-     * so RLS already makes a cross-tenant id come back empty -- no tenant check is needed
-     * here and adding one would be hand-written tenant filtering.
-     *
-     * <p>Without this, a typo'd UUID makes a record visible to nobody below manager,
-     * silently and permanently, because unassigned-means-visible only applies to NULL.
-     */
-    private void requireAssignableUser(UUID assignedTo) {
-        if (assignedTo == null) return;
-        users.findById(assignedTo)
-            .filter(u -> u.getStatus() == UserStatus.ACTIVE)
-            .orElseThrow(() -> new ValidationException("assignedTo", "must be an active user"));
     }
 
     /** GSTIN present ⇒ validate checksum, derive state (must match if supplied). Absent ⇒ require valid state_code. */
