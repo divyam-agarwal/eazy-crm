@@ -2869,3 +2869,50 @@ pattern to a sibling file needs to copy the *offset*, not just the shape of the 
 the two are easy to pull apart without noticing, because both compile and both read as
 "due in the future."
 
+
+---
+
+## Challenge 48 — A completion note that logs as `SYSTEM` can never be corrected
+
+**Phase:** Implementation
+
+### The problem
+
+`FollowUpService.complete` optionally writes an `Activity` when the request carries
+an activity `type` — closing a task and recording what happened are one user
+intention. `ActivityService` already had exactly one writer for activities the
+service itself produces without the create-time subject gate: `logSystem`, built for
+`QuotationAcceptedActivityListener`. Reusing it here was the path of least
+resistance — `complete` had already loaded and gated the follow-up's subject through
+`find(id)`, which is precisely the situation `logSystem`'s own doc comment describes
+as safe to skip re-gating for.
+
+Reusing it would have been wrong anyway: `logSystem` calls `Activity.system(...)`,
+and `Activity.edit` unconditionally rejects any row whose `source` is `SYSTEM`
+("a system-logged activity cannot be edited"). A completion note is not something
+the application observed — a person typed it into the request body. Logging it as
+`SYSTEM` would make it permanently uneditable, so a user could never fix a typo in
+their own words. The endpoint test only asserts `type` and `body` on the written
+row, so it passes identically whichever source is used — nothing in the test suite
+would catch the wrong choice.
+
+### The solution
+
+Added `ActivityService.logManualForGatedCaller`, a second skip-the-gate writer that
+calls `Activity.manual(...)` instead of `Activity.system(...)`. It is identical to
+`logSystem` in the one property that matters for its existence (the caller has
+already gated the subject, so no second `requireVisibleSubject` query is needed) and
+different in the one property that matters for correctness (`MANUAL` source, so
+`Activity.edit` will accept a later correction from whoever logged it).
+`FollowUpService.complete` calls this new method, never `logSystem`.
+
+### Lesson
+
+"Already gated, skip the second query" and "who gets to edit this row later" are two
+independent axes — a helper that is safe on the first axis is not automatically safe
+on the second. When a new call site's content originates from a human typing into a
+request body, its `source` has to reflect that regardless of which existing
+already-gated helper looks structurally closest, because a test asserting only the
+fields it happened to check (`type`, `body`) cannot distinguish the two paths — only
+reading the aggregate's own edit-guard (`Activity.edit`'s `SYSTEM` rejection) surfaces
+the consequence.

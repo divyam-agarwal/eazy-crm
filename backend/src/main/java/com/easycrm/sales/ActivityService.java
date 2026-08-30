@@ -72,6 +72,23 @@ public class ActivityService {
     }
 
     /**
+     * A MANUAL activity written on behalf of a caller that has ALREADY passed the subject
+     * gate — currently only FollowUpService.complete, which loaded its follow-up through
+     * VisibleFinder, whose subject was gated when that row was created.
+     *
+     * <p>Distinct from logSystem in exactly one way that matters: these rows are editable,
+     * because a human wrote them. Any new caller must be able to make the same
+     * already-gated claim; if it cannot, it wants create() and the full gate.
+     */
+    @Transactional
+    public void logManualForGatedCaller(SubjectType subjectType, UUID subjectId,
+                                        ActivityType type, String body, String outcome) {
+        Instant now = clock.instant();
+        activities.save(Activity.manual(subjectType, subjectId, type, body, outcome,
+            now, currentUserId(), now));
+    }
+
+    /**
      * Full replace of the two editable fields, matching the house PATCH convention: an
      * omitted body or outcome is CLEARED, not preserved (see deferred-backlog item 8).
      *

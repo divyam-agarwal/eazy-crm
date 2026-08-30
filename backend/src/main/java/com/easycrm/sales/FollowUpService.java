@@ -7,9 +7,11 @@ import com.easycrm.platform.time.DueWindow;
 import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
+import com.easycrm.sales.web.dto.FollowUpCompleteRequest;
 import com.easycrm.sales.web.dto.FollowUpCreateRequest;
 import com.easycrm.sales.web.dto.FollowUpResponse;
 import com.easycrm.sales.web.dto.FollowUpSummaryResponse;
+import com.easycrm.sales.web.dto.FollowUpUpdateRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.PageRequest;
@@ -26,13 +28,16 @@ public class FollowUpService {
     private final FollowUpRepository followUps;
     private final VisibleFinder finder;
     private final AssignableUsers assignableUsers;
+    private final ActivityService activities;
     private final Clock clock;
 
     public FollowUpService(FollowUpRepository followUps, VisibleFinder finder,
-                           AssignableUsers assignableUsers, Clock clock) {
+                           AssignableUsers assignableUsers, ActivityService activities,
+                           Clock clock) {
         this.followUps = followUps;
         this.finder = finder;
         this.assignableUsers = assignableUsers;
+        this.activities = activities;
         this.clock = clock;
     }
 
@@ -82,6 +87,45 @@ public class FollowUpService {
         return finder.pageFollowUps(
             FollowUpSpecifications.filter(scope, null, null, null, null, now, endOfToday),
             PageRequest.of(0, 1)).getTotalElements();
+    }
+
+    /** Full-header-replace, per house PATCH convention. Rejected by the aggregate once terminal. */
+    @Transactional
+    public FollowUpResponse update(UUID id, FollowUpUpdateRequest req) {
+        FollowUp f = find(id);
+        assignableUsers.require(req.assignedTo());
+        f.reschedule(req.dueAt(), req.assignedTo(), req.note());
+        return FollowUpResponse.of(f, clock.instant());
+    }
+
+    /**
+     * Completes the follow-up and, when the request carries an activity type, logs that
+     * activity against the follow-up's OWN subject in the same transaction (spec §6.2).
+     *
+     * <p>The activity is MANUAL, not SYSTEM: a user typed that body, so they must be able
+     * to correct it later, and a SYSTEM row is permanently uneditable. It goes through
+     * logManualForGatedCaller rather than the normal create path because the subject does
+     * not need re-resolving — find(id) above already loaded this row through VisibleFinder,
+     * and the follow-up's subject was itself gated when the row was created.
+     */
+    @Transactional
+    public FollowUpResponse complete(UUID id, FollowUpCompleteRequest req) {
+        FollowUp f = find(id);
+        Instant now = clock.instant();
+        f.complete(req.note(), now);
+        if (req.type() != null) {
+            activities.logManualForGatedCaller(f.getSubjectType(), f.getSubjectId(),
+                req.type(), req.body(), req.outcome());
+        }
+        return FollowUpResponse.of(f, now);
+    }
+
+    @Transactional
+    public FollowUpResponse cancel(UUID id, String reason) {
+        FollowUp f = find(id);
+        Instant now = clock.instant();
+        f.cancel(reason, now);
+        return FollowUpResponse.of(f, now);
     }
 
     /** Visibility-filtered load; 404 when the caller may not see it. Used by transitions. */
