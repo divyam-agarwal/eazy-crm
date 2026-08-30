@@ -1048,7 +1048,7 @@ class ActivityEndpointTest extends IntegrationTest {
                      "body":"time travel","occurredAt":"%s"}
                     """.formatted(enquiryId, Instant.now().plusSeconds(86_400))))
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.fields.occurredAt").exists());
+            .andExpect(jsonPath("$.error.fields.occurredAt").exists());
     }
 
     @Test
@@ -2988,7 +2988,7 @@ class FollowUpEndpointTest extends IntegrationTest {
                      "assignedTo":"%s","note":"x"}
                     """.formatted(enquiryId, Instant.now().plusSeconds(3600), UUID.randomUUID())))
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.fields.assignedTo").exists());
+            .andExpect(jsonPath("$.error.fields.assignedTo").exists());
     }
 
     @Test
@@ -3534,7 +3534,7 @@ class FollowUpTransitionEndpointTest extends IntegrationTest {
 
         complete(id, "again")
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.fields.status").exists());
+            .andExpect(jsonPath("$.error.fields.status").exists());
     }
 
     @Test
@@ -3580,7 +3580,7 @@ class FollowUpTransitionEndpointTest extends IntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"reason":"   "}"""))
             .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.fields.reason").exists());
+            .andExpect(jsonPath("$.error.fields.reason").exists());
     }
 
     @Test
