@@ -23,9 +23,20 @@ public final class DueWindow {
     public record Window(Instant startOfToday, Instant endOfToday) {}
 
     public static Window today(Instant now) {
-        LocalDate todayInIst = now.atZone(IST).toLocalDate();
+        LocalDate todayInIst = todayDate(now);
         return new Window(
             todayInIst.atStartOfDay(IST).toInstant(),
             todayInIst.plusDays(1).atStartOfDay(IST).toInstant());
+    }
+
+    /**
+     * Today's date in IST. Distinct from {@link #today(Instant)}, which returns the day's
+     * instant boundaries; this returns the calendar date itself, for comparison against a
+     * {@code LocalDate} column such as {@code quotation_version.valid_until} that a user
+     * entered in IST. Comparing such a column against a UTC date would expire quotations
+     * 5½ hours early every day.
+     */
+    public static LocalDate todayDate(Instant now) {
+        return now.atZone(IST).toLocalDate();
     }
 }

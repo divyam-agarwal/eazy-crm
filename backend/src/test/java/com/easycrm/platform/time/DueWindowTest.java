@@ -3,6 +3,7 @@ package com.easycrm.platform.time;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,5 +60,25 @@ class DueWindowTest {
 
         assertThat(java.time.Duration.between(w.startOfToday(), w.endOfToday()))
             .isEqualTo(java.time.Duration.ofHours(24));
+    }
+
+    @Test
+    void todayDateIsStillYesterdayJustBeforeIstMidnight() {
+        // IST is UTC+5:30, so IST midnight falls at 18:30 UTC the previous day.
+        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T18:29:00Z")))
+            .isEqualTo(LocalDate.of(2026, 8, 31));
+    }
+
+    @Test
+    void todayDateRollsOverExactlyAtIstMidnight() {
+        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T18:30:00Z")))
+            .isEqualTo(LocalDate.of(2026, 9, 1));
+    }
+
+    @Test
+    void todayDateUsesIstNotUtcForAMiddayInstant() {
+        // 2026-08-31T20:00Z is already 2026-09-01 01:30 IST.
+        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T20:00:00Z")))
+            .isEqualTo(LocalDate.of(2026, 9, 1));
     }
 }

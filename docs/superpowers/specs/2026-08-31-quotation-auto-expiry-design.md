@@ -115,7 +115,7 @@ the existing listeners, so their writes join the tenant's transaction and roll b
   `VisibilityScopingArchTest` fails the build on any read of it outside
   `com.easycrm.platform.visibility`. The visibility filter is a no-op under a `SYSTEM`
   principal, but the guard forces the read into the one place that is allowed to do it.
-- **`DueWindow.today(Instant)`** — today's date in IST. `DueWindow` already computes this
+- **`DueWindow.todayDate(Instant)`** — today's date in IST. `DueWindow` already computes this
   internally for its day boundaries; this exposes it rather than adding a second home for
   IST arithmetic.
 - **`TenantRepository.findByStatusIn(...)`** — a derived query. `Tenant` is unguarded, so no
@@ -145,7 +145,7 @@ UTC-evening side of the boundary.
 
 ## 5. Data flow, one run
 
-1. 00:30 IST — Spring fires `QuotationExpiryJob`; `asOf = DueWindow.today(clock.instant())`.
+1. 00:30 IST — Spring fires `QuotationExpiryJob`; `asOf = DueWindow.todayDate(clock.instant())`.
 2. Runner loads `TRIAL` + `ACTIVE` tenants, no tenant context (global table).
 3. Per tenant, `runAs(systemPrincipal)` **then** `tx.execute`:
    1. `TenantAwareTransactionManager.doBegin` sets the `app.current_tenant` GUC from the
