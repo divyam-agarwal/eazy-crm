@@ -37,6 +37,7 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
 
     private UUID lapsedSent, todaySent, openEndedSent, lapsedDraft, lapsedAccepted,
                  lapsedRejected, lapsedAlreadyExpired;
+    private UUID supersededLapsed;
 
     @BeforeEach
     void seed() {
@@ -49,6 +50,7 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
             lapsedAccepted       = seed(AS_OF.minusDays(1), QuotationStatus.ACCEPTED);
             lapsedRejected       = seed(AS_OF.minusDays(1), QuotationStatus.REJECTED);
             lapsedAlreadyExpired = seed(AS_OF.minusDays(1), QuotationStatus.EXPIRED);
+            supersededLapsed = seedTwoVersions(AS_OF.minusDays(10), AS_OF.plusDays(7));
             return null;
         });
         TenantContext.clear();
@@ -75,6 +77,11 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
     void doesNotSelectNonSentStatusesHoweverStaleTheirDate() {
         assertThat(idsOfCandidates())
             .doesNotContain(lapsedDraft, lapsedAccepted, lapsedRejected, lapsedAlreadyExpired);
+    }
+
+    @Test
+    void doesNotSelectAQuotationWhoseLapsedVersionHasBeenSuperseded() {
+        assertThat(idsOfCandidates()).doesNotContain(supersededLapsed);
     }
 
     private List<UUID> idsOfCandidates() {
@@ -107,6 +114,28 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
             case EXPIRED  -> q.expire();
             case SENT     -> { }
         }
+        return quotations.saveAndFlush(q).getId();
+    }
+
+    /**
+     * A SENT quotation whose CURRENT version is still open, but whose SUPERSEDED first
+     * version lapsed long ago. This is the fixture that discriminates: it is selected only
+     * by an implementation that correlates on the quotation rather than on
+     * currentVersionId.
+     */
+    private UUID seedTwoVersions(LocalDate supersededValidUntil, LocalDate currentValidUntil) {
+        Quotation q = quotations.saveAndFlush(new Quotation(UUID.randomUUID(), null));
+        QuotationVersion v1 = versions.saveAndFlush(new QuotationVersion(q.getId(), 1, "27"));
+        v1.setHeader(supersededValidUntil, null, null, null);
+        v1.setTotals(BigDecimal.TEN, BigDecimal.ONE, new BigDecimal("11"));
+        versions.saveAndFlush(v1);
+        QuotationVersion v2 = versions.saveAndFlush(new QuotationVersion(q.getId(), 2, "27"));
+        v2.setHeader(currentValidUntil, null, null, null);
+        v2.setTotals(BigDecimal.TEN, BigDecimal.ONE, new BigDecimal("11"));
+        versions.saveAndFlush(v2);
+        q.setCurrentVersionId(v2.getId());
+        q.assignQuoteNo("Q-EXP-" + (++seq));
+        q.markSent();
         return quotations.saveAndFlush(q).getId();
     }
 }
