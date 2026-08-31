@@ -78,9 +78,11 @@ public class ActivityService {
      * synthetic principal that VisibilityPolicy treats as unrestricted-but-userless.
      *
      * <p>The safety argument is therefore "the caller already passed the gate", which is
-     * only sound because this method has exactly ONE call site —
-     * QuotationAcceptedActivityListener, added in a later task. Any new caller must be
-     * able to make the same claim; one that cannot wants create() and the full gate.
+     * only sound because every call site can make it. There are two:
+     * QuotationAcceptedActivityListener, and QuotationExpiredActivityListener (whose
+     * subject was loaded through VisibleFinder.listQuotations inside
+     * QuotationExpirySweep). Any new caller must be able to make the same claim; one that
+     * cannot wants create() and the full gate.
      * (The activity written when a follow-up is completed does NOT come through here: a
      * user typed that one, so it must stay editable and goes through
      * logManualForGatedCaller instead.)
