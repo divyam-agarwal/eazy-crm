@@ -27,9 +27,12 @@ class QuotationTest {
     @Test
     void refusesToExpireADraftAndLeavesTheStatusUnmutated() {
         Quotation q = new Quotation(UUID.randomUUID(), null); // starts DRAFT
+        // Assert on getFields(), NOT on getMessage(): ValidationException carries its
+        // detail in the field map and its message is a fixed string.
         assertThatThrownBy(q::expire)
-            .isInstanceOf(ValidationException.class)
-            .hasMessageContaining("only a sent quotation can be expired");
+            .isInstanceOfSatisfying(ValidationException.class, ex ->
+                assertThat(ex.getFields())
+                    .containsEntry("status", "only a sent quotation can be expired"));
         assertThat(q.getStatus()).isEqualTo(QuotationStatus.DRAFT);
     }
 
