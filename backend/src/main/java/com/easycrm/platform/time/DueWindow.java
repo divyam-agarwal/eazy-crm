@@ -33,8 +33,10 @@ public final class DueWindow {
      * Today's date in IST. Distinct from {@link #today(Instant)}, which returns the day's
      * instant boundaries; this returns the calendar date itself, for comparison against a
      * {@code LocalDate} column such as {@code quotation_version.valid_until} that a user
-     * entered in IST. Comparing such a column against a UTC date would expire quotations
-     * 5½ hours early every day.
+     * entered in IST. Comparing such a column against a UTC date gets the error's
+     * direction backwards from the obvious guess: a UTC date is never later than the IST
+     * one, so too-early an asOf matches FEWER rows and DELAYS expiry -- a quotation due to
+     * expire at IST midnight is skipped until the next night's run.
      */
     public static LocalDate todayDate(Instant now) {
         return now.atZone(IST).toLocalDate();

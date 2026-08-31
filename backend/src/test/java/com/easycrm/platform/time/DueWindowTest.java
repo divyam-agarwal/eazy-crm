@@ -63,8 +63,10 @@ class DueWindowTest {
     }
 
     @Test
-    void todayDateIsStillYesterdayJustBeforeIstMidnight() {
-        // IST is UTC+5:30, so IST midnight falls at 18:30 UTC the previous day.
+    void todayDateDoesNotRollOverBeforeIstMidnight() {
+        // Before 18:30Z the IST and UTC dates necessarily agree, so this pins the near side
+        // of the offset (a zone further east would roll over here) rather than discriminating
+        // IST from UTC. The two tests below are the ones that do that.
         assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T18:29:00Z")))
             .isEqualTo(LocalDate.of(2026, 8, 31));
     }
