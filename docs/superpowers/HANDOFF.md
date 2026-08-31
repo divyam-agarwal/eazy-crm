@@ -25,7 +25,7 @@ see §3's "Previous code work" for its detail.
 visibility gate, the `activity` and `follow_up` aggregates + their own RLS migrations, `DueWindow`'s
 IST day-boundary arithmetic, the `AssignableUsers` extraction, log-and-schedule, filter/read/summary,
 complete/cancel/reschedule, editing an activity, the `QuotationAcceptedEvent` → `SYSTEM` activity
-listener, this docs wrap-up, and the final review's fix wave) are done on branch
+listener, the docs wrap-up, and the final review's fix wave) are done on branch
 `activity-follow-up`, commits `212099f`..`48d35a6` off `main` at `830fd47`, every task reviewed
 clean. The whole-branch review returned MERGE after one fix wave, and the branch was merged
 `--no-ff` as **`f97c62c`** on 2026-08-31 and deleted. The merged result was verified green
@@ -58,7 +58,7 @@ before that (merged as `3c239d1`), and `platform-primitives-module` before that 
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 408, not 431, and this tripped an
+   -path './build/test-results/test/*.xml'` alone reports 409, not 432, and this tripped an
    implementer on this very branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
@@ -82,10 +82,11 @@ before that (merged as `3c239d1`), and `platform-primitives-module` before that 
    for any of them; as of 2026-08-27 that is half false — **module 1, `platform-primitives`, has a
    plan (`plans/2026-08-27-platform-primitives-module.md`) and is built** (§8). The other five are
    still design only.
-   Read that handoff's §3 before planning anything: three findings there outrank the module work,
-   and two of them describe code running today — RLS is `ENABLE`d and never `FORCE`d, so tenant
-   isolation currently rests on which database role a deployment happens to connect with. Building
-   one module did not change that ordering.
+   Read that handoff's §3 before planning anything: it records three findings (PF14, PF15, PF19).
+   **Two are now closed and that handoff has not been updated to say so** — trust §8 here over it.
+   PF14 (RLS `ENABLE`d but never `FORCE`d) and PF15 (no layer-3 guard) were both closed by the
+   `rls-force-and-guard` slice; **PF19 is the only one still open**, and it is blocked on the
+   billing thread's design, not on effort. See §8 for the current status of each.
 4. **Go to §8** and pick the next chunk *with the user*. Do not start one unilaterally.
 5. Then run the standard workflow on a feature branch off `main`:
    **brainstorming → (design spec →) writing-plans → subagent-driven-development →
@@ -204,7 +205,7 @@ All under `docs/superpowers/`:
     polymorphic subject link across the four visibility-scoped aggregates, the two-strategy
     visibility gate in §4, why `OVERDUE` is a read-time predicate rather than a status column, the
     three flows, and the deliberate non-implementation of the parent spec's reminder scheduler).
-    Source of truth for *what* this slice built. §5.3 was corrected during this docs task from the
+    Source of truth for *what* this slice built. §5.3 was corrected during the slice from the
     single `V29__rls_activity_follow_up.sql` originally described to the four-file split the plan
     actually uses.
 34. **`plans/2026-08-30-activity-follow-up.md`** — the fourteen-task implementation plan for it.
@@ -220,7 +221,7 @@ All under `docs/superpowers/`:
   **four migrations, not one** — `V27__activity.sql`, `V28__rls_activity.sql`, `V29__follow_up.sql`,
   `V30__rls_follow_up.sql` — because the two tables land in different tasks and a single combined RLS
   migration would leave `RlsCoverageIntegrationTest` red between them (the design spec §5.3 originally
-  described one file; corrected to the four-file split by this docs task).
+  described one file; corrected to the four-file split during the slice).
 
   **Two visibility strategies for two tables that only look symmetrical (challenge #50).**
   `follow_up` has its own `assigned_to` and joins the guarded set exactly like the four existing
@@ -235,6 +236,15 @@ All under `docs/superpowers/`:
   to inherit — `ActivityRepositoryScopingArchTest` asserts both the forbidden-supertype list (which
   also had to name `QueryByExampleExecutor`/`QuerydslPredicateExecutor`, found in review, not on the
   first pass) and that every declared method takes a subject.
+
+  **A third assertion was added by the final review's fix wave, and it is the one to understand
+  before touching this area:** the first two guard the repository's *shape*, but nothing stopped a
+  future service from injecting `ActivityRepository` directly and passing a request-supplied
+  `subjectId` without ever calling `requireVisibleSubject` — a `SALES_EXEC` could then have read a
+  colleague's customer's whole call log with every guard green. `ActivityRepositoryScopingArchTest`
+  now also pins an **allowlist of permitted caller classes, currently just `ActivityService`**,
+  checking both `repo.method()` calls and `repo::method` references. Adding a name to that
+  allowlist is a visibility decision, not a formality.
 
   **`OVERDUE` is a predicate, computed at read time, not a status column (challenge #51).** The
   parent spec's reminder scheduler is deliberately not built — see §8 for the annotation and the
@@ -256,9 +266,9 @@ All under `docs/superpowers/`:
   **`AssignableUsers` extracted** (`com.easycrm.iam`) from the identical private
   `requireAssignableUser` copies duplicated in `CustomerService` and `EnquiryService` — closing
   deferred-backlog item 40 below — because `FollowUpService` needed a third copy and three was the
-  line. **431 tests, 0 failures, 0 errors** — 408 in the root project, 23 in `platform-primitives`,
+  line. **432 tests, 0 failures, 0 errors** — 409 in the root project, 23 in `platform-primitives`,
   up from the 352-test `record-visibility` baseline (+79). New challenges #47–#51; annotations
-  reference gained `@JsonInclude` (this docs task; `@EventListener`/`@Enumerated`/`@Configuration`/
+  reference gained `@JsonInclude` (`@EventListener`/`@Enumerated`/`@Configuration`/
   `@Bean` were already present). **What this slice does *not* do:** any scheduler, notification
   channel, or `OVERDUE` column (§3/§8 of the design spec, challenge #51); any narrowing of
   `SALES_MANAGER`, unchanged from the visibility slice; any change to the four existing aggregates'
@@ -595,7 +605,11 @@ code running **today**, not the future split. **Two of the three are now closed*
 `rls-force-and-guard` slice took PF14 and PF15 (§3); PF19 remains open:
 
 - ~~**PF14** — RLS `ENABLE`d on all fourteen tables and `FORCE`d on none.~~ **DONE** —
-  `V26__force_rls.sql` forces all fourteen. Read the caveat in §3: this removes the *silent*
+  `V26__force_rls.sql` forces the fourteen that existed then. **There are sixteen now**
+  (`activity` and `follow_up` arrived later): a new tenant table does NOT get retrofitted into
+  `V26`, it ships `ENABLE` + `FORCE` + its own `tenant_isolation` policy in its own migration,
+  as `V28__rls_activity.sql` and `V30__rls_follow_up.sql` do. `RlsCoverageIntegrationTest` keys
+  on the `tenant_id` column, so forgetting this fails the build rather than leaking quietly. Read the caveat in §3: this removes the *silent*
   failure mode, but a deployment still has to connect as `easycrm_app` for layers 3 to do
   anything; forcing means a wrong role now fails loudly instead of leaking quietly.
 - ~~**PF15** — ArchUnit guards layer 2; nothing guards layer 3.~~ **DONE** —
@@ -626,6 +640,9 @@ honest ranking has changed again:
   cheapest slice available; with #1 closed, nothing bigger is more obviously due. It also has a head
   start: the design spec's §3 tenant-iteration note (`TenantContext.runAs` before the transaction
   opens, per-tenant, no JWT to read from) is exactly the seam it needs.
+- **#3 (user invitations) is the largest genuinely-open product item.** It is the sole surviving
+  piece of the P0-auth follow-up, and unlike PF19 it is blocked on nothing — no design thread, no
+  missing channel. Pick it over #2 if the next slice should be substantial rather than cheap.
 - **#4 (cursor pagination)** — cross-cutting, lower urgency, unchanged by this slice.
 - **PF19's entitlement-metering half stays blocked on design, not effort.** The public route has no
   JWT, so there is nowhere to hang a per-tenant check; it needs the billing thread's decisions before
@@ -633,8 +650,9 @@ honest ranking has changed again:
 - **`platform-web` stays the weakest claim.** Next by dependency order only; nothing in this slice
   changed that.
 
-A reasonable reading is: **#2 by default now that both #1 and the correctness backlog are empty.**
-Confirm with the user rather than assuming.
+A reasonable reading is: **#2 if a cheap slice is wanted, #3 if a substantial one is.** Both are
+defensible; #1 and the correctness backlog are empty, so nothing is competing on urgency. Confirm
+with the user rather than assuming.
 
 **Before any second app instance:** the rate limiter's store is in-process (§3) — running N
 instances behind a load balancer multiplies every configured limit by N, silently. Build the
@@ -647,6 +665,12 @@ tenant partition, and today *every* row matches it because nothing has ever writ
 is fine at current volumes and is the one performance consequence the visibility design does not
 otherwise call out. It sits alongside item 15 below (no index supports a status-only order-list
 filter) as the second thing to look at when a tenant's tables grow.
+
+**The activity/follow-up slice deliberately did not repeat that mistake**, which is the pattern to
+copy: `follow_up` shipped `(tenant_id, assigned_to, status, due_at)` in its creating migration
+because that is the dashboard's every-login query, and `activity` shipped
+`(tenant_id, subject_type, subject_id, occurred_at DESC)` to cover the timeline read. Adding the
+index when the table is created costs one line; retrofitting it costs a migration on a live table.
 
 ### Smaller deferred-Minor backlog
 
@@ -912,8 +936,8 @@ three are ordinary per-task findings judged safe to defer.
     the client already treats a missing key and an explicit `null` the same way — but the blast
     radius is wider than the one field that motivated it. Narrow it to `@JsonInclude` on the
     `followUpId` field alone if it ever bites.
-45. **Challenge #50's log entry (the bare-`Repository` mechanism) was written in this docs task
-    (Task 14) rather than in the task that introduced the mechanism (Task 2, `ff456fb`)** — a
+45. **Challenge #50's log entry (the bare-`Repository` mechanism) was written in the slice's
+    docs task (Task 14) rather than in the task that introduced the mechanism (Task 2, `ff456fb`)** — a
     literal deviation from `CLAUDE.md`'s "same change" rule. Accepted because the guard that
     demonstrates *why* the mechanism matters (`ActivityRepositoryScopingArchTest`, Task 3, `642c94c`)
     only landed a task later; logging at Task 2 would have had no guard to point to yet.
