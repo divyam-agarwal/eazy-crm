@@ -1,36 +1,36 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-31 — **Activity log and follow-ups are built and merged to `main` as
-`f97c62c`. Nothing is in flight; `main` is the baseline for new work.**
-The wedge's "never lose a follow-up" promise now has an implementation: `POST
-/api/v1/activities` logs a CALL/WHATSAPP/EMAIL/VISIT/NOTE against any of `Customer`, `Enquiry`,
-`Quotation`, or `Order` and can atomically schedule the next follow-up in the same request;
-`follow_up` gets its own owner-scoped visibility (joining the guarded set) while `activity` is
-gated at its subject via `VisibleFinder.requireVisibleSubject` — a structurally unbypassable gate
-because `ActivityRepository` extends the bare `Repository<T, ID>` marker rather than
-`JpaRepository`, so there is nothing unscoped to inherit (challenge #50). **`OVERDUE` is a
-predicate, not a column**: no scheduler, no job, no notification channel — see §3 and §8 for why,
-and challenge #51 for the reasoning. Backlog item #1 (activity/follow-up) is now **DONE** — see
-§8. The previous slice (intra-tenant record-level visibility) is **merged to `main` as `c81f59f`**;
-see §3's "Previous code work" for its detail.
+**Last updated:** 2026-08-31 — **Scheduled quotation auto-expiry is built on branch
+`quotation-auto-expiry`, all seven tasks complete and green, pending merge (not yet on `main`).**
+The codebase's first non-request execution path now exists: a nightly job iterates every
+job-eligible tenant with no JWT behind it, and the reusable seam it landed —
+`platform/job/TenantJobRunner` — is what every future scheduled job should build on rather than
+growing its own tenant loop. `TenantJobRunner` owns the ordering that makes tenant-scoped reads
+work at all outside a request (`TenantContext.runAs` wraps its own `PROPAGATION_REQUIRES_NEW`
+transaction, never the reverse — challenge #52) so that ordering is structural, not something each
+job author has to remember. A `Quotation` past `validUntil` and still `SENT` is now expired
+automatically at 00:30 IST, with an audit row and a timeline activity, using the same IST
+calendar-date arithmetic `DueWindow` already had for follow-ups (challenge #53 covers the
+UTC-vs-IST trap this raises for a `LocalDate` column). Backlog item #2 (scheduled auto-expiry) is
+now **DONE** — see §8. The previous slice (activity log and follow-ups) is **merged to `main` as
+`f97c62c`**; see §3's "Previous code work" for its detail.
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### One thing is in flight
 
-**`main` is clean and is the baseline for new work.** Fourteen tasks (the polymorphic subject
-visibility gate, the `activity` and `follow_up` aggregates + their own RLS migrations, `DueWindow`'s
-IST day-boundary arithmetic, the `AssignableUsers` extraction, log-and-schedule, filter/read/summary,
-complete/cancel/reschedule, editing an activity, the `QuotationAcceptedEvent` → `SYSTEM` activity
-listener, the docs wrap-up, and the final review's fix wave) are done on branch
-`activity-follow-up`, commits `212099f`..`48d35a6` off `main` at `830fd47`, every task reviewed
-clean. The whole-branch review returned MERGE after one fix wave, and the branch was merged
-`--no-ff` as **`f97c62c`** on 2026-08-31 and deleted. The merged result was verified green
-(**432 tests, 0 failures, 0 errors**) before the branch went away. There is no unmerged feature
-branch to settle — start at item 1 below, then go to §8 and pick the next chunk with the user.
+**`quotation-auto-expiry` is complete but not merged.** Seven tasks (`DueWindow.todayDate` for
+IST-vs-UTC calendar-date comparisons, `Quotation.expire()`'s own `SENT` precondition,
+`QuotationSpecifications.expirableAsOf` + `VisibleFinder.listQuotations`, `TenantJobRunner` +
+`TenantRepository.findByStatusIn`, the `QuotationExpiredEvent` sweep with its audit and activity
+listeners, `SchedulingConfig`/`QuotationExpiryJob`/the cron property/the test-suite cron disable,
+and this docs wrap-up) are done on branch `quotation-auto-expiry`, commits `63a2865`..`7d89963` off
+`main` at `d7eae98`, every task reviewed clean. **It has not been merged to `main`** — run
+`finishing-a-development-branch` on it before starting anything new, unless you're picking this
+session up specifically to review or merge it.
 
 **One loose end that is not code, carried forward from before this slice:** the Bucket4j entry
 written for `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that
@@ -38,14 +38,15 @@ directory is not a git repository, so nothing was committed there. The rate-limi
 asked for the entry; it exists; it is just untracked. Decide with the user whether that repo should
 be `git init`ed. Do not init it unilaterally.
 
-Before it, `record-visibility` ran to completion and **merged to `main` as `c81f59f`**; that feature
-branch is deleted, as was `public-rate-limiting` before it (merged as `d7725b0`), `rls-force-and-guard`
-before that (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
+Before it, `activity-follow-up` ran to completion and **merged to `main` as `f97c62c`**; that
+feature branch is deleted, as was `record-visibility` before it (merged as `c81f59f`),
+`public-rate-limiting` before that (merged as `d7725b0`), `rls-force-and-guard` before that
+(merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On `main` this is now
-   **432 tests, 0 failures, 0 errors** (409 root + 23 `platform-primitives`), up from the
-   **352** that preceded this slice (329 root + 23 `platform-primitives`). Gradle prints no total for a
+   then `cd backend && ./gradlew clean test`. On this branch (`quotation-auto-expiry`) this is
+   **461 tests, 0 failures, 0 errors** (438 root + 23 `platform-primitives`), up from `main`'s
+   **432 tests** baseline (409 root + 23 `platform-primitives`). Gradle prints no total for a
    multi-project build, so count it yourself:
 
    ```bash
@@ -58,8 +59,8 @@ before that (merged as `3c239d1`), and `platform-primitives-module` before that 
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 409, not 432, and this tripped an
-   implementer on this very branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
+   -path './build/test-results/test/*.xml'` alone reports 438, not 461, and this tripped an
+   implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
    **A filtered run must now be project-qualified.** Unqualified `./gradlew clean test` deliberately
@@ -125,7 +126,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (51 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (53 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -210,10 +211,69 @@ All under `docs/superpowers/`:
     actually uses.
 34. **`plans/2026-08-30-activity-follow-up.md`** — the fourteen-task implementation plan for it.
     **Merged to `main` as `f97c62c`** — see §0 and §3.
+35. **`specs/2026-08-31-quotation-auto-expiry-design.md`** — quotation auto-expiry design spec (the
+    `TenantJobRunner` seam for jobs with no JWT, the `TenantContext.runAs`-before-transaction
+    ordering, why `asOf` must be computed in IST rather than the server's UTC clock, and the
+    audit + activity event pair on expiry). Source of truth for *what* this slice built.
+36. **`plans/2026-08-31-quotation-auto-expiry.md`** — the seven-task implementation plan for it.
+    **Branch `quotation-auto-expiry` is complete, reviewed, and pending merge** — see §0 and §3.
 
 ## 3. Current state
 
-- **Latest code work: activity log and follow-ups** — **merged to `main` as `f97c62c`**; the
+- **Latest code work: quotation auto-expiry** — **branch `quotation-auto-expiry`, complete and
+  reviewed, NOT YET MERGED to `main`.** Commits `63a2865`..`7d89963` off `main` at `d7eae98`.
+  Seven tasks delivering the codebase's first non-request execution path and a reusable seam for
+  every scheduled job after it.
+
+  **`platform/job/TenantJobRunner`** iterates every job-eligible tenant (`TenantStatus.TRIAL` or
+  `ACTIVE`, via the new `TenantRepository.findByStatusIn`) and runs a caller-supplied body once
+  per tenant, each in its own `PROPAGATION_REQUIRES_NEW` transaction with `TenantContext` bound
+  **before** that transaction opens — the ordering that makes a scoped read return real rows
+  instead of silently zero (challenge #52). The template is built by the runner itself rather than
+  injected, closing two independent traps with one motion: a `@Transactional` method called from
+  the runner's own loop would be a self-invocation (proxy bypassed), and Boot's autoconfigured
+  `TransactionTemplate` is `PROPAGATION_REQUIRED`, so a caller that already holds a transaction
+  would make the per-tenant work silently join it. `TenantJobRunnerTest.eachTenantsBodySeesOnlyItsOwnRows`
+  is verified to fail with the ordering inverted; a sibling test pins the `REQUIRES_NEW` half the
+  same way. One tenant's failure (including one optimistic-lock retry) never aborts the sweep for
+  the rest. The principal bound is synthetic — `(tenantId, null, "SYSTEM")` — the same shape
+  `AuthService` uses pre-authentication; `VisibilityPolicy` treats it as unrestricted and
+  `AuditLog.actorUserId` is nullable so the null user id records honestly that no human did this.
+
+  **`QuotationExpirySweep`** is the one job built on that seam so far. It reads candidates through
+  `VisibleFinder.listQuotations(QuotationSpecifications.expirableAsOf(asOf))` — a correlated
+  subquery over the current version's `validUntil`, never a hand-written repository query — calls
+  the entity's own `Quotation.expire()` (now guarded by its own `SENT` precondition, matching
+  `QuotationService.requireSent`'s message so the API contract is unchanged whether a human or the
+  sweep triggers it), and publishes one `QuotationExpiredEvent` per quotation. Two
+  `@EventListener`s pick it up exactly like the accept-event pair: `QuotationExpiredAuditListener`
+  writes a `QUOTATION_EXPIRED` audit row (synchronous, same transaction, null actor), and
+  `QuotationExpiredActivityListener` puts the expiry on the quotation's own timeline as a `SYSTEM`
+  `NOTE` activity, so a salesperson sees *why* a quote stopped being live instead of finding a
+  status that changed overnight with no explanation.
+
+  **`asOf` is computed in IST, not the server's UTC clock (challenge #53).** `validUntil` is a
+  `LocalDate` a user typed while thinking in IST; comparing it against a UTC-derived date gets the
+  bug's direction backwards from the obvious guess — a UTC date is never later than the IST one,
+  so the naive comparison matches fewer rows and *delays* expiry rather than hastening it.
+  `DueWindow.todayDate(Instant)` sits beside the existing IST window arithmetic from the
+  activity/follow-up slice (challenge #51) — one home for the zone, not two — and
+  `QuotationExpiryJob`'s `@Scheduled(cron = "${easycrm.jobs.quotation-expiry.cron}", zone =
+  "Asia/Kolkata")` pins the fire time to 00:30 IST regardless of the deploying server's own
+  timezone. The cron is a property, not a constant, specifically so the test suite can disable it
+  outright (`"-"`, Spring's `CRON_DISABLED` sentinel) — `QuotationExpiryJobSchedulingTest` asserts
+  against the registered task list itself, not just the property value, so a disabled cron that
+  somehow still registered a task would be caught.
+
+  **461 tests, 0 failures, 0 errors** — 438 in the root project, 23 in `platform-primitives`, up
+  from the 432-test `activity-follow-up` baseline (+29). New challenges #52–#53; annotations
+  reference gained `@EnableScheduling` and `@Scheduled`. **What this slice does *not* do:** run
+  more than one instance safely without duplicating work (no distributed lock — see the "Before
+  any second app instance" note below); batch-load candidate versions (one `findById` per
+  candidate — see the deferred-Minor backlog); or touch `QuotationService`, `Quotation`'s other
+  transitions, or any existing REST endpoint.
+
+- **Previous code work: activity log and follow-ups** — **merged to `main` as `f97c62c`**; the
   branch is deleted. Commits `212099f`..`48d35a6` off `main` at `830fd47`.
   Fourteen tasks delivering the two aggregates the design spec's §data-model names and nothing else
   (§2's out-of-scope recap: no scheduler, no notification table, no `OVERDUE` column, no attachments,
@@ -274,7 +334,7 @@ All under `docs/superpowers/`:
   `SALES_MANAGER`, unchanged from the visibility slice; any change to the four existing aggregates'
   own tables.
 
-- **Previous code work: intra-tenant record-level visibility filtering** — **merged to `main` as
+- **Before that: intra-tenant record-level visibility filtering** — **merged to `main` as
   `c81f59f`.** Branch `record-visibility`, off `main` at `29b59ca`, now deleted. Nine tasks: `VisibilityPolicy` (role → `Specification`
   per aggregate, `unrestricted()` fail-open for every role but `SALES_EXEC`), `VisibleFinder` (the
   single permitted reader of the four guarded repositories), customer and enquiry reads/writes
@@ -305,7 +365,7 @@ All under `docs/superpowers/`:
   choke point re-pointed, and the repository added to `GUARDED_REPOSITORIES`. Miss the last one and
   the other three are the only thing standing between a new aggregate and a silent leak.
 
-- **Before that: per-IP rate limiting on the public and auth routes** — **merged to `main`
+- **Earlier still: per-IP rate limiting on the public and auth routes** — **merged to `main`
   as `d7725b0`.** Branch `public-rate-limiting`, commits `bc542c2`..`18eaccd` off `main` at
   `e69d7ac`, now deleted: seven tasks, one whole-branch fix wave (`3bfb99d`), and
   the docs wrap-ups after it. Seven tasks: a `RateLimitPolicy` value type +
@@ -332,7 +392,7 @@ All under `docs/superpowers/`:
   The design's Redis-backed `RateLimitStore` implementation is the prerequisite for running more
   than one instance; it does not exist yet.
 
-- **Earlier still: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
+- **Further back: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
   to `main` as `3c239d1`**. Branch `rls-force-and-guard`, commits `cfc8928`..`b8b2ecb` off `main`
   at `455c237`, closing **PF14 and PF15**. `V26__force_rls.sql` adds
   `FORCE ROW LEVEL SECURITY` to every tenant table (previously all fourteen were `ENABLE`d and
@@ -347,7 +407,7 @@ All under `docs/superpowers/`:
   Note this closes the gap *in the schema* — a deployment must still connect as `easycrm_app`;
   forcing removes the silent-failure mode, not the requirement.
 
-- **Further back: `platform-primitives` extracted into its own Gradle module** — **merged to
+- **Further back still: `platform-primitives` extracted into its own Gradle module** — **merged to
   `main` as `210545e`**. Branch `platform-primitives-module`, eight tasks, commits
   `4d43d75`..`6c255d4` off `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took
   one fix round; Task 7 returned zero findings at any severity), and the whole-branch review found
@@ -572,12 +632,14 @@ the workflow from §0 step 4.
    push into: no WhatsApp Business API, email has no delivery-tracking/dedupe design, no frontend
    for in-app), and challenge #51 for why the eventual fix is additive, not a redesign. Record this
    as a decision, not an oversight, if it's ever asked why no scheduler exists.
-2. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
-   today; nothing runs on a schedule. **Still the first scheduled job** — unchanged by the
-   activity/follow-up slice landing. The design spec's §3 has a head start for whoever picks this
-   up: a scheduled job has no JWT and so no `TenantContext`, and must iterate tenants, wrapping each
-   in `TenantContext.runAs(...)` **before** its transaction opens (Hibernate resolves a session's
-   tenant once, at session-open, and never re-reads it — challenge #9).
+2. ~~**Scheduled auto-expiry**~~ — **DONE**, on branch `quotation-auto-expiry` (§0, §3), pending
+   merge. A nightly job at 00:30 IST expires every lapsed `SENT` quotation, with an audit row and a
+   timeline activity — exactly as this item described. It also landed the codebase's first
+   non-request execution path and a reusable `TenantJobRunner` seam: every future scheduled job
+   should build on that runner rather than growing its own `TenantContext.runAs`-before-transaction
+   loop (challenge #52 is why getting that ordering wrong is silent rather than loud). The IST
+   day-boundary trap this raised for comparing a `LocalDate` column against the server's UTC clock
+   is challenge #53.
 3. **P0-auth follow-up** — **fully closed except for user invitations.** This item started as three
    things: rate limiting, record-level visibility, and user invitations. Rate limiting landed in the
    `public-rate-limiting` slice (`d7725b0`; §3): `/public/q/{token}` and the auth routes are capped
@@ -631,33 +693,40 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested default — read this before proposing anything.** Five slices in a row have now been
-either hardening or moving the product (RLS forcing, rate limiting, record-level visibility, then
-activity/follow-up). **Backlog item #1 is now done** — see §3's `activity-follow-up` entry — so the
-honest ranking has changed again:
+**Suggested default — read this before proposing anything.** Six slices in a row have now been
+either hardening or moving the product (RLS forcing, rate limiting, record-level visibility,
+activity/follow-up, then scheduled auto-expiry). **Backlog items #1 and #2 are now both done** —
+see §3's `activity-follow-up` and `quotation-auto-expiry` entries — so the honest ranking has
+changed again:
 
-- **#2 (scheduled auto-expiry) is now the strongest small claim on the board.** It was already the
-  cheapest slice available; with #1 closed, nothing bigger is more obviously due. It also has a head
-  start: the design spec's §3 tenant-iteration note (`TenantContext.runAs` before the transaction
-  opens, per-tenant, no JWT to read from) is exactly the seam it needs.
-- **#3 (user invitations) is the largest genuinely-open product item.** It is the sole surviving
-  piece of the P0-auth follow-up, and unlike PF19 it is blocked on nothing — no design thread, no
-  missing channel. Pick it over #2 if the next slice should be substantial rather than cheap.
+- **#3 (user invitations) is now the largest genuinely-open product item, and the strongest
+  remaining claim.** It is the sole surviving piece of the P0-auth follow-up, and unlike PF19 it is
+  blocked on nothing — no design thread, no missing channel. With #1 and #2 both closed, nothing
+  else on the board is a bigger open piece of product.
 - **#4 (cursor pagination)** — cross-cutting, lower urgency, unchanged by this slice.
 - **PF19's entitlement-metering half stays blocked on design, not effort.** The public route has no
   JWT, so there is nowhere to hang a per-tenant check; it needs the billing thread's decisions before
   code, same as before this slice.
-- **`platform-web` stays the weakest claim.** Next by dependency order only; nothing in this slice
-  changed that.
+- **`platform-web` stays the weakest claim.** Next by dependency order only; unchanged by this
+  slice.
 
-A reasonable reading is: **#2 if a cheap slice is wanted, #3 if a substantial one is.** Both are
-defensible; #1 and the correctness backlog are empty, so nothing is competing on urgency. Confirm
-with the user rather than assuming.
+A reasonable reading is: **#3 by default now that #1, #2, and the correctness backlog are all
+empty.** Confirm with the user rather than assuming.
 
 **Before any second app instance:** the rate limiter's store is in-process (§3) — running N
 instances behind a load balancer multiplies every configured limit by N, silently. Build the
 design's Redis-backed `RateLimitStore` implementation before multi-instance deployment, not after;
-today it does not exist.
+today it does not exist. **The nightly quotation-expiry sweep has the same shape of problem, one
+notch sharper.** `TenantJobRunner`/`QuotationExpiryJob` take no distributed lock, so with N app
+instances all N run the cron at 00:30 IST and all N sweep every tenant. It cannot double-*write* —
+the first writer's `Quotation.expire()` flips the row, `@Version` optimistic locking makes every
+later instance's write attempt on the same row fail, and `TenantJobRunner`'s bounded one-retry
+finds nothing left to expire the second time — but it does duplicate the *work*: N redundant reads
+of the candidate set, N audit rows attempted (N-1 of them losing the race), N event-publish
+attempts. This sits alongside the rate limiter's in-process store as the second thing that needs a
+real fix (a leader-election lock, or a `SELECT ... FOR UPDATE SKIP LOCKED` claim step) before a
+second instance runs, though it fails safe rather than silently, which the rate limiter's version
+of this problem does not.
 
 **Before the first large tenant:** the visibility predicate `assigned_to = :me OR assigned_to IS NULL`
 has **no index behind it** on either `customer` or `enquiry` — it is a sequential scan within the
@@ -675,13 +744,14 @@ index when the table is created costs one line; retrofitting it costs a migratio
 ### Smaller deferred-Minor backlog
 
 Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
-ledgers of **five** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
+ledgers of **six** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
 items 23–24 from the `platform-primitives` slice (eight tasks), items 25–32 from
 `public-rate-limiting` (seven tasks), items 33–41 from `record-visibility` (nine tasks plus a
-whole-branch fix wave), and items 42–45 from `activity-follow-up` (fourteen tasks) — each
-cross-checked line-by-line against its ledger before that workspace was deleted at merge (or, for
-`activity-follow-up`, whose workspace is now deleted — this list is the durable copy). So
-it really is **self-contained**:
+whole-branch fix wave), items 42–46 from `activity-follow-up` (fourteen tasks), and item 47 from
+`quotation-auto-expiry` (seven tasks) — each cross-checked line-by-line against its ledger before
+that workspace was deleted at merge (or, for `activity-follow-up` and `quotation-auto-expiry`,
+whose workspaces are deleted or about to be — this list is the durable copy). So it really is
+**self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
 
@@ -950,3 +1020,13 @@ three are ordinary per-task findings judged safe to defer.
     beyond the spec paragraph added alongside this item. Whether a creator should retain any
     visibility or control over work they assigned to someone else is an open design question —
     who may assign work to whom is out of scope for this slice.
+
+**From the `quotation-auto-expiry` slice (2026-08-31).** One item, open.
+
+47. **`QuotationExpirySweep.run` issues one `findById` per expiry candidate** to read that
+    candidate's `QuotationVersion` (for `validUntil`, to attach to `QuotationExpiredEvent`), rather
+    than batch-loading the versions for the whole candidate set in one query. Irrelevant at current
+    volumes — a tenant's nightly lapsed-quote count is small — but if a tenant ever accumulates
+    thousands of lapsed quotes overnight, this is N+1 by construction. Fix: fetch all candidate
+    version ids from `expirableAsOf`'s own subquery result and batch-load them with a single
+    `findAllById`, keyed by the quotation's `currentVersionId`.
