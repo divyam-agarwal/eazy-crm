@@ -140,8 +140,13 @@ and expires once IST rolls into 1 Sep. A null `validUntil` means open-ended and 
 and the other three are terminal.
 
 IST matters because the tenants are Indian and `validUntil` is a `LocalDate` a user typed in
-IST. Evaluating it against a UTC date would expire quotes 5½ hours early every day, on the
-UTC-evening side of the boundary.
+IST. Evaluating it against a UTC date would get the direction of the error backwards from what
+you might guess: a UTC calendar date is never *later* than the IST one and, between 18:30 and
+24:00 UTC, is a full day earlier. The job fires at 00:30 IST — 19:00 UTC the previous day — so a
+UTC `asOf` would still read yesterday's date. Since the predicate is `validUntil < asOf`, too
+early an `asOf` matches *fewer* rows: a quotation that should expire the moment IST rolls over
+is skipped and waits for the next night's run. The mistake **delays** expiry, it does not
+hasten it.
 
 ## 5. Data flow, one run
 
