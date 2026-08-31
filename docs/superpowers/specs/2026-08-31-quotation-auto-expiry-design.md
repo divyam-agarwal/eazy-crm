@@ -102,7 +102,7 @@ sweep or the runner directly, so no test waits on a cron.
 
 ### 3.4 `sales/QuotationExpiredEvent` + two listeners (new)
 
-`record QuotationExpiredEvent(UUID quotationId, UUID quotationVersionId, LocalDate validUntil)`,
+`record QuotationExpiredEvent(UUID quotationId, String quoteNo, UUID quotationVersionId, LocalDate validUntil)`,
 with `QuotationExpiredAuditListener` and `QuotationExpiredActivityListener` copied
 shape-for-shape from the accept path's pair. The record deliberately carries **no**
 `actorUserId`, unlike `QuotationAcceptedEvent`: there is no actor, and an always-null

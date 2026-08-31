@@ -3161,9 +3161,13 @@ owning the template closes the self-invocation trap: every call always gets its 
 transaction, regardless of what, if anything, is already open on the calling thread.
 `TenantJobRunnerTest.eachTenantsBodySeesOnlyItsOwnRows` is the test that proves the ordering
 half fires: it is verified to fail (zero rows, no exception) when `runAs` and `tx.execute`
-are inverted. A second test in the same class independently pins the `REQUIRES_NEW` half by
-asserting against an `@Autowired`, `PROPAGATION_REQUIRED` `TransactionTemplate` bean and
-showing that using it in the runner's place reproduces the zero-rows symptom.
+are inverted. A second test in the same class,
+`opensItsOwnTransactionEvenWhenTheCallerAlreadyHasOne`, independently pins the
+`REQUIRES_NEW` half: it uses Boot's autoconfigured, `PROPAGATION_REQUIRED`
+`TransactionTemplate` bean as the **caller's** outer transaction -- standing in for a
+caller that already holds one -- and asserts the runner's own per-tenant work still sees
+its tenant's rows, which only holds if the runner truly opens its own transaction rather
+than joining the caller's.
 
 ### Lesson
 

@@ -22,6 +22,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class QuotationExpiryJobSchedulingTest extends IntegrationTest {
 
     @Autowired Environment environment;
+    // Nothing but @EnableScheduling registers this bean. Its absence would fail context
+    // load for every test in the suite -- so if someone ever deletes SchedulingConfig, the
+    // job would silently never run in production, and this @Autowired field is the only
+    // thing standing between that regression and all 461 tests staying green.
     @Autowired ScheduledAnnotationBeanPostProcessor scheduledPostProcessor;
     @Autowired QuotationExpiryJob job;
 
@@ -32,6 +36,11 @@ class QuotationExpiryJobSchedulingTest extends IntegrationTest {
 
     @Test
     void noScheduledTaskIsRegisteredForTheJob() {
+        // Asserts the task list is GLOBALLY empty, not just empty for this job -- there is
+        // only one scheduled job in the codebase today. When a second one is added, this
+        // will need narrowing to the task registered for THIS job specifically, or it will
+        // start failing (or worse, passing for the wrong reason) once that job's cron is
+        // enabled in some other test context.
         assertThat(scheduledPostProcessor.getScheduledTasks()).isEmpty();
     }
 
