@@ -28,7 +28,15 @@ import java.sql.SQLException;
 // outranks @TestPropertySource, regardless of which class in the hierarchy declares which. So
 // a subclass that needs the limiter on (RateLimitIntegrationTest) can register its own
 // @DynamicPropertySource for this key and be certain it wins over this default.
-@TestPropertySource(properties = "easycrm.rate-limit.enabled=false")
+// The nightly auto-expiry cron is OFF for the suite, for the same reason the rate limiter
+// is: every @SpringBootTest here shares ONE cached context, so a live job would race every
+// test class's fixtures and fail intermittently, somewhere else, for reasons that look
+// unrelated. "-" is Spring's Scheduled.CRON_DISABLED value, which skips task registration
+// entirely rather than scheduling something that never fires.
+@TestPropertySource(properties = {
+    "easycrm.rate-limit.enabled=false",
+    "easycrm.jobs.quotation-expiry.cron=-"
+})
 public abstract class IntegrationTest {
 
     // Singleton container: started ONCE for the whole JVM and shared across every
