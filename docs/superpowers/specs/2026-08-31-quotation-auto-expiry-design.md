@@ -62,11 +62,18 @@ The snippet elides the optimistic-lock retry described in §6, which wraps the
 
 Two choices carry weight:
 
-- **`TransactionTemplate`, not `@Transactional`.** A `@Transactional` method invoked from
-  this class's own loop is a self-invocation: Spring's proxy is bypassed and the "per-tenant
-  transaction" silently joins whatever transaction the caller already had — which would
-  quietly collapse D5's per-tenant boundary into a single sweep-wide transaction. Programmatic
-  transaction management removes the trap rather than documenting it.
+- **Its own `TransactionTemplate`, built with `PROPAGATION_REQUIRES_NEW`.** Two distinct traps
+  are closed here, and only the first is obvious. A `@Transactional` method invoked from this
+  class's own loop is a self-invocation: Spring's proxy is bypassed and the "per-tenant
+  transaction" silently joins whatever transaction the caller already had, collapsing D5's
+  per-tenant boundary into a single sweep-wide transaction. But injecting Boot's autoconfigured
+  `TransactionTemplate` would leave the second trap open — that bean is `PROPAGATION_REQUIRED`,
+  so a caller already holding a transaction (a future job wrapped in `@Transactional`, an admin
+  "run now" endpoint, a `@Transactional` test) makes `tx.execute` **join** it: `doBegin` never
+  runs, the GUC stays unset, the session has already resolved `NO_TENANT`, and every scoped read
+  returns zero rows — precisely the failure this class exists to prevent. The runner therefore
+  constructs its own template from the `PlatformTransactionManager` and sets
+  `PROPAGATION_REQUIRES_NEW`. It must not mutate the shared bean, which other code autowires.
 - **`runAs` wraps `tx.execute`, never the reverse.** `TenantAwareTransactionManager.doBegin`
   reads `TenantContext` to set the `app.current_tenant` GUC, and Hibernate resolves a
   session's tenant once at session-open and never re-reads it (challenge #9). Context set
