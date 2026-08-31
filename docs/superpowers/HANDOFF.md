@@ -1,7 +1,7 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-30 — **Activity log and follow-ups are built on branch
-`activity-follow-up`, all 14 tasks complete and reviewed, pending merge (not yet on `main`).**
+**Last updated:** 2026-08-31 — **Activity log and follow-ups are built and merged to `main` as
+`f97c62c`. Nothing is in flight; `main` is the baseline for new work.**
 The wedge's "never lose a follow-up" promise now has an implementation: `POST
 /api/v1/activities` logs a CALL/WHATSAPP/EMAIL/VISIT/NOTE against any of `Customer`, `Enquiry`,
 `Quotation`, or `Order` and can atomically schedule the next follow-up in the same request;
@@ -19,17 +19,18 @@ see §3's "Previous code work" for its detail.
 
 ## 0. Resuming? Start here
 
-### One thing is in flight
+### Nothing is in flight
 
-**`activity-follow-up` is complete but not merged.** Fourteen tasks (the polymorphic subject
+**`main` is clean and is the baseline for new work.** Fourteen tasks (the polymorphic subject
 visibility gate, the `activity` and `follow_up` aggregates + their own RLS migrations, `DueWindow`'s
 IST day-boundary arithmetic, the `AssignableUsers` extraction, log-and-schedule, filter/read/summary,
 complete/cancel/reschedule, editing an activity, the `QuotationAcceptedEvent` → `SYSTEM` activity
 listener, this docs wrap-up, and the final review's fix wave) are done on branch
-`activity-follow-up`, commits `212099f`..`HEAD` off `main` at `830fd47`, every task reviewed
-clean. **It has not been merged to `main`** — run
-`finishing-a-development-branch` on it before starting anything new, unless you're picking this
-session up specifically to review or merge it.
+`activity-follow-up`, commits `212099f`..`48d35a6` off `main` at `830fd47`, every task reviewed
+clean. The whole-branch review returned MERGE after one fix wave, and the branch was merged
+`--no-ff` as **`f97c62c`** on 2026-08-31 and deleted. The merged result was verified green
+(**432 tests, 0 failures, 0 errors**) before the branch went away. There is no unmerged feature
+branch to settle — start at item 1 below, then go to §8 and pick the next chunk with the user.
 
 **One loose end that is not code, carried forward from before this slice:** the Bucket4j entry
 written for `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that
@@ -42,9 +43,9 @@ branch is deleted, as was `public-rate-limiting` before it (merged as `d7725b0`)
 before that (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On this branch (`activity-follow-up`) this is
-   **431 tests, 0 failures, 0 errors** (408 root + 23 `platform-primitives`), up from `main`'s
-   **352 tests** baseline (329 root + 23 `platform-primitives`). Gradle prints no total for a
+   then `cd backend && ./gradlew clean test`. On `main` this is now
+   **432 tests, 0 failures, 0 errors** (409 root + 23 `platform-primitives`), up from the
+   **352** that preceded this slice (329 root + 23 `platform-primitives`). Gradle prints no total for a
    multi-project build, so count it yourself:
 
    ```bash
@@ -207,12 +208,12 @@ All under `docs/superpowers/`:
     single `V29__rls_activity_follow_up.sql` originally described to the four-file split the plan
     actually uses.
 34. **`plans/2026-08-30-activity-follow-up.md`** — the fourteen-task implementation plan for it.
-    **Branch `activity-follow-up` is complete, reviewed clean, and pending merge** — see §0 and §3.
+    **Merged to `main` as `f97c62c`** — see §0 and §3.
 
 ## 3. Current state
 
-- **Latest code work: activity log and follow-ups** — **branch `activity-follow-up`, complete and
-  reviewed clean, NOT YET MERGED to `main`.** Commits `212099f`..`HEAD` off `main` at `830fd47`.
+- **Latest code work: activity log and follow-ups** — **merged to `main` as `f97c62c`**; the
+  branch is deleted. Commits `212099f`..`48d35a6` off `main` at `830fd47`.
   Fourteen tasks delivering the two aggregates the design spec's §data-model names and nothing else
   (§2's out-of-scope recap: no scheduler, no notification table, no `OVERDUE` column, no attachments,
   no global feed). Both entities live under `com.easycrm.sales`, tenant-scoped and RLS-covered, in
@@ -553,8 +554,7 @@ shared over WhatsApp. All four candidates below are scoped in the design spec
 (`specs/2026-07-22-easycrm-design.md`). Present them, take the user's choice, and only then start
 the workflow from §0 step 4.
 
-1. ~~**`activity` / `follow_up` entities**~~ — **DONE**, on branch `activity-follow-up` (§0, §3),
-   pending merge. CALL/WHATSAPP/EMAIL/VISIT/NOTE logs against any of the four visibility-scoped
+1. ~~**`activity` / `follow_up` entities**~~ — **DONE**, merged as `f97c62c` (§0, §3). CALL/WHATSAPP/EMAIL/VISIT/NOTE logs against any of the four visibility-scoped
    aggregates, log-and-schedule in one transaction, complete/cancel/reschedule, and a `SYSTEM`
    activity on quote acceptance via the accept event seam — exactly as this item described. **The
    parent spec's `follow_up` data-model clause "first-class, with its own reminder scheduler" is
@@ -656,7 +656,7 @@ items 23–24 from the `platform-primitives` slice (eight tasks), items 25–32 
 `public-rate-limiting` (seven tasks), items 33–41 from `record-visibility` (nine tasks plus a
 whole-branch fix wave), and items 42–45 from `activity-follow-up` (fourteen tasks) — each
 cross-checked line-by-line against its ledger before that workspace was deleted at merge (or, for
-`activity-follow-up`, while the branch is still live — this list is the durable copy regardless). So
+`activity-follow-up`, whose workspace is now deleted — this list is the durable copy). So
 it really is **self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
