@@ -2,8 +2,11 @@ package com.easycrm.platform.visibility;
 
 import com.easycrm.crm.Customer;
 import com.easycrm.crm.CustomerRepository;
+import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.sales.Enquiry;
 import com.easycrm.sales.EnquiryRepository;
+import com.easycrm.sales.FollowUp;
+import com.easycrm.sales.FollowUpRepository;
 import com.easycrm.sales.Order;
 import com.easycrm.sales.OrderRepository;
 import com.easycrm.sales.Quotation;
@@ -30,15 +33,17 @@ public class VisibleFinder {
     private final EnquiryRepository enquiries;
     private final QuotationRepository quotations;
     private final OrderRepository orders;
+    private final FollowUpRepository followUps;
 
     public VisibleFinder(VisibilityPolicy policy, CustomerRepository customers,
                          EnquiryRepository enquiries, QuotationRepository quotations,
-                         OrderRepository orders) {
+                         OrderRepository orders, FollowUpRepository followUps) {
         this.policy = policy;
         this.customers = customers;
         this.enquiries = enquiries;
         this.quotations = quotations;
         this.orders = orders;
+        this.followUps = followUps;
     }
 
     public Optional<Customer> findCustomer(UUID id) {
@@ -73,6 +78,14 @@ public class VisibleFinder {
         return orders.findAll(and(policy.orders(), filter), pageable);
     }
 
+    public Optional<FollowUp> findFollowUp(UUID id) {
+        return followUps.findOne(policy.followUps().and(hasId(id)));
+    }
+
+    public Page<FollowUp> pageFollowUps(Specification<FollowUp> filter, Pageable pageable) {
+        return followUps.findAll(and(policy.followUps(), filter), pageable);
+    }
+
     private static <T> Specification<T> hasId(UUID id) {
         return (root, query, cb) -> cb.equal(root.get("id"), id);
     }
@@ -85,5 +98,29 @@ public class VisibleFinder {
      */
     private static <T> Specification<T> and(Specification<T> base, Specification<T> filter) {
         return filter == null ? base : base.and(filter);
+    }
+
+    /**
+     * Resolves a polymorphic subject through the same visibility filter as a direct read,
+     * returning the id unchanged so call sites can inline it. Cross-tenant, non-existent
+     * and not-visible-to-you all surface as NotFoundException — the house 404 rule.
+     *
+     * <p>This is the ONLY thing protecting the activity table: ActivityRepository declares
+     * no read that is not subject-scoped, so an activity cannot be reached without first
+     * naming a subject, and a subject cannot be named without passing through here.
+     * See spec 2026-08-30-activity-follow-up-design.md §4.2.
+     */
+    public UUID requireVisibleSubject(SubjectType type, UUID id) {
+        boolean visible = switch (type) {
+            case CUSTOMER  -> findCustomer(id).isPresent();
+            case ENQUIRY   -> findEnquiry(id).isPresent();
+            case QUOTATION -> findQuotation(id).isPresent();
+            case ORDER     -> findOrder(id).isPresent();
+        };
+        if (!visible) {
+            throw new NotFoundException(
+                type.name().toLowerCase() + " " + id + " was not found");
+        }
+        return id;
     }
 }

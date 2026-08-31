@@ -2818,3 +2818,295 @@ is the only check that would catch either bug: an inverted condition that vacuou
 passes, or an allowlist copied from a template with an entry nothing calls and a spec
 entry silently dropped.
 
+---
+
+## Challenge 47 — A `+1hr` test fixture is a hidden bet on when the suite runs
+
+**Phase:** Implementation
+
+### The problem
+
+`FollowUpVisibilityTest` seeds two follow-ups both due `Instant.now().plusSeconds(3600)`
+and asserts the owner's dashboard summary reports them as `upcoming`. The task brief
+that specified this test got that assertion right for the scope's *definition* —
+`UPCOMING` is `due_at >= endOfTodayIST` — but wrong for what a fixed one-hour offset
+actually produces: whether `now + 1hr` lands before or after `endOfTodayIST` depends
+entirely on what wall-clock time IST it is when the suite runs. Run it at 16:09 IST
+(as first attempted here) and `now + 1hr` is 17:09 IST — same day, well before
+midnight — so the row is `DUE_TODAY`, not `UPCOMING`, and the assertion fails. The
+same fixture only passes if the suite happens to run inside the ~1-hour window before
+midnight IST. That is not a flaky test in the usual sense (nondeterministic under
+concurrency); it is a **deterministic function of local time of day** that happens to
+be wrong on every single run except one hour in twenty-four — worse than ordinary
+flakiness, because it fails identically and reproducibly for whoever's timezone or CI
+schedule doesn't line up, and NOTHING in the test's own code reveals that dependency.
+
+The same brief, one file over, had already solved this exact class of problem for
+`FollowUpEndpointTest` — using `±172,800` seconds (2 days) specifically because that
+offset is unambiguous no matter what time of day CI runs, per that file's own comment.
+The fix did not travel to the sibling test that needed it just as much.
+
+### The solution
+
+Change the fixture's offset from `+3600` seconds to `+172,800` seconds (2 days) —
+long enough that `now + offset` cannot land inside the current IST day regardless of
+what the current IST time is, matching the convention already established in
+`FollowUpEndpointTest`. The assertion (`upcoming == 1`) needed no other change: it was
+always the fixture's magnitude that was wrong, not the scope logic being tested.
+
+### Lesson
+
+A time-window boundary test (`OVERDUE` / `DUE_TODAY` / `UPCOMING`, or any midnight- or
+period-edge classification) cannot be exercised safely with an offset whose size is
+comparable to the window itself — "due in one hour" is not a stable proxy for "due
+later today" when the day itself is defined in a fixed timezone independent of when
+the test executes. The only offsets that are safe test fixtures for this shape of
+scope are ones proven to fall unambiguously on one side of every boundary the scope
+cares about, for every possible run time — which for a day-granularity boundary means
+an offset measured in multiple days, not hours. When a design already worked this out
+once in one file (the `±172,800`-second convention here), a reviewer copying the
+pattern to a sibling file needs to copy the *offset*, not just the shape of the test —
+the two are easy to pull apart without noticing, because both compile and both read as
+"due in the future."
+
+
+---
+
+## Challenge 48 — A completion note that logs as `SYSTEM` can never be corrected
+
+**Phase:** Implementation
+
+### The problem
+
+`FollowUpService.complete` optionally writes an `Activity` when the request carries
+an activity `type` — closing a task and recording what happened are one user
+intention. `ActivityService` already had exactly one writer for activities the
+service itself produces without the create-time subject gate: `logSystem`, built for
+`QuotationAcceptedActivityListener`. Reusing it here was the path of least
+resistance — `complete` had already loaded and gated the follow-up's subject through
+`find(id)`, which is precisely the situation `logSystem`'s own doc comment describes
+as safe to skip re-gating for.
+
+Reusing it would have been wrong anyway: `logSystem` calls `Activity.system(...)`,
+and `Activity.edit` unconditionally rejects any row whose `source` is `SYSTEM`
+("a system-logged activity cannot be edited"). A completion note is not something
+the application observed — a person typed it into the request body. Logging it as
+`SYSTEM` would make it permanently uneditable, so a user could never fix a typo in
+their own words. The endpoint test only asserts `type` and `body` on the written
+row, so it passes identically whichever source is used — nothing in the test suite
+would catch the wrong choice.
+
+### The solution
+
+Added `ActivityService.logManualForGatedCaller`, a second skip-the-gate writer that
+calls `Activity.manual(...)` instead of `Activity.system(...)`. It is identical to
+`logSystem` in the one property that matters for its existence (the caller has
+already gated the subject, so no second `requireVisibleSubject` query is needed) and
+different in the one property that matters for correctness (`MANUAL` source, so
+`Activity.edit` will accept a later correction from whoever logged it).
+`FollowUpService.complete` calls this new method, never `logSystem`.
+
+### Lesson
+
+"Already gated, skip the second query" and "who gets to edit this row later" are two
+independent axes — a helper that is safe on the first axis is not automatically safe
+on the second. When a new call site's content originates from a human typing into a
+request body, its `source` has to reflect that regardless of which existing
+already-gated helper looks structurally closest, because a test asserting only the
+fields it happened to check (`type`, `body`) cannot distinguish the two paths — only
+reading the aggregate's own edit-guard (`Activity.edit`'s `SYSTEM` rejection) surfaces
+the consequence.
+
+---
+
+## Challenge 49 — Fail-fast validation would have made the atomicity test tautological
+
+**Phase:** Implementation
+
+### The problem
+
+`ActivityService.create` now optionally writes a `FollowUp` alongside the `Activity`
+in one request (`POST /api/v1/activities` with a nested `nextFollowUp`), and the
+whole point of doing both in one `@Transactional` method is that a bad assignee must
+not leave an orphaned `Activity` behind. The obvious, more conventional shape is to
+validate first and save second: call `assignableUsers.require(next.assignedTo())`
+before `activities.save(...)`, so a bad assignee never touches the database at all.
+
+That shape is a trap for the one test that matters here,
+`aBadAssigneeRollsBackTheActivityToo`. If validation runs before the `Activity` is
+ever saved, the test passes whether or not `@Transactional` rollback works at all —
+the activity row was simply never written, which is a much weaker claim than "the
+transaction rolled it back." A reviewer (or a future refactor) could delete
+`@Transactional` from `create` entirely and this test would keep passing, silently
+losing its entire reason for existing.
+
+### The solution
+
+`create` saves the `Activity` first, *then* validates the assignee and saves the
+`FollowUp`. A bad assignee now means one wasted `INSERT` on a rare error path, which
+`@Transactional`'s default rollback-on-`RuntimeException` discards along with
+everything else the transaction touched. I verified the ordering actually earns its
+keep rather than assuming it, by two separate mutations of the same code, each run
+against the untouched `LogAndScheduleEndpointTest`:
+
+1. First attempt: extract the activity save into a private method annotated
+   `@Transactional(propagation = REQUIRES_NEW)`, called via `this.method(...)`. The
+   test still passed — a false negative. Self-invocation bypasses Spring's
+   proxy, so the new annotation was silently never applied and the method ran
+   inside the same outer transaction as before, proving nothing.
+2. Second attempt: remove `@Transactional` from `create` entirely (no
+   self-invocation involved). `aBadAssigneeRollsBackTheActivityToo` went red
+   immediately — the `Activity` row survived the `ValidationException` because
+   `ActivityRepository.save` got its own implicit transaction from Spring Data and
+   committed before the exception was ever thrown. Restoring `@Transactional`
+   turned it green again.
+
+### Lesson
+
+A rollback test is only as strong as the failure mode you proved it catches, and
+"it currently passes" is not that proof — a broken version of the code can pass a
+correctness test tautologically if the code path never reaches the state the test
+is supposed to catch. Break the invariant on purpose and confirm the test goes red
+before trusting it. And when the chosen way to break it is "remove propagation
+scope," self-invocation is a second, independent way for that experiment to lie to
+you: an `@Transactional` (or any AOP-advised) method called via `this.foo()` from
+inside the same class runs with no proxy in the call path at all, so the annotation
+is silently a no-op — the safe way to force a genuinely separate transaction for a
+test is to remove the surrounding boundary, not to add a nested one through
+self-invocation.
+
+---
+
+## Challenge 50 — The polymorphic-subject visibility gate: two tables, two strategies, one structural guard
+
+**Phase:** Implementation (activity/follow-up slice)
+
+### The problem
+
+`activity` and `follow_up` both point polymorphically at one of four already
+visibility-filtered aggregates (`Customer`, `Enquiry`, `Quotation`, `Order`). An
+activity or follow-up hanging off an enquiry I cannot see must be unreachable —
+the visibility layer challenge #46 hardened for the four existing aggregates has to
+extend to two new tables that don't look like the existing four at all.
+
+### Why it's hard
+
+The two tables look symmetrical — same polymorphic `(subject_type, subject_id)`
+pair, same four possible subjects — but they are not. `follow_up` has its own
+`assigned_to`; `activity` does not. So one table has *intrinsic* visibility (filter
+on a column it owns) and the other has *derived* visibility (its access is only as
+visible as whatever it points at) — the same row shape, two genuinely different
+answers to "who can see this."
+
+The derived half is the one that bites. The obvious guard for "every read must
+resolve through the subject's own visibility" is an ArchUnit rule over
+`ActivityRepository`'s *declared* methods — and that guard does not work, for
+exactly the reason challenge #46's own `VisibilityScopingArchTest` had already
+recorded from the other side: a `JpaRepository` sub-interface *inherits*
+`findById`/`findAll`/`findAllById` whether or not it declares them, and a rule that
+only inspects declared methods is blind to everything inherited. `activities
+.findById(id)` would compile, run, and never touch `requireVisibleSubject` at all —
+the exact bypass the gate exists to prevent — while a declared-methods-only rule
+stayed green throughout. This is not a hypothetical: it is the same empirical
+finding `VisibilityScopingArchTest`'s own comment records about a method
+*reference* to an inherited `CrudRepository` method resolving its ArchUnit target
+owner to the Spring Data supertype rather than to the local interface, and so
+escaping any owner-name check built over the local interface. Challenge #46 met
+this from the "guard a repository that has real inherited methods" side; this slice
+meets it from the "design a repository so it has none to inherit" side — same root
+cause, opposite fix.
+
+The gap doesn't stop at the obvious inherited CRUD methods either. `JpaRepository`
+is not the only supertype that smuggles in unscoped reads: mixing
+`QueryByExampleExecutor` or `QuerydslPredicateExecutor` in alongside a bare
+`Repository` marker brings its own inherited `findAll(Example)`/`findOne(Example)`
+or `findAll(Predicate)` — invisible to a declared-method rule for the identical
+reason, and easy to add later without anyone noticing it reopens the hole. This gap
+was not caught while writing the guard; it surfaced in review, and closing it meant
+listing those two executors alongside `JpaRepository` in the forbidden-supertype
+set, not just naming the one obviously dangerous interface.
+
+### The solution
+
+`follow_up` joins the existing guarded set with a plain `Specification` on its own
+`assigned_to` column — one line, because the property it needs (intrinsic
+ownership) is exactly what `VisibilityPolicy`'s existing shape already provides.
+
+`activity` cannot join that set — there is no column to filter on — so it is gated
+at its subject instead: `VisibleFinder.requireVisibleSubject(SubjectType, UUID)`
+switches over the four existing `findX` methods and throws `NotFoundException` on
+an empty result, the same 404-not-403 contract every other visibility check uses.
+The gate is made *unbypassable* rather than merely documented: `ActivityRepository`
+extends the bare `Repository<T, ID>` marker, not `JpaRepository`, and declares
+exactly three methods, none of which is a by-id-alone lookup. There is nothing to
+inherit, so there is nothing left for a declared-method rule to miss —
+`ActivityRepositoryScopingArchTest` asserts the supertype list first (no
+`JpaRepository`/`CrudRepository`/`QueryByExampleExecutor`/`QuerydslPredicateExecutor`
+anywhere in it) and only then asserts every declared method takes a
+`(SubjectType, UUID)` pair. The first assertion is load-bearing; the second is
+worthless without it.
+
+### Lesson
+
+When a guard has to hold a property, prefer removing the capability over policing
+its use — a repository that only has three methods, none of them unscoped, needs no
+rule cleverness at all. And check what a rule can actually *see* before trusting it:
+an ArchUnit assertion over declared members is blind to everything inherited, and
+that is exactly where the dangerous methods live — not just the obvious
+`JpaRepository` CRUD surface, but any mixed-in executor interface that brings its
+own inherited finder along with it. This is the same lesson challenge #46 logged,
+now confirmed from the design side rather than the guard side: the two are the same
+finding, met twice, because the codebase now has one repository built the
+conventional way (many inherited methods, policed by an allowlist) and one built to
+have nothing to police.
+
+---
+
+## Challenge 51 — `OVERDUE` as a predicate, not a status
+
+**Phase:** Implementation (activity/follow-up slice)
+
+### The problem
+
+The parent spec promises `follow_up` is "first-class, with its own reminder
+scheduler," and a scheduled job needs somewhere to send the reminder it computes.
+There is nowhere: WhatsApp is a `wa.me` deep link with no push channel behind it,
+email exists but is the channel these users read least and a nudge needs delivery
+tracking and dedupe no spec has scoped, and there is no frontend yet to receive an
+in-app notification. Building the reminder scheduler anyway would be building a job
+that fires into a void.
+
+### Why it's hard
+
+The tempting move is to build the machinery regardless, because it's the part of
+the promise that *looks* like the feature: an `OVERDUE` status column, a scheduled
+job that flips `PENDING` rows past their `due_at` to `OVERDUE`, maybe an index to
+make the sweep cheap. It compiles, it demos, and "you never lose a follow-up" reads
+as delivered. It is also strictly more moving parts for strictly less truth: a
+status column maintained by a job can fall behind, crash mid-sweep, or simply not
+run — and then the row's own `status` column actively lies about whether it is
+overdue, which is worse than not tracking the concept at all, because a lying flag
+is trusted by definition.
+
+### The solution
+
+Don't store it — compute it. `OVERDUE` is `status = PENDING AND due_at < now()`,
+evaluated at read time by `DueWindow`, with `OVERDUE` / `DUE_TODAY` / `UPCOMING`
+defined as three disjoint, exhaustive scopes over `PENDING` rows in a fixed
+timezone (IST) day boundary — so the dashboard's three counts always sum to the
+total `PENDING` count, by construction, not by convention. No column, no job, no
+sweep to fall behind on. When a real notification channel eventually exists, the
+scheduled job that sends into it reads the exact same predicate this slice already
+implements; nothing here has to be migrated or undone, only wrapped in a sender.
+
+### Lesson
+
+A denormalised flag maintained by a job is a row that can lie about itself — if the
+derived form is fast enough to compute at read time (one index on
+`(tenant_id, assigned_to, status, due_at)` made it so here), the flag is a
+liability, not an optimisation, because it adds a failure mode (the job falls
+behind or dies) without adding any information the predicate didn't already carry.
+Also worth checking deliberately, not assuming: three scopes that each look obvious
+in isolation (`OVERDUE`, `DUE_TODAY`, `UPCOMING`) can still silently overlap or
+leave a gap at their boundary — verify a partition actually partitions before
+trusting that three counts sum to the whole.

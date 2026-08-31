@@ -1,46 +1,51 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-30 — **Record-level visibility filtering is built and merged to `main`
-as `c81f59f`. Nothing is in flight; `main` is the baseline for new work.** Every read and write on
-`Customer`, `Enquiry`, `Quotation`, and `Order` is now filtered by `assigned_to` through a single
-`VisibleFinder`, closing backlog item #3's last open piece: the tenant-internal confidentiality gap
-where every user in a tenant could read and mutate every record in it. A `VisibilityScopingArchTest`
-allowlist guard fails the build if a future repository read bypasses the layer. **This does not ship
-the parent spec's three-tier rule** — `SALES_MANAGER` is collapsed into the unrestricted tier for
-want of a team model, and unassigned records are visible to everyone by design (see §3, §8).
-**User invitations are now the sole remaining P0-auth follow-up** — see §8. The previous slice
-(per-IP rate limiting on the public and auth routes) is now **merged to `main` as `d7725b0`**; see
-§3's "Previous code work" for its detail.
+**Last updated:** 2026-08-30 — **Activity log and follow-ups are built on branch
+`activity-follow-up`, all 14 tasks complete and reviewed, pending merge (not yet on `main`).**
+The wedge's "never lose a follow-up" promise now has an implementation: `POST
+/api/v1/activities` logs a CALL/WHATSAPP/EMAIL/VISIT/NOTE against any of `Customer`, `Enquiry`,
+`Quotation`, or `Order` and can atomically schedule the next follow-up in the same request;
+`follow_up` gets its own owner-scoped visibility (joining the guarded set) while `activity` is
+gated at its subject via `VisibleFinder.requireVisibleSubject` — a structurally unbypassable gate
+because `ActivityRepository` extends the bare `Repository<T, ID>` marker rather than
+`JpaRepository`, so there is nothing unscoped to inherit (challenge #50). **`OVERDUE` is a
+predicate, not a column**: no scheduler, no job, no notification channel — see §3 and §8 for why,
+and challenge #51 for the reasoning. Backlog item #1 (activity/follow-up) is now **DONE** — see
+§8. The previous slice (intra-tenant record-level visibility) is **merged to `main` as `c81f59f`**;
+see §3's "Previous code work" for its detail.
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### One thing is in flight
 
-**`main` is clean and is the baseline for new work.** The `record-visibility` branch — nine tasks
-(visibility policy, `VisibleFinder`, customer/enquiry/quotation+order coverage, the nested-path and
-`assignedTo`-validation tasks, the `VisibilityScopingArchTest` allowlist guard, and its docs
-wrap-up) — was merged `--no-ff` as **`c81f59f`** on 2026-08-30 and deleted. Every task was reviewed
-clean, the whole-branch review returned MERGE after one fix wave, and the merged result was verified
-green (**352 tests, 0 failures, 0 errors**) before the branch went away. There is no unmerged feature
-branch to settle. Start at item 1 below, then go to §8 and pick the next chunk with the user.
+**`activity-follow-up` is complete but not merged.** Fourteen tasks (the polymorphic subject
+visibility gate, the `activity` and `follow_up` aggregates + their own RLS migrations, `DueWindow`'s
+IST day-boundary arithmetic, the `AssignableUsers` extraction, log-and-schedule, filter/read/summary,
+complete/cancel/reschedule, editing an activity, the `QuotationAcceptedEvent` → `SYSTEM` activity
+listener, this docs wrap-up, and the final review's fix wave) are done on branch
+`activity-follow-up`, commits `212099f`..`HEAD` off `main` at `830fd47`, every task reviewed
+clean. **It has not been merged to `main`** — run
+`finishing-a-development-branch` on it before starting anything new, unless you're picking this
+session up specifically to review or merge it.
 
-**One loose end that is not code:** the Bucket4j entry written for
-`/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that directory is
-not a git repository, so nothing was committed there. The rate-limiting design spec §7 asked for the
-entry; it exists; it is just untracked. Decide with the user whether that repo should be `git init`ed.
-Do not init it unilaterally.
+**One loose end that is not code, carried forward from before this slice:** the Bucket4j entry
+written for `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that
+directory is not a git repository, so nothing was committed there. The rate-limiting design spec §7
+asked for the entry; it exists; it is just untracked. Decide with the user whether that repo should
+be `git init`ed. Do not init it unilaterally.
 
-Before it, `public-rate-limiting` ran to completion and **merged to `main` as `d7725b0`** (commits
-`bc542c2`..`18eaccd`); that feature branch is deleted, as was `rls-force-and-guard` before it
-(merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
+Before it, `record-visibility` ran to completion and **merged to `main` as `c81f59f`**; that feature
+branch is deleted, as was `public-rate-limiting` before it (merged as `d7725b0`), `rls-force-and-guard`
+before that (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On `main` this is **352 tests, 0 failures, 0 errors**
-   (329 root + 23 `platform-primitives`), up from the 296 that preceded the visibility slice.
-   Gradle prints no total for a multi-project build, so count it yourself:
+   then `cd backend && ./gradlew clean test`. On this branch (`activity-follow-up`) this is
+   **431 tests, 0 failures, 0 errors** (408 root + 23 `platform-primitives`), up from `main`'s
+   **352 tests** baseline (329 root + 23 `platform-primitives`). Gradle prints no total for a
+   multi-project build, so count it yourself:
 
    ```bash
    cd backend && ./gradlew clean test
@@ -51,6 +56,10 @@ Before it, `public-rate-limiting` ran to completion and **merged to `main` as `d
    ```
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
+   **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
+   -path './build/test-results/test/*.xml'` alone reports 408, not 431, and this tripped an
+   implementer on this very branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
+   above spans both projects; use it, not a root-only variant.
 
    **A filtered run must now be project-qualified.** Unqualified `./gradlew clean test` deliberately
    spans both projects, but `./gradlew test --tests '<filter>'` applies the filter to *every*
@@ -114,7 +123,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (46 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (51 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -190,10 +199,71 @@ All under `docs/superpowers/`:
     truth for *what* this slice built.
 32. **`plans/2026-08-29-record-visibility.md`** — the nine-task implementation plan for it.
     **Merged to `main` as `c81f59f`** — see §3.
+33. **`specs/2026-08-30-activity-follow-up-design.md`** — activity log & follow-ups design spec (the
+    polymorphic subject link across the four visibility-scoped aggregates, the two-strategy
+    visibility gate in §4, why `OVERDUE` is a read-time predicate rather than a status column, the
+    three flows, and the deliberate non-implementation of the parent spec's reminder scheduler).
+    Source of truth for *what* this slice built. §5.3 was corrected during this docs task from the
+    single `V29__rls_activity_follow_up.sql` originally described to the four-file split the plan
+    actually uses.
+34. **`plans/2026-08-30-activity-follow-up.md`** — the fourteen-task implementation plan for it.
+    **Branch `activity-follow-up` is complete, reviewed clean, and pending merge** — see §0 and §3.
 
 ## 3. Current state
 
-- **Latest code work: intra-tenant record-level visibility filtering** — **merged to `main` as
+- **Latest code work: activity log and follow-ups** — **branch `activity-follow-up`, complete and
+  reviewed clean, NOT YET MERGED to `main`.** Commits `212099f`..`HEAD` off `main` at `830fd47`.
+  Fourteen tasks delivering the two aggregates the design spec's §data-model names and nothing else
+  (§2's out-of-scope recap: no scheduler, no notification table, no `OVERDUE` column, no attachments,
+  no global feed). Both entities live under `com.easycrm.sales`, tenant-scoped and RLS-covered, in
+  **four migrations, not one** — `V27__activity.sql`, `V28__rls_activity.sql`, `V29__follow_up.sql`,
+  `V30__rls_follow_up.sql` — because the two tables land in different tasks and a single combined RLS
+  migration would leave `RlsCoverageIntegrationTest` red between them (the design spec §5.3 originally
+  described one file; corrected to the four-file split by this docs task).
+
+  **Two visibility strategies for two tables that only look symmetrical (challenge #50).**
+  `follow_up` has its own `assigned_to` and joins the guarded set exactly like the four existing
+  aggregates — `VisibilityPolicy.followUps()`, `VisibleFinder.findFollowUp`/`pageFollowUps`, and
+  `FollowUpRepository` added to `VisibilityScopingArchTest.GUARDED_REPOSITORIES`. `activity` has no
+  owner column at all — its visibility is derived, not intrinsic — so it is gated once, at its
+  polymorphic subject, via the new `VisibleFinder.requireVisibleSubject(SubjectType, UUID)`, which
+  switches over `CUSTOMER`/`ENQUIRY`/`QUOTATION`/`ORDER` onto the four existing `findX` methods and
+  throws the house 404 on anything invisible or cross-tenant. That gate is made structural rather
+  than promised: `ActivityRepository extends Repository<T, ID>` (the bare marker, not `JpaRepository`)
+  with exactly three declared methods, none a by-id-alone lookup, so there is nothing unscoped left
+  to inherit — `ActivityRepositoryScopingArchTest` asserts both the forbidden-supertype list (which
+  also had to name `QueryByExampleExecutor`/`QuerydslPredicateExecutor`, found in review, not on the
+  first pass) and that every declared method takes a subject.
+
+  **`OVERDUE` is a predicate, computed at read time, not a status column (challenge #51).** The
+  parent spec's reminder scheduler is deliberately not built — see §8 for the annotation and the
+  standing reason. `DueWindow` computes IST day boundaries as a pure function; `FollowUpScope`'s
+  `OVERDUE`/`DUE_TODAY`/`UPCOMING` are disjoint and exhaustive over `PENDING` rows, so the dashboard
+  `summary` endpoint's three counts sum to the total by construction.
+
+  **REST surface:** `POST /api/v1/activities` (optional nested `nextFollowUp`, one transaction —
+  §6.1), `GET /api/v1/activities` (by subject), `PATCH /api/v1/activities/{id}` (body carries
+  `subjectType`/`subjectId`, since no by-id-alone lookup exists to gate on); `POST
+  /api/v1/follow-ups`, `GET /api/v1/follow-ups/{id}`, `GET /api/v1/follow-ups` (owner + scope
+  filters), `GET /api/v1/follow-ups/summary` (dashboard tile), `PATCH /api/v1/follow-ups/{id}`,
+  `POST /api/v1/follow-ups/{id}/complete` (optional activity, same transaction — §6.2), `POST
+  /api/v1/follow-ups/{id}/cancel`. A new `QuotationAcceptedActivityListener` (`@EventListener`, same
+  synchronous/same-transaction shape as `OrderAcceptedAuditListener`) writes a `SYSTEM` activity on
+  quote acceptance — the parent spec's "a new subscriber, not an edit to `QuotationService`" claim,
+  now tested by someone other than its author (§6.3): `QuotationService` is untouched.
+
+  **`AssignableUsers` extracted** (`com.easycrm.iam`) from the identical private
+  `requireAssignableUser` copies duplicated in `CustomerService` and `EnquiryService` — closing
+  deferred-backlog item 40 below — because `FollowUpService` needed a third copy and three was the
+  line. **431 tests, 0 failures, 0 errors** — 408 in the root project, 23 in `platform-primitives`,
+  up from the 352-test `record-visibility` baseline (+79). New challenges #47–#51; annotations
+  reference gained `@JsonInclude` (this docs task; `@EventListener`/`@Enumerated`/`@Configuration`/
+  `@Bean` were already present). **What this slice does *not* do:** any scheduler, notification
+  channel, or `OVERDUE` column (§3/§8 of the design spec, challenge #51); any narrowing of
+  `SALES_MANAGER`, unchanged from the visibility slice; any change to the four existing aggregates'
+  own tables.
+
+- **Previous code work: intra-tenant record-level visibility filtering** — **merged to `main` as
   `c81f59f`.** Branch `record-visibility`, off `main` at `29b59ca`, now deleted. Nine tasks: `VisibilityPolicy` (role → `Specification`
   per aggregate, `unrestricted()` fail-open for every role but `SALES_EXEC`), `VisibleFinder` (the
   single permitted reader of the four guarded repositories), customer and enquiry reads/writes
@@ -224,7 +294,7 @@ All under `docs/superpowers/`:
   choke point re-pointed, and the repository added to `GUARDED_REPOSITORIES`. Miss the last one and
   the other three are the only thing standing between a new aggregate and a silent leak.
 
-- **Previous code work: per-IP rate limiting on the public and auth routes** — **merged to `main`
+- **Before that: per-IP rate limiting on the public and auth routes** — **merged to `main`
   as `d7725b0`.** Branch `public-rate-limiting`, commits `bc542c2`..`18eaccd` off `main` at
   `e69d7ac`, now deleted: seven tasks, one whole-branch fix wave (`3bfb99d`), and
   the docs wrap-ups after it. Seven tasks: a `RateLimitPolicy` value type +
@@ -251,7 +321,7 @@ All under `docs/superpowers/`:
   The design's Redis-backed `RateLimitStore` implementation is the prerequisite for running more
   than one instance; it does not exist yet.
 
-- **Before that: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
+- **Earlier still: RLS forced on all fourteen tenant tables, with a layer-3 guard** — **merged
   to `main` as `3c239d1`**. Branch `rls-force-and-guard`, commits `cfc8928`..`b8b2ecb` off `main`
   at `455c237`, closing **PF14 and PF15**. `V26__force_rls.sql` adds
   `FORCE ROW LEVEL SECURITY` to every tenant table (previously all fourteen were `ENABLE`d and
@@ -266,7 +336,7 @@ All under `docs/superpowers/`:
   Note this closes the gap *in the schema* — a deployment must still connect as `easycrm_app`;
   forcing removes the silent-failure mode, not the requirement.
 
-- **Earlier still: `platform-primitives` extracted into its own Gradle module** — **merged to
+- **Further back: `platform-primitives` extracted into its own Gradle module** — **merged to
   `main` as `210545e`**. Branch `platform-primitives-module`, eight tasks, commits
   `4d43d75`..`6c255d4` off `main` at `ac4eaca`. Every task reviewed clean (Tasks 4 and 5 each took
   one fix round; Task 7 returned zero findings at any severity), and the whole-branch review found
@@ -483,11 +553,21 @@ shared over WhatsApp. All four candidates below are scoped in the design spec
 (`specs/2026-07-22-easycrm-design.md`). Present them, take the user's choice, and only then start
 the workflow from §0 step 4.
 
-1. **`activity` / `follow_up` entities** — the "never lose a follow-up" promise (CALL/WHATSAPP/EMAIL/
-   VISIT/NOTE logs + first-class reminders). New aggregate(s); the accept event seam already exists
-   to hang activity listeners on.
+1. ~~**`activity` / `follow_up` entities**~~ — **DONE**, on branch `activity-follow-up` (§0, §3),
+   pending merge. CALL/WHATSAPP/EMAIL/VISIT/NOTE logs against any of the four visibility-scoped
+   aggregates, log-and-schedule in one transaction, complete/cancel/reschedule, and a `SYSTEM`
+   activity on quote acceptance via the accept event seam — exactly as this item described. **The
+   parent spec's `follow_up` data-model clause "first-class, with its own reminder scheduler" is
+   deliberately not implemented** — see the design spec §3 for the standing reason (no channel to
+   push into: no WhatsApp Business API, email has no delivery-tracking/dedupe design, no frontend
+   for in-app), and challenge #51 for why the eventual fix is additive, not a redesign. Record this
+   as a decision, not an oversight, if it's ever asked why no scheduler exists.
 2. **Scheduled auto-expiry** of quotations past `validUntil` — only a manual `expire` action exists
-   today; nothing runs on a schedule. Small, introduces the first scheduled job.
+   today; nothing runs on a schedule. **Still the first scheduled job** — unchanged by the
+   activity/follow-up slice landing. The design spec's §3 has a head start for whoever picks this
+   up: a scheduled job has no JWT and so no `TenantContext`, and must iterate tenants, wrapping each
+   in `TenantContext.runAs(...)` **before** its transaction opens (Hibernate resolves a session's
+   tenant once, at session-open, and never re-reads it — challenge #9).
 3. **P0-auth follow-up** — **fully closed except for user invitations.** This item started as three
    things: rate limiting, record-level visibility, and user invitations. Rate limiting landed in the
    `public-rate-limiting` slice (`d7725b0`; §3): `/public/q/{token}` and the auth routes are capped
@@ -537,25 +617,24 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested default — read this before proposing anything.** Four slices in a row have now been
-hardening (RLS forcing, rate limiting, then record-level visibility). **The last "it is wrong in code
-that runs today" item on this list is now closed** — see §3's `record-visibility` entry — so the
-honest ranking has genuinely changed, not just rotated:
+**Suggested default — read this before proposing anything.** Five slices in a row have now been
+either hardening or moving the product (RLS forcing, rate limiting, record-level visibility, then
+activity/follow-up). **Backlog item #1 is now done** — see §3's `activity-follow-up` entry — so the
+honest ranking has changed again:
 
-- **#1 (activity/follow-up) is now the strongest claim on the board.** With the last
-  correctness gap closed, this is the wedge's most conspicuous missing surface: "never lose a
-  follow-up" is a headline promise with no implementation. The accept event seam already exists to
-  hang listeners on. Pick this if the next slice should move the product.
-- **#2 (scheduled auto-expiry) stays the cheapest small slice** if a small slice is wanted between
-  two large ones — nothing about this ranking round changed its size or its position.
+- **#2 (scheduled auto-expiry) is now the strongest small claim on the board.** It was already the
+  cheapest slice available; with #1 closed, nothing bigger is more obviously due. It also has a head
+  start: the design spec's §3 tenant-iteration note (`TenantContext.runAs` before the transaction
+  opens, per-tenant, no JWT to read from) is exactly the seam it needs.
+- **#4 (cursor pagination)** — cross-cutting, lower urgency, unchanged by this slice.
 - **PF19's entitlement-metering half stays blocked on design, not effort.** The public route has no
   JWT, so there is nowhere to hang a per-tenant check; it needs the billing thread's decisions before
   code, same as before this slice.
 - **`platform-web` stays the weakest claim.** Next by dependency order only; nothing in this slice
   changed that.
 
-A reasonable reading is: **#1 by default now that the correctness backlog is empty, #2 if a cheap
-slice is wanted first.** Confirm with the user rather than assuming.
+A reasonable reading is: **#2 by default now that both #1 and the correctness backlog are empty.**
+Confirm with the user rather than assuming.
 
 **Before any second app instance:** the rate limiter's store is in-process (§3) — running N
 instances behind a load balancer multiplies every configured limit by N, silently. Build the
@@ -572,11 +651,13 @@ filter) as the second thing to look at when a tenant's tables grow.
 ### Smaller deferred-Minor backlog
 
 Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
-ledgers of **four** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
+ledgers of **five** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
 items 23–24 from the `platform-primitives` slice (eight tasks), items 25–32 from
-`public-rate-limiting` (seven tasks), and items 33–41 from `record-visibility` (nine tasks plus a
-whole-branch fix wave) — each cross-checked line-by-line against its ledger before that workspace was
-deleted at merge. So it really is **self-contained**:
+`public-rate-limiting` (seven tasks), items 33–41 from `record-visibility` (nine tasks plus a
+whole-branch fix wave), and items 42–45 from `activity-follow-up` (fourteen tasks) — each
+cross-checked line-by-line against its ledger before that workspace was deleted at merge (or, for
+`activity-follow-up`, while the branch is still live — this list is the durable copy regardless). So
+it really is **self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
 
@@ -624,12 +705,12 @@ first *within* each slice's block; 23–24 are not lower-value than 22, they are
    the frontend lands and can state what it needs. This semantic is documented on
    `Tenant.updateProfile` (the PDF/share slice's new tenant-profile PATCH) but, house-wide, is
    asserted by no test — a regression test would be cheap if this is ever revisited.
-9. **`OrderSpecifications`, `EnquirySpecifications`, `QuotationSpecifications`, and now
-   `CustomerSpecifications` (added by the record-visibility slice, §3) all use string-keyed
-   `root.get(...)`** rather than a JPA static metamodel, so a field rename fails at runtime rather
-   than compile time. All four have immediate test coverage. If fixed, fix them together — doing
-   one alone just makes the others inconsistent. Fixing this now means touching four classes, not
-   three.
+9. **`OrderSpecifications`, `EnquirySpecifications`, `QuotationSpecifications`, `CustomerSpecifications`
+   (added by the record-visibility slice, §3), and now `FollowUpSpecifications` (added by
+   `activity-follow-up`, §3) all use string-keyed `root.get(...)`** rather than a JPA static
+   metamodel, so a field rename fails at runtime rather than compile time. All five have immediate
+   test coverage. If fixed, fix them together — doing one alone just makes the others inconsistent.
+   Fixing this now means touching five classes, not four.
 10. **Only `Seller`'s optional fields have a null-render test in `QuotationPdfRendererTest`.**
    `Buyer.gstin`, `Buyer.address`, `validUntil`, payment/delivery terms and notes are all
    `th:if`-guarded in `quotation.xhtml`, but no test renders any of them absent — the same
@@ -799,10 +880,10 @@ and they are worth fixing together rather than one at a time.
     references in the codebase today. This residual is disclosed in a comment in the test itself
     rather than being quietly claimed closed; closing it properly means widening
     `GUARDED_REPOSITORIES` or matching on the declaring hierarchy.
-40. **`requireAssignableUser` is duplicated verbatim, javadoc included, in `CustomerService` and
-    `EnquiryService`.** Written independently by the two halves of the `assignedTo`-validation task.
-    A future change to the rule — permitting a second `UserStatus`, say — must land in both places,
-    and nothing fails if it lands in only one.
+40. ~~**`requireAssignableUser` is duplicated verbatim, javadoc included, in `CustomerService` and
+    `EnquiryService`.**~~ **DONE** — closed by the `activity-follow-up` slice (§3): `FollowUpService`
+    needed a third copy, which was the extraction trigger. Both call sites now delegate to
+    `com.easycrm.iam.AssignableUsers.require(UUID)`.
 41. **The three count-query tests assert row *count* but not row *identity*.** After the fix wave,
     `pagingAppliesVisibilityToBothTheDataAndCountQueries` and its quotation/order siblings page with
     `PageRequest.of(0, 1)` to force the count supplier to run, and assert `getContent()` has size 1
@@ -810,3 +891,38 @@ and they are worth fixing together rather than one at a time.
     had. A broken filter still surfaces through the total, so the defect they were written for stays
     covered, but they discriminate less on the data-query side than their own docstrings claim.
     Asserting the returned row is one of the visible set closes it.
+
+**From the `activity-follow-up` slice (2026-08-30).** All four open. Item 45 is a deliberate,
+disclosed deviation from `CLAUDE.md`'s "log it in the same change" rule, not an oversight — the other
+three are ordinary per-task findings judged safe to defer.
+
+42. **`FollowUpService` imports `org.springframework.data.domain.Sort` but never uses it.** Cosmetic;
+    no checkstyle gate is configured to catch an unused import at build time.
+43. **`ActivityEditEndpointTest.aMismatchedSubjectIs404` passes for the wrong reason.** It supplies a
+    random `subjectId`, so it 404s at `VisibleFinder.requireVisibleSubject` before the
+    subject-scoped repository lookup (`findByIdAndSubjectTypeAndSubjectId`) is ever reached — it
+    proves the gate works, not that a *mismatched-but-real* subject is rejected. The underlying
+    property this test's name promises **is** covered, just by different tests:
+    `ActivityRepositoryTest.findByIdIsScopedToTheSubjectItWasFiledUnder` proves it at the repository
+    level, and `ActivityRepositoryScopingArchTest` proves it structurally (§3, challenge #50). Fix:
+    seed a second real, visible enquiry and use its id as the mismatched subject, so the test
+    actually exercises the repository-level scoping it's named for.
+44. **`@JsonInclude(Include.NON_NULL)` sits on the whole `ActivityResponse` record**, so it also
+    suppresses a null `outcome`, not just the `followUpId` field it was added for. Dormant today —
+    the client already treats a missing key and an explicit `null` the same way — but the blast
+    radius is wider than the one field that motivated it. Narrow it to `@JsonInclude` on the
+    `followUpId` field alone if it ever bites.
+45. **Challenge #50's log entry (the bare-`Repository` mechanism) was written in this docs task
+    (Task 14) rather than in the task that introduced the mechanism (Task 2, `ff456fb`)** — a
+    literal deviation from `CLAUDE.md`'s "same change" rule. Accepted because the guard that
+    demonstrates *why* the mechanism matters (`ActivityRepositoryScopingArchTest`, Task 3, `642c94c`)
+    only landed a task later; logging at Task 2 would have had no guard to point to yet.
+46. **Cross-assignment on `follow_up` is a one-way door, undecided by design, not a bug.** A
+    `SALES_EXEC` who creates a follow-up assigned to a colleague gets a `201` carrying a
+    `followUpId`, then `404`s on `GET /follow-ups/{id}` and cannot cancel or reschedule it — only
+    the assignee or an unrestricted role can, because `VisibilityPolicy.followUps()` filters
+    strictly on `assignedTo = me` (design spec §4.1). The API is coherent with that policy but
+    returns a link the caller cannot follow, and nothing documents or tests the boundary today
+    beyond the spec paragraph added alongside this item. Whether a creator should retain any
+    visibility or control over work they assigned to someone else is an open design question —
+    who may assign work to whom is out of scope for this slice.

@@ -3,6 +3,7 @@ package com.easycrm.platform.visibility;
 import com.easycrm.crm.Customer;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.sales.Enquiry;
+import com.easycrm.sales.FollowUp;
 import com.easycrm.sales.Order;
 import com.easycrm.sales.Quotation;
 import jakarta.persistence.criteria.Root;
@@ -44,6 +45,20 @@ public class VisibilityPolicy {
     public Specification<Quotation> quotations() { return viaCustomer("customerId"); }
 
     public Specification<Order> orders() { return viaCustomer("customerId"); }
+
+    /**
+     * A follow-up carries its own owner, so its visibility is intrinsic rather than
+     * derived from a subject — this is the half of the asymmetry described in spec §4.1.
+     *
+     * <p>Note this is NOT ownedOrUnassigned(): follow_up.assigned_to is NOT NULL, because
+     * a follow-up nobody owns is precisely the failure this feature exists to prevent, so
+     * the IS NULL branch the other aggregates carry would be unreachable code here.
+     */
+    public Specification<FollowUp> followUps() {
+        if (unrestricted()) return unrestrictedSpec();
+        UUID me = currentUserId();
+        return (root, query, cb) -> cb.equal(root.get("assignedTo"), me);
+    }
 
     /** The row carries its own assigned_to. */
     private <T> Specification<T> ownedOrUnassigned() {

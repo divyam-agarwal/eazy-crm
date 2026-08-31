@@ -22,7 +22,8 @@ class VisibilityScopingArchTest {
         "com.easycrm.crm.CustomerRepository",
         "com.easycrm.sales.EnquiryRepository",
         "com.easycrm.sales.QuotationRepository",
-        "com.easycrm.sales.OrderRepository");
+        "com.easycrm.sales.OrderRepository",
+        "com.easycrm.sales.FollowUpRepository");
 
     /**
      * Methods any class may still call on a guarded repository. Everything else must go
