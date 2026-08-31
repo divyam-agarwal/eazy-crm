@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
@@ -29,10 +31,15 @@ import java.util.function.ToIntFunction;
  *       session-open and never re-reads it (challenge #9). Context set after the
  *       transaction opens binds to nothing, and doBegin returns early leaving the GUC
  *       unset -- so scoped tables return ZERO ROWS instead of raising.</li>
- *   <li><b>TransactionTemplate, not @Transactional.</b> A @Transactional method called from
- *       this class's own loop is a self-invocation: the proxy is bypassed and the per-tenant
- *       transaction silently joins the caller's, collapsing the boundary this class exists
- *       to draw.</li>
+ *   <li><b>Its own transaction, always.</b> The template is built here with
+ *       PROPAGATION_REQUIRES_NEW rather than injecting Boot's autoconfigured
+ *       TransactionTemplate, which is PROPAGATION_REQUIRED. That closes two traps, not one.
+ *       A @Transactional method called from this class's own loop would be a
+ *       self-invocation: the proxy bypassed, the per-tenant transaction silently joining
+ *       the caller's. And a caller that ALREADY holds a transaction would make a REQUIRED
+ *       template join it -- doBegin would never run, the GUC would stay unset, the session
+ *       would have resolved NO_TENANT, and every scoped read would return zero rows, which
+ *       is the very failure this class exists to prevent.</li>
  *   <li><b>Failure isolation.</b> One tenant's bad data must not abort the sweep.</li>
  * </ol>
  *
@@ -53,9 +60,10 @@ public class TenantJobRunner {
     private final TenantRepository tenants;
     private final TransactionTemplate tx;
 
-    public TenantJobRunner(TenantRepository tenants, TransactionTemplate tx) {
+    public TenantJobRunner(TenantRepository tenants, PlatformTransactionManager transactionManager) {
         this.tenants = tenants;
-        this.tx = tx;
+        this.tx = new TransactionTemplate(transactionManager);
+        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** What one sweep did. Counts are for the log line, not for control flow. */
@@ -68,6 +76,11 @@ public class TenantJobRunner {
      *
      * <p>Reading the tenant list happens with NO tenant context, which is safe because
      * Tenant is a global table (TenantScopingArchTest.GLOBAL_TABLES).
+     *
+     * <p>The body MAY RUN TWICE for a tenant, because of the optimistic-lock retry. Database
+     * work is rolled back between attempts, but anything that escapes the transaction --
+     * notably a REQUIRES_NEW write such as AuditService.recordIndependently -- will be
+     * duplicated. A body must be safe to re-run.
      */
     public JobSummary forEachTenant(String jobName, ToIntFunction<UUID> body) {
         int swept = 0;

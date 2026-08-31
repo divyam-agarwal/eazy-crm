@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +36,8 @@ class TenantJobRunnerTest extends IntegrationTest {
     @Autowired TenantJobRunner runner;
     @Autowired TenantRepository tenants;
     @Autowired CustomerRepository customers;
+    @Autowired TransactionTemplate outerTx;   // Boot's autoconfigured, PROPAGATION_REQUIRED bean --
+                                               // stands in for a transactional caller.
 
     private UUID trialA, activeB, suspendedC;
     private String slugSeed;
@@ -93,6 +96,28 @@ class TenantJobRunnerTest extends IntegrationTest {
         assertThat(counts).containsEntry(activeB, 1L);
     }
 
+    /**
+     * Pins the fix for the REQUIRED-vs-REQUIRES_NEW gap: if the injected TransactionTemplate
+     * were Boot's autoconfigured (PROPAGATION_REQUIRED) bean, a caller that already holds a
+     * transaction would make the per-tenant work join it -- doBegin would never run, the GUC
+     * would stay unset, and the count below would come back 0 instead of 1.
+     */
+    @Test
+    void opensItsOwnTransactionEvenWhenTheCallerAlreadyHasOne() {
+        seedOneCustomerFor(trialA);
+
+        Map<UUID, Long> counts = new HashMap<>();
+        outerTx.execute(status -> {
+            runner.forEachTenant("test-job", t -> {
+                counts.put(t, customers.count());
+                return 0;
+            });
+            return null;
+        });
+
+        assertThat(counts).containsEntry(trialA, 1L);
+    }
+
     @Test
     void oneFailingTenantDoesNotAbortTheSweep() {
         List<UUID> visited = new ArrayList<>();
@@ -104,6 +129,9 @@ class TenantJobRunnerTest extends IntegrationTest {
 
         assertThat(visited).contains(trialA, activeB);   // reached the later tenant anyway
         assertThat(summary.tenantsFailed()).isGreaterThanOrEqualTo(1);
+        // A failed tenant contributes neither an item nor a swept count -- catches an
+        // implementation that increments "swept" in a finally regardless of outcome.
+        assertThat(summary.itemsProcessed()).isEqualTo(summary.tenantsSwept());
     }
 
     @Test
@@ -118,7 +146,33 @@ class TenantJobRunnerTest extends IntegrationTest {
         });
 
         assertThat(attemptsForA.get()).isEqualTo(2);              // tried, failed, retried
-        assertThat(summary.itemsProcessed()).isGreaterThanOrEqualTo(7);
+        // Every other tenant returns 0, so 7 is deterministic; >= 7 would not catch an
+        // implementation that double-counted both attempts as 14.
+        assertThat(summary.itemsProcessed()).isEqualTo(7);
+    }
+
+    /**
+     * Proves the retry is bounded at one, not "at least one." A body that ALWAYS throws would
+     * pass retriesATenantOnceAfterAnOptimisticLockFailure under a retry-twice or an unbounded
+     * loop just as well as under a correct single retry -- this is the test that actually
+     * pins the bound.
+     */
+    @Test
+    void givesUpAfterASingleRetryRatherThanLoopingForever() {
+        AtomicInteger attemptsForA = new AtomicInteger();
+        List<UUID> visited = new ArrayList<>();
+        TenantJobRunner.JobSummary summary = runner.forEachTenant("test-job", t -> {
+            visited.add(t);
+            if (t.equals(trialA)) {
+                attemptsForA.incrementAndGet();
+                throw new ObjectOptimisticLockingFailureException(Customer.class, UUID.randomUUID());
+            }
+            return 0;
+        });
+
+        assertThat(attemptsForA.get()).isEqualTo(2);   // one attempt, one retry, then stop
+        assertThat(summary.tenantsFailed()).isGreaterThanOrEqualTo(1);
+        assertThat(visited).contains(activeB);         // the sweep carried on regardless
     }
 
     @Test
@@ -126,7 +180,7 @@ class TenantJobRunnerTest extends IntegrationTest {
         TenantJobRunner.JobSummary summary =
             runner.forEachTenant("test-job", t -> t.equals(trialA) ? 3 : 0);
 
-        assertThat(summary.itemsProcessed()).isGreaterThanOrEqualTo(3);
+        assertThat(summary.itemsProcessed()).isEqualTo(3);
         assertThat(summary.tenantsSwept()).isGreaterThanOrEqualTo(2);
     }
 
