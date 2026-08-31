@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -72,6 +73,17 @@ public class VisibleFinder {
 
     public Page<Quotation> pageQuotations(Specification<Quotation> filter, Pageable pageable) {
         return quotations.findAll(and(policy.quotations(), filter), pageable);
+    }
+
+    /**
+     * Unpaged list read, for internal sweeps that must see every matching row rather than a
+     * page of them. Exists here and not on the caller because QuotationRepository is a
+     * guarded repository — VisibilityScopingArchTest fails the build on any read of it
+     * outside this package. Under a synthetic SYSTEM principal the policy is unrestricted,
+     * so the filter argument does the real work; the routing is what the guard requires.
+     */
+    public List<Quotation> listQuotations(Specification<Quotation> filter) {
+        return quotations.findAll(and(policy.quotations(), filter));
     }
 
     public Page<Order> pageOrders(Specification<Order> filter, Pageable pageable) {
