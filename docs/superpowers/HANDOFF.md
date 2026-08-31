@@ -1030,3 +1030,22 @@ three are ordinary per-task findings judged safe to defer.
     thousands of lapsed quotes overnight, this is N+1 by construction. Fix: fetch all candidate
     version ids from `expirableAsOf`'s own subquery result and batch-load them with a single
     `findAllById`, keyed by the quotation's `currentVersionId`.
+
+48. **`TenantJobRunner` hardcodes which tenant statuses a job sweeps.** `JOB_ELIGIBLE =
+    {TRIAL, ACTIVE}` is a constant with no override, but that is the *quotation-expiry* product
+    rule (design decision D4) baked into a seam meant to be reused. The two future jobs the spec
+    names — entitlement metering and billing — legitimately need `SUSPENDED` tenants, since you
+    still meter and bill a suspended account. The runner is otherwise clean of caller-specific
+    assumptions; this is the one place it is not. Fix when the second job arrives, not before: add
+    a `forEachTenant(String, Collection<TenantStatus>, ToIntFunction<UUID>)` overload and leave the
+    two-arg form delegating to it with the current default.
+
+49. **The auto-expiry slice's cross-tenant isolation is proved over `customer`, not over
+    `quotation`.** The design spec §8 asked for "tenant B holds an expirable quote; sweep tenant A
+    only; B's quote is untouched"; what exists is `TenantJobRunnerTest.eachTenantsBodySeesOnlyItsOwnRows`,
+    which makes the same proof using customers. Defensible — the GUC/`@TenantId` mechanism under
+    test is shared, and both `quotation` and `quotation_version` carry `FORCE ROW LEVEL SECURITY`
+    (`V26__force_rls.sql`) — so the specific claim in `QuotationSpecifications.expirableAsOf`'s
+    Javadoc ("the subquery cannot reach another tenant's versions") is untested but practically
+    unfalsifiable, since version ids are UUIDs. Noted because the spec singled the test out as
+    load-bearing, not because the isolation is in doubt.
