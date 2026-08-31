@@ -557,7 +557,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -618,16 +620,18 @@ class TenantJobRunnerTest extends IntegrationTest {
         seedOneCustomerFor(trialA);
         seedOneCustomerFor(activeB);
 
-        List<Long> counts = new ArrayList<>();
+        Map<UUID, Long> counts = new HashMap<>();
         runner.forEachTenant("test-job", t -> {
-            counts.add(customers.count());
+            counts.put(t, customers.count());
             return 0;
         });
 
-        // Every swept tenant sees exactly its own single customer -- never zero (context
-        // not bound) and never the cross-tenant total (isolation broken).
-        assertThat(counts).isNotEmpty();
-        assertThat(counts).allMatch(c -> c == 1L);
+        // Each of MY tenants sees exactly its own single customer -- never zero (context
+        // not bound) and never the cross-tenant total (isolation broken). Keyed by tenant
+        // rather than asserted over every count: the sweep also visits tenants left behind
+        // by other test classes, which have no customers and would contribute 0.
+        assertThat(counts).containsEntry(trialA, 1L);
+        assertThat(counts).containsEntry(activeB, 1L);
     }
 
     @Test
@@ -673,10 +677,15 @@ class TenantJobRunnerTest extends IntegrationTest {
     }
 
     private void seedOneCustomerFor(UUID tenantId) {
+        // BLOCK lambda, not an expression lambda: runAs is overloaded on Runnable and
+        // Supplier, and `() -> customers.saveAndFlush(...)` matches both ("reference to
+        // runAs is ambiguous"). The braces make it unambiguously a Runnable.
         TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"),
-            () -> customers.saveAndFlush(new Customer(
-                "Customer of " + tenantId, null, "27", null, null, 0, null, null,
-                CustomerSource.MANUAL)));
+            () -> {
+                customers.saveAndFlush(new Customer(
+                    "Customer of " + tenantId, null, "27", null, null, 0, null, null,
+                    CustomerSource.MANUAL));
+            });
     }
 }
 ```
