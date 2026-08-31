@@ -1,5 +1,6 @@
 package com.easycrm.sales;
 
+import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.persistence.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -50,7 +51,19 @@ public class Quotation extends TenantScopedEntity {
     public void markAccepted() { this.status = QuotationStatus.ACCEPTED; }
     public void reviseToDraft() { this.status = QuotationStatus.DRAFT; }
     public void reject() { this.status = QuotationStatus.REJECTED; }
-    public void expire() { this.status = QuotationStatus.EXPIRED; }
+
+    /**
+     * SENT -> EXPIRED. The check runs before any assignment, so a rejected expire leaves
+     * the quotation untouched. The message matches QuotationService.requireSent's exactly:
+     * the service still checks first for a user-initiated expire, so the API's 422 body is
+     * unchanged, and the scheduled sweep gets the same contract from the entity.
+     */
+    public void expire() {
+        if (status != QuotationStatus.SENT) {
+            throw new ValidationException("status", "only a sent quotation can be expired");
+        }
+        this.status = QuotationStatus.EXPIRED;
+    }
 
     public String getQuoteNo() { return quoteNo; }
     public UUID getCustomerId() { return customerId; }

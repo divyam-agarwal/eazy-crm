@@ -8,7 +8,7 @@ public class ValidationException extends RuntimeException {
     private final Map<String, String> fields;
 
     public ValidationException(Map<String, String> fields) {
-        super("validation failed");
+        super(buildMessage(fields));
         this.fields = fields;
     }
 
@@ -17,4 +17,8 @@ public class ValidationException extends RuntimeException {
     }
 
     public Map<String, String> getFields() { return fields; }
+
+    private static String buildMessage(Map<String, String> fields) {
+        return fields.isEmpty() ? "validation failed" : fields.values().iterator().next();
+    }
 }
