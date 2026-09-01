@@ -12,6 +12,7 @@
 
 plugins {
     java
+    jacoco
     id("com.diffplug.spotless")
     id("com.github.spotbugs")
 }
@@ -83,4 +84,53 @@ tasks.withType<com.github.spotbugs.snom.SpotBugsTask>().configureEach {
     reports.create("xml") { required = true }
 }
 
-// JaCoCo config arrives in Task 5.
+tasks.named<JacocoReport>("jacocoTestReport") {
+    dependsOn(tasks.named("test"))
+    reports {
+        // HTML is what a human reads on a failed build; XML is what SonarCloud would
+        // consume if the deferral in the design spec section 3 is ever revisited.
+        html.required = true
+        xml.required = true
+    }
+}
+
+tasks.named("test") { finalizedBy(tasks.named("jacocoTestReport")) }
+
+// Coverage floors, per project (spec D10): the root project (496 tests over a Spring
+// app with Testcontainers) and platform-primitives (23 tests over pure value types) have
+// genuinely different character, so one blended number would mask movement in either.
+// jacoco-report-aggregation is deliberately NOT applied -- these stay two independent
+// verification runs, not one merged report.
+//
+// Each pair is: round the value measured on 2026-09-01 in the build-hygiene slice DOWN
+// to the nearest whole percent, then subtract 1, so a marginally unlucky run does not
+// turn the build red. Floors ratchet UP only -- raise them when coverage rises; never
+// lower one to go green.
+val (lineFloor, branchFloor) = if (project.name == "platform-primitives") {
+    // Measured LINE 84.1%, BRANCH 100.0%.
+    "0.83".toBigDecimal() to "0.99".toBigDecimal()
+} else {
+    // Root project ("easycrm-backend"). Measured LINE 93.9%, BRANCH 82.3%.
+    "0.92".toBigDecimal() to "0.81".toBigDecimal()
+}
+
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn(tasks.named("jacocoTestReport"))
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = lineFloor
+            }
+            limit {
+                counter = "BRANCH"
+                value = "COVEREDRATIO"
+                minimum = branchFloor
+            }
+        }
+    }
+}
+
+// JaCoCo does not wire verification into check by default, unlike Spotless and SpotBugs.
+tasks.named("check") { dependsOn(tasks.named("jacocoTestCoverageVerification")) }
