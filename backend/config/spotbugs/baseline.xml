@@ -5,19 +5,41 @@
   This is a snapshot of every finding present across both Gradle projects
   (root `easycrm-backend` and `platform:platform-primitives`) on the day
   SpotBugs (with find-sec-bugs 1.14.0) was first wired into the build.
-  Total: 32 findings (29 root, 3 platform-primitives); see
-  docs/superpowers/sdd/2026-09-01-build-hygiene/task-4-report.md for the
-  full breakdown by bug type.
+
+  Total: 32 findings — 29 root (`easycrm-backend`), 3 `platform-primitives`.
+  By type:
+    EI_EXPOSE_REP2                          x17
+    EI_EXPOSE_REP                            x8
+    NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE   x3
+    CT_CONSTRUCTOR_THROW                     x3
+    MS_EXPOSE_REP                            x1
+  26 of the 32 (EI_EXPOSE_REP2 + EI_EXPOSE_REP + MS_EXPOSE_REP) are the
+  defensive-copy family, largely noise on JPA entities and records. The
+  other 6 (NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE x3, CT_CONSTRUCTOR_THROW
+  x3) deserve a real look. Zero SECURITY-category findings from
+  find-sec-bugs.
+
+  This breakdown is inlined here, rather than linked out to a task report,
+  because `.superpowers/sdd/**` is .gitignore'd — a report path is not
+  reachable from a fresh clone. This file is the durable record.
+
+  To re-enumerate the baselined findings yourself (e.g. to check this
+  breakdown, or before triaging the backlog): comment out the
+  `baselineFile = ...` line below and run `./gradlew spotbugsMain`. With
+  baselineFile active, `-excludeBugs` filters the emitted BugCollection
+  itself, not just the pass/fail decision — both the HTML and XML reports
+  print `total_bugs="0"` with zero `<BugInstance>` elements, so the
+  baselined findings are invisible in normal build output; removing
+  baselineFile is the only way to see them via SpotBugs' own reports.
 
   Consumed via `spotbugs { baselineFile = ... }`, which SpotBugs Gradle
   plugin 6.5.11 wires to the underlying `-excludeBugs` flag: bugs are
   matched by `instanceHash` and suppressed from the current run's
-  failure decision, but remain visible in the HTML/XML reports. This is
-  a snapshot, not a permanent exclusion (contrast with exclude.xml):
-  fix findings against your own change, but do not silently fix or
-  regenerate away someone else's baselined entry, and do NOT append new
-  findings to this file to make the gate pass; new findings must be
-  fixed in the code that introduced them.
+  failure decision. This is a snapshot, not a permanent exclusion
+  (contrast with exclude.xml): fix findings against your own change, but
+  do not silently fix or regenerate away someone else's baselined entry,
+  and do NOT append new findings to this file to make the gate pass; new
+  findings must be fixed in the code that introduced them.
 -->
 <BugCollection version="4.10.4" sequence="0" timestamp="0" analysisTimestamp="0" release="">
   <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="ad07f82c55d7ee639233a92a582fd12e" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
