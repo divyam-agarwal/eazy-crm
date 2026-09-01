@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # TEMP: manual trigger for pre-merge verification on this branch; remove before finishing Task 6
 
 # A newer push to the same ref supersedes an in-flight run.
 concurrency:
