@@ -3,6 +3,7 @@ package com.easycrm.iam;
 import com.easycrm.iam.email.EmailSender;
 import com.easycrm.iam.web.dto.AcceptInvitationRequest;
 import com.easycrm.iam.web.dto.AuthResponse;
+import com.easycrm.iam.web.dto.InvitationPreviewResponse;
 import com.easycrm.iam.web.dto.InvitationResponse;
 import com.easycrm.iam.web.dto.InviteRequest;
 import com.easycrm.iam.web.dto.PendingInvitationResponse;
@@ -11,6 +12,8 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.security.JwtService;
 import com.easycrm.platform.security.RoleGuard;
 import com.easycrm.platform.tenancy.TenantContext;
+import com.easycrm.tenant.Tenant;
+import com.easycrm.tenant.TenantRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,7 @@ public class InvitationService {
 
     private final InvitationRepository invitations;
     private final UserRepository users;
+    private final TenantRepository tenants;
     private final TokenHasher hasher;
     private final RoleGuard roleGuard;
     private final AuditService audit;
@@ -47,12 +51,14 @@ public class InvitationService {
     private final String publicBaseUrl;
 
     public InvitationService(InvitationRepository invitations, UserRepository users,
+                             TenantRepository tenants,
                              TokenHasher hasher, RoleGuard roleGuard, AuditService audit,
                              EmailSender emailSender, PasswordEncoder encoder, JwtService jwt,
                              RefreshTokenService refreshTokens, TransactionTemplate tx,
                              @Value("${easycrm.public-base-url}") String publicBaseUrl) {
         this.invitations = invitations;
         this.users = users;
+        this.tenants = tenants;
         this.hasher = hasher;
         this.roleGuard = roleGuard;
         this.audit = audit;
@@ -188,6 +194,28 @@ public class InvitationService {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * Pre-auth, but — unlike accept — it binds no tenant: invitation and tenant are BOTH
+     * global tables, so an ordinary read is correct. "Pre-auth" and "must bind a tenant"
+     * are separate properties and only accept has both.
+     *
+     * <p>Rejects with the SAME NotFoundException as accept, for every state, so the GET
+     * cannot be used as an oracle against the POST.
+     */
+    @Transactional(readOnly = true)
+    public InvitationPreviewResponse preview(String rawToken) {
+        Invitation inv = invitations.findByTokenHash(hasher.sha256Hex(rawToken))
+            .filter(i -> i.getStatus() == InvitationStatus.PENDING)
+            .filter(i -> !i.isExpired(Instant.now()))
+            .orElseThrow(() -> new NotFoundException("invitation not found"));
+
+        Tenant tenant = tenants.findById(inv.getTenantId())
+            .orElseThrow(() -> new NotFoundException("invitation not found"));
+
+        return new InvitationPreviewResponse(
+            tenant.getBusinessName(), inv.getEmail(), inv.getRole().name());
     }
 
     private String randomToken() {

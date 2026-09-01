@@ -37,6 +37,9 @@ public class SecurityConfig {
                 // through @TenantId + RLS. Under /api/v1/auth/** so it inherits that
                 // prefix's rate-limit policy — an unmatched path would be unlimited.
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/invitations/*/accept").permitAll()
+                // Preview: read-only, reveals only what the invitation email already said
+                // (business name, email, role). See InvitationService.preview.
+                .requestMatchers(HttpMethod.GET, "/api/v1/auth/invitations/*").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             // Unauthenticated request -> 401 (not authenticated), not Spring's default 403.
