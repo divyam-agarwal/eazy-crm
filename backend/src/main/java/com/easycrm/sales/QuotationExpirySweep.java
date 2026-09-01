@@ -2,11 +2,10 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.visibility.VisibleFinder;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.stereotype.Component;
-
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Component;
 
 /**
  * One tenant's worth of quotation auto-expiry. Takes {@code asOf} as a parameter and never
@@ -26,8 +25,8 @@ public class QuotationExpirySweep {
     private final QuotationVersionRepository versions;
     private final ApplicationEventPublisher events;
 
-    public QuotationExpirySweep(VisibleFinder finder, QuotationVersionRepository versions,
-                                ApplicationEventPublisher events) {
+    public QuotationExpirySweep(
+            VisibleFinder finder, QuotationVersionRepository versions, ApplicationEventPublisher events) {
         this.finder = finder;
         this.versions = versions;
         this.events = events;
@@ -38,10 +37,10 @@ public class QuotationExpirySweep {
         List<Quotation> due = finder.listQuotations(QuotationSpecifications.expirableAsOf(asOf));
         for (Quotation q : due) {
             QuotationVersion version = versions.findById(q.getCurrentVersionId())
-                .orElseThrow(() -> new NotFoundException("quotation version not found"));
+                    .orElseThrow(() -> new NotFoundException("quotation version not found"));
             q.expire();
-            events.publishEvent(new QuotationExpiredEvent(
-                q.getId(), q.getQuoteNo(), version.getId(), version.getValidUntil()));
+            events.publishEvent(
+                    new QuotationExpiredEvent(q.getId(), q.getQuoteNo(), version.getId(), version.getValidUntil()));
         }
         return due.size();
     }

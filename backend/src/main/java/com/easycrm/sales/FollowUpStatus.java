@@ -7,7 +7,11 @@ package com.easycrm.sales;
  * 2026-08-30-activity-follow-up-design.md §3.
  */
 public enum FollowUpStatus {
-    PENDING, DONE, CANCELLED;
+    PENDING,
+    DONE,
+    CANCELLED;
 
-    public boolean isTerminal() { return this != PENDING; }
+    public boolean isTerminal() {
+        return this != PENDING;
+    }
 }

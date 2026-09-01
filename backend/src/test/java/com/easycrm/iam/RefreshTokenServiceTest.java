@@ -1,17 +1,19 @@
 package com.easycrm.iam;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.platform.error.UnauthorizedException;
 import com.easycrm.support.IntegrationTest;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class RefreshTokenServiceTest extends IntegrationTest {
-    @Autowired RefreshTokenService service;
-    @Autowired RefreshTokenRepository repo;
+    @Autowired
+    RefreshTokenService service;
+
+    @Autowired
+    RefreshTokenRepository repo;
 
     @Test
     void issueThenRotateReturnsNewTokenAndRevokesOld() {

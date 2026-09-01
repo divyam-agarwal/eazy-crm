@@ -1,5 +1,7 @@
 package com.easycrm.iam;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.iam.web.dto.TokenResponse;
@@ -11,17 +13,21 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 class AuthServiceRefreshTest extends IntegrationTest {
-    @Autowired AuthService auth;
-    @Autowired JwtService jwt;
+    @Autowired
+    AuthService auth;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    JwtService jwt;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private AuthResponse signup(String slug) {
-        AuthResponse r = auth.signup(new SignupRequest(slug, "Biz", "27", null,
-            "u@" + slug + ".test", null, "correct-horse"));
+        AuthResponse r =
+                auth.signup(new SignupRequest(slug, "Biz", "27", null, "u@" + slug + ".test", null, "correct-horse"));
         TenantContext.clear();
         return r;
     }

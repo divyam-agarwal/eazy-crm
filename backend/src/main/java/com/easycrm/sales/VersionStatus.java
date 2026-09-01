@@ -1,3 +1,6 @@
 package com.easycrm.sales;
 
-public enum VersionStatus { DRAFT, SENT }
+public enum VersionStatus {
+    DRAFT,
+    SENT
+}

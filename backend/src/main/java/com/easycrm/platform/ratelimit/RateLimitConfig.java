@@ -1,10 +1,10 @@
 package com.easycrm.platform.ratelimit;
 
-import tools.jackson.databind.ObjectMapper;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableConfigurationProperties(RateLimitProperties.class)
@@ -27,7 +27,7 @@ public class RateLimitConfig {
     FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(
             RateLimitProperties properties, RateLimitStore store, ObjectMapper objectMapper) {
         FilterRegistrationBean<RateLimitFilter> registration =
-            new FilterRegistrationBean<>(new RateLimitFilter(properties, store, objectMapper));
+                new FilterRegistrationBean<>(new RateLimitFilter(properties, store, objectMapper));
         registration.setOrder(FILTER_ORDER);
         registration.addUrlPatterns("/*");
         registration.setName("rateLimitFilter");

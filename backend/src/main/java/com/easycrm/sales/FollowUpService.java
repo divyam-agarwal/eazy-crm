@@ -12,14 +12,13 @@ import com.easycrm.sales.web.dto.FollowUpCreateRequest;
 import com.easycrm.sales.web.dto.FollowUpResponse;
 import com.easycrm.sales.web.dto.FollowUpSummaryResponse;
 import com.easycrm.sales.web.dto.FollowUpUpdateRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class FollowUpService {
@@ -30,9 +29,12 @@ public class FollowUpService {
     private final ActivityService activities;
     private final Clock clock;
 
-    public FollowUpService(FollowUpRepository followUps, VisibleFinder finder,
-                           AssignableUsers assignableUsers, ActivityService activities,
-                           Clock clock) {
+    public FollowUpService(
+            FollowUpRepository followUps,
+            VisibleFinder finder,
+            AssignableUsers assignableUsers,
+            ActivityService activities,
+            Clock clock) {
         this.followUps = followUps;
         this.finder = finder;
         this.assignableUsers = assignableUsers;
@@ -44,8 +46,8 @@ public class FollowUpService {
     public FollowUpResponse create(FollowUpCreateRequest req) {
         finder.requireVisibleSubject(req.subjectType(), req.subjectId());
         assignableUsers.require(req.assignedTo());
-        FollowUp saved = followUps.save(new FollowUp(req.subjectType(), req.subjectId(),
-            req.dueAt(), req.assignedTo(), req.note(), currentUserId()));
+        FollowUp saved = followUps.save(new FollowUp(
+                req.subjectType(), req.subjectId(), req.dueAt(), req.assignedTo(), req.note(), currentUserId()));
         return FollowUpResponse.of(saved, clock.instant());
     }
 
@@ -55,16 +57,20 @@ public class FollowUpService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<FollowUpResponse> list(FollowUpScope scope, FollowUpStatus status,
-                                               UUID assignedTo, SubjectType subjectType,
-                                               UUID subjectId, Pageable pageable) {
+    public PageResponse<FollowUpResponse> list(
+            FollowUpScope scope,
+            FollowUpStatus status,
+            UUID assignedTo,
+            SubjectType subjectType,
+            UUID subjectId,
+            Pageable pageable) {
         Instant now = clock.instant();
         Instant endOfToday = DueWindow.today(now).endOfToday();
         return PageResponse.of(finder.pageFollowUps(
-                FollowUpSpecifications.filter(scope, status, assignedTo, subjectType,
-                    subjectId, now, endOfToday),
-                pageable)
-            .map(f -> FollowUpResponse.of(f, now)));
+                        FollowUpSpecifications.filter(
+                                scope, status, assignedTo, subjectType, subjectId, now, endOfToday),
+                        pageable)
+                .map(f -> FollowUpResponse.of(f, now)));
     }
 
     /**
@@ -77,15 +83,16 @@ public class FollowUpService {
         Instant now = clock.instant();
         Instant endOfToday = DueWindow.today(now).endOfToday();
         return new FollowUpSummaryResponse(
-            countIn(FollowUpScope.OVERDUE, now, endOfToday),
-            countIn(FollowUpScope.DUE_TODAY, now, endOfToday),
-            countIn(FollowUpScope.UPCOMING, now, endOfToday));
+                countIn(FollowUpScope.OVERDUE, now, endOfToday),
+                countIn(FollowUpScope.DUE_TODAY, now, endOfToday),
+                countIn(FollowUpScope.UPCOMING, now, endOfToday));
     }
 
     private long countIn(FollowUpScope scope, Instant now, Instant endOfToday) {
         return finder.pageFollowUps(
-            FollowUpSpecifications.filter(scope, null, null, null, null, now, endOfToday),
-            PageRequest.of(0, 1)).getTotalElements();
+                        FollowUpSpecifications.filter(scope, null, null, null, null, now, endOfToday),
+                        PageRequest.of(0, 1))
+                .getTotalElements();
     }
 
     /** Full-header-replace, per house PATCH convention. Rejected by the aggregate once terminal. */
@@ -113,8 +120,8 @@ public class FollowUpService {
         Instant now = clock.instant();
         f.complete(req.note(), now);
         if (req.type() != null) {
-            activities.logManualForGatedCaller(f.getSubjectType(), f.getSubjectId(),
-                req.type(), req.body(), req.outcome());
+            activities.logManualForGatedCaller(
+                    f.getSubjectType(), f.getSubjectId(), req.type(), req.body(), req.outcome());
         }
         return FollowUpResponse.of(f, now);
     }
@@ -129,8 +136,7 @@ public class FollowUpService {
 
     /** Visibility-filtered load; 404 when the caller may not see it. Used by transitions. */
     FollowUp find(UUID id) {
-        return finder.findFollowUp(id)
-            .orElseThrow(() -> new NotFoundException("follow-up " + id + " was not found"));
+        return finder.findFollowUp(id).orElseThrow(() -> new NotFoundException("follow-up " + id + " was not found"));
     }
 
     private static UUID currentUserId() {

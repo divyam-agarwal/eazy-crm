@@ -1,8 +1,12 @@
 package com.easycrm.sales;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.tenancy.TenantContext.TenantPrincipal;
 import com.easycrm.support.IntegrationTest;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,22 +15,22 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 @SpringBootTest
 class EnquiryRepositoryTest extends IntegrationTest {
 
-    @Autowired EnquiryRepository enquiries;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    EnquiryRepository enquiries;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    TransactionTemplate tx;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private Enquiry active(String phone) {
-        return new Enquiry(null, "Ravi", phone, phone, null,
-            EnquirySource.PHONE, null, null, null);
+        return new Enquiry(null, "Ravi", phone, phone, null, EnquirySource.PHONE, null, null, null);
     }
 
     @Test
@@ -35,9 +39,8 @@ class EnquiryRepositoryTest extends IntegrationTest {
         TenantContext.set(new TenantPrincipal(tenant, UUID.randomUUID(), "OWNER"));
         tx.executeWithoutResult(s -> enquiries.save(active("9876543210")));
 
-        assertThatThrownBy(() ->
-            tx.executeWithoutResult(s -> enquiries.saveAndFlush(active("9876543210"))))
-            .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> tx.executeWithoutResult(s -> enquiries.saveAndFlush(active("9876543210"))))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -46,12 +49,11 @@ class EnquiryRepositoryTest extends IntegrationTest {
         TenantContext.set(new TenantPrincipal(tenant, UUID.randomUUID(), "OWNER"));
         tx.executeWithoutResult(s -> {
             Enquiry first = active("9998887776");
-            first.lose("gone");           // -> LOST, leaves the partial index
+            first.lose("gone"); // -> LOST, leaves the partial index
             enquiries.save(first);
         });
-        assertThatCode(() ->
-            tx.executeWithoutResult(s -> enquiries.saveAndFlush(active("9998887776"))))
-            .doesNotThrowAnyException();
+        assertThatCode(() -> tx.executeWithoutResult(s -> enquiries.saveAndFlush(active("9998887776"))))
+                .doesNotThrowAnyException();
 
         // CONVERTED also frees the phone
         UUID tenant2 = UUID.randomUUID();
@@ -61,9 +63,8 @@ class EnquiryRepositoryTest extends IntegrationTest {
             c.markConverted();
             enquiries.save(c);
         });
-        assertThatCode(() ->
-            tx.executeWithoutResult(s -> enquiries.saveAndFlush(active("7776665554"))))
-            .doesNotThrowAnyException();
+        assertThatCode(() -> tx.executeWithoutResult(s -> enquiries.saveAndFlush(active("7776665554"))))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -85,11 +86,10 @@ class EnquiryRepositoryTest extends IntegrationTest {
         });
 
         // Saving the stale (v0) copy over the now-v1 row loses the optimistic-lock race.
-        assertThatThrownBy(() ->
-            tx.executeWithoutResult(s -> {
-                stale.advanceTo(EnquiryStage.QUALIFIED);
-                enquiries.saveAndFlush(stale);
-            }))
-            .isInstanceOf(OptimisticLockingFailureException.class);
+        assertThatThrownBy(() -> tx.executeWithoutResult(s -> {
+                    stale.advanceTo(EnquiryStage.QUALIFIED);
+                    enquiries.saveAndFlush(stale);
+                }))
+                .isInstanceOf(OptimisticLockingFailureException.class);
     }
 }

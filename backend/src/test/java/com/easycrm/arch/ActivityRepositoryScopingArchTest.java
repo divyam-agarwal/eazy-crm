@@ -1,5 +1,8 @@
 package com.easycrm.arch;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -11,13 +14,9 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Set;
-
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * The structural half of the activity visibility gate. See spec
@@ -35,39 +34,39 @@ class ActivityRepositoryScopingArchTest {
 
     /** Supertypes that would silently reintroduce unscoped reads by inheritance. */
     private static final Set<String> FORBIDDEN_SUPERTYPES = Set.of(
-        "org.springframework.data.repository.CrudRepository",
-        "org.springframework.data.repository.ListCrudRepository",
-        "org.springframework.data.repository.PagingAndSortingRepository",
-        "org.springframework.data.repository.ListPagingAndSortingRepository",
-        "org.springframework.data.jpa.repository.JpaRepository",
-        "org.springframework.data.jpa.repository.JpaSpecificationExecutor",
-        "org.springframework.data.repository.query.QueryByExampleExecutor",
-        "org.springframework.data.querydsl.QuerydslPredicateExecutor");
+            "org.springframework.data.repository.CrudRepository",
+            "org.springframework.data.repository.ListCrudRepository",
+            "org.springframework.data.repository.PagingAndSortingRepository",
+            "org.springframework.data.repository.ListPagingAndSortingRepository",
+            "org.springframework.data.jpa.repository.JpaRepository",
+            "org.springframework.data.jpa.repository.JpaSpecificationExecutor",
+            "org.springframework.data.repository.query.QueryByExampleExecutor",
+            "org.springframework.data.querydsl.QuerydslPredicateExecutor");
 
     private JavaClass activityRepository() {
         JavaClasses classes = new ClassFileImporter()
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages("com.easycrm");
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("com.easycrm");
         return classes.get(REPOSITORY);
     }
 
     @Test
     void inheritsNoUnscopedReadMethods() {
         List<String> supertypes = activityRepository().getAllRawInterfaces().stream()
-            .map(JavaClass::getFullName)
-            .toList();
+                .map(JavaClass::getFullName)
+                .toList();
 
         assertThat(supertypes)
-            .as("ActivityRepository must extend the bare Repository marker. Extending "
-              + "JpaRepository (or any of these) inherits findById/findAll, which are not "
-              + "declared here and so escape the declared-method rule below — see spec §4.2. "
-              + "This also covers mixing in QueryByExampleExecutor or QuerydslPredicateExecutor "
-              + "alongside the bare marker: each brings its own unscoped read "
-              + "(findAll(Example)/findOne(Example) or findAll(Predicate)) that the "
-              + "declared-method rule never sees, because the read is inherited, not declared, "
-              + "and the primary supertype can still be the bare marker while this is true")
-            .doesNotContainAnyElementsOf(FORBIDDEN_SUPERTYPES)
-            .contains("org.springframework.data.repository.Repository");
+                .as("ActivityRepository must extend the bare Repository marker. Extending "
+                        + "JpaRepository (or any of these) inherits findById/findAll, which are not "
+                        + "declared here and so escape the declared-method rule below — see spec §4.2. "
+                        + "This also covers mixing in QueryByExampleExecutor or QuerydslPredicateExecutor "
+                        + "alongside the bare marker: each brings its own unscoped read "
+                        + "(findAll(Example)/findOne(Example) or findAll(Predicate)) that the "
+                        + "declared-method rule never sees, because the read is inherited, not declared, "
+                        + "and the primary supertype can still be the bare marker while this is true")
+                .doesNotContainAnyElementsOf(FORBIDDEN_SUPERTYPES)
+                .contains("org.springframework.data.repository.Repository");
     }
 
     @Test
@@ -76,18 +75,20 @@ class ActivityRepositoryScopingArchTest {
             if (method.getName().equals("save")) continue;
 
             List<String> params = method.getRawParameterTypes().stream()
-                .map(JavaClass::getFullName)
-                .toList();
+                    .map(JavaClass::getFullName)
+                    .toList();
 
             assertThat(params)
-                .as("ActivityRepository.%s must take a SubjectType — an activity read that "
-                  + "does not name a subject bypasses VisibleFinder.requireVisibleSubject "
-                  + "entirely (spec §4.2)", method.getName())
-                .contains(SUBJECT_TYPE);
+                    .as(
+                            "ActivityRepository.%s must take a SubjectType — an activity read that "
+                                    + "does not name a subject bypasses VisibleFinder.requireVisibleSubject "
+                                    + "entirely (spec §4.2)",
+                            method.getName())
+                    .contains(SUBJECT_TYPE);
 
             assertThat(params)
-                .as("ActivityRepository.%s must also take a subject id", method.getName())
-                .contains("java.util.UUID");
+                    .as("ActivityRepository.%s must also take a subject id", method.getName())
+                    .contains("java.util.UUID");
         }
     }
 
@@ -109,19 +110,19 @@ class ActivityRepositoryScopingArchTest {
     @Test
     void onlyActivityServiceMayCallActivityRepository() {
         JavaClasses classes = new ClassFileImporter()
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages("com.easycrm");
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("com.easycrm");
 
         ArchRule rule = noClasses()
-            .that(DescribedPredicate.describe(
-                "not in the ActivityRepository caller allowlist",
-                clazz -> !ALLOWED_CALLERS.contains(clazz.getFullName())))
-            .should(callActivityRepository())
-            .because("ActivityRepository's declared methods are subject-scoped, but only "
-                   + "because every call site is trusted to have already resolved that "
-                   + "subject through VisibleFinder.requireVisibleSubject; a caller outside "
-                   + "ActivityService could pass a request-supplied id straight through and "
-                   + "read another user's activity log unchecked");
+                .that(DescribedPredicate.describe(
+                        "not in the ActivityRepository caller allowlist",
+                        clazz -> !ALLOWED_CALLERS.contains(clazz.getFullName())))
+                .should(callActivityRepository())
+                .because("ActivityRepository's declared methods are subject-scoped, but only "
+                        + "because every call site is trusted to have already resolved that "
+                        + "subject through VisibleFinder.requireVisibleSubject; a caller outside "
+                        + "ActivityService could pass a request-supplied id straight through and "
+                        + "read another user's activity log unchecked");
 
         rule.check(classes);
     }
@@ -138,8 +139,7 @@ class ActivityRepositoryScopingArchTest {
                 checkAccesses(item, events, item.getMethodReferencesFromSelf());
             }
 
-            private void checkAccesses(JavaClass item, ConditionEvents events,
-                                        Set<? extends JavaAccess<?>> accesses) {
+            private void checkAccesses(JavaClass item, ConditionEvents events, Set<? extends JavaAccess<?>> accesses) {
                 for (JavaAccess<?> call : accesses) {
                     if (!call.getTargetOwner().getFullName().equals(REPOSITORY)) continue;
                     events.add(SimpleConditionEvent.satisfied(item, call.getDescription()));

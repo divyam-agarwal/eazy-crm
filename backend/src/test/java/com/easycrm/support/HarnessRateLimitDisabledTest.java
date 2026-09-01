@@ -1,10 +1,10 @@
 package com.easycrm.support;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 import com.easycrm.platform.ratelimit.RateLimitProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Mirror guard for {@code RateLimitIntegrationTest}'s
@@ -34,15 +34,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  */
 class HarnessRateLimitDisabledTest extends IntegrationTest {
 
-    @Autowired RateLimitProperties properties;
+    @Autowired
+    RateLimitProperties properties;
 
     @Test
     void theLimiterIsDisabledInTheOrdinarySharedHarnessContext() {
-        assertFalse(properties.enabled(),
-            "the rate limiter is ENABLED in the shared harness context — the suite-wide "
-                + "default (easycrm.rate-limit.enabled=false on IntegrationTest) has been "
-                + "lost. Every MockMvc request in this shared context comes from the same "
-                + "loopback address, so unrelated integration tests will now accumulate "
-                + "into one bucket and start failing in proportion to how many ran first.");
+        assertFalse(
+                properties.enabled(),
+                "the rate limiter is ENABLED in the shared harness context — the suite-wide "
+                        + "default (easycrm.rate-limit.enabled=false on IntegrationTest) has been "
+                        + "lost. Every MockMvc request in this shared context comes from the same "
+                        + "loopback address, so unrelated integration tests will now accumulate "
+                        + "into one bucket and start failing in proportion to how many ran first.");
     }
 }

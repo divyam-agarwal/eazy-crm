@@ -1,11 +1,10 @@
 package com.easycrm.sales;
 
 import com.easycrm.iam.AuditService;
-import org.springframework.context.event.EventListener;
-import org.springframework.stereotype.Component;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Component;
 
 /**
  * Sits beside OrderAcceptedAuditListener and is wired the same way -- synchronous, in the
@@ -20,7 +19,9 @@ public class QuotationExpiredAuditListener {
 
     private final AuditService audit;
 
-    public QuotationExpiredAuditListener(AuditService audit) { this.audit = audit; }
+    public QuotationExpiredAuditListener(AuditService audit) {
+        this.audit = audit;
+    }
 
     @EventListener
     public void on(QuotationExpiredEvent e) {

@@ -1,18 +1,23 @@
 package com.easycrm.platform.tenancy;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.demo.DemoRecord;
 import com.easycrm.demo.DemoRecordRepository;
 import com.easycrm.support.IntegrationTest;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import java.util.UUID;
-import static org.junit.jupiter.api.Assertions.*;
 
 class TenantFilteringIntegrationTest extends IntegrationTest {
-    @Autowired DemoRecordRepository records;
+    @Autowired
+    DemoRecordRepository records;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private void asTenant(UUID t) {
         TenantContext.set(new TenantContext.TenantPrincipal(t, UUID.randomUUID(), "OWNER"));
@@ -29,8 +34,10 @@ class TenantFilteringIntegrationTest extends IntegrationTest {
     @Test
     void readsAreFilteredByTenant() {
         UUID a = UUID.randomUUID(), b = UUID.randomUUID();
-        asTenant(a); records.save(new DemoRecord("a-1"));
-        asTenant(b); records.save(new DemoRecord("b-1"));
+        asTenant(a);
+        records.save(new DemoRecord("a-1"));
+        asTenant(b);
+        records.save(new DemoRecord("b-1"));
 
         asTenant(a);
         assertEquals(1, records.findAll().size(), "tenant A sees only its own row");

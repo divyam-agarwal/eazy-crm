@@ -1,14 +1,13 @@
 package com.easycrm.iam;
 
 import com.easycrm.platform.error.UnauthorizedException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class RefreshTokenService {
@@ -30,22 +29,24 @@ public class RefreshTokenService {
     @Transactional
     public String issue(UUID userId, UUID tenantId) {
         String raw = randomToken();
-        tokens.save(new RefreshToken(hasher.sha256Hex(raw), userId, tenantId,
-            Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS)));
+        tokens.save(new RefreshToken(
+                hasher.sha256Hex(raw), userId, tenantId, Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS)));
         return raw;
     }
 
     @Transactional
     public RotationResult rotate(String rawToken) {
         RefreshToken current = tokens.findByTokenHash(hasher.sha256Hex(rawToken))
-            .orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
+                .orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
         if (current.getRevokedAt() != null || current.getExpiresAt().isBefore(Instant.now())) {
             throw new UnauthorizedException("invalid refresh token");
         }
         String newRaw = randomToken();
         RefreshToken replacement = tokens.save(new RefreshToken(
-            hasher.sha256Hex(newRaw), current.getUserId(), current.getTenantId(),
-            Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS)));
+                hasher.sha256Hex(newRaw),
+                current.getUserId(),
+                current.getTenantId(),
+                Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS)));
         current.revoke(Instant.now(), replacement.getId());
         tokens.save(current);
         return new RotationResult(newRaw, current.getUserId(), current.getTenantId());

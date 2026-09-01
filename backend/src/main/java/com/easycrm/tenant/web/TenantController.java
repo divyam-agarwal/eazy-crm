@@ -16,10 +16,14 @@ public class TenantController {
 
     private final TenantService service;
 
-    public TenantController(TenantService service) { this.service = service; }
+    public TenantController(TenantService service) {
+        this.service = service;
+    }
 
     @GetMapping
-    public TenantResponse get() { return service.get(); }
+    public TenantResponse get() {
+        return service.get();
+    }
 
     @PatchMapping
     public TenantResponse patch(@Valid @RequestBody TenantProfileRequest req) {

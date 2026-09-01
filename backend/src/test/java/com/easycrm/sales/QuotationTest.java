@@ -1,12 +1,11 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.error.ValidationException;
-import org.junit.jupiter.api.Test;
-
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.easycrm.platform.error.ValidationException;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 /** Unit tests for Quotation's own transition preconditions. No Spring, no database. */
 class QuotationTest {
@@ -30,9 +29,10 @@ class QuotationTest {
         // Assert on getFields(), NOT on getMessage(): ValidationException carries its
         // detail in the field map and its message is a fixed string.
         assertThatThrownBy(q::expire)
-            .isInstanceOfSatisfying(ValidationException.class, ex ->
-                assertThat(ex.getFields())
-                    .containsEntry("status", "only a sent quotation can be expired"));
+                .isInstanceOfSatisfying(
+                        ValidationException.class,
+                        ex -> assertThat(ex.getFields())
+                                .containsEntry("status", "only a sent quotation can be expired"));
         assertThat(q.getStatus()).isEqualTo(QuotationStatus.DRAFT);
     }
 

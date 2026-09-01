@@ -35,12 +35,12 @@ public class PublicShareController {
 
     @GetMapping("/{token}")
     public ResponseEntity<byte[]> quotation(@PathVariable String token) {
-        ShareLinkService.Resolved resolved = shareLinks.resolve(token);   // 404 if unknown
+        ShareLinkService.Resolved resolved = shareLinks.resolve(token); // 404 if unknown
         byte[] pdf;
         try {
             pdf = TenantContext.runAs(
-                new TenantContext.TenantPrincipal(resolved.tenantId(), null, "PUBLIC"),
-                () -> pdfService.renderByVersionId(resolved.quotationVersionId()));
+                    new TenantContext.TenantPrincipal(resolved.tenantId(), null, "PUBLIC"),
+                    () -> pdfService.renderByVersionId(resolved.quotationVersionId()));
         } catch (NotFoundException e) {
             // Uniform 404 for every failure on this route. Without this, a token whose
             // recorded version can't be loaded under its recorded tenant (data corruption,
@@ -50,11 +50,11 @@ public class PublicShareController {
             throw new NotFoundException("not found");
         }
         return ResponseEntity.ok()
-            .contentType(MediaType.APPLICATION_PDF)
-            .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-            // A share URL pasted somewhere crawlable (a forum, a public channel) should
-            // not end up indexed - it's a live link to one customer's priced quotation.
-            .header("X-Robots-Tag", "noindex, nofollow")
-            .body(pdf);
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                // A share URL pasted somewhere crawlable (a forum, a public channel) should
+                // not end up indexed - it's a live link to one customer's priced quotation.
+                .header("X-Robots-Tag", "noindex, nofollow")
+                .body(pdf);
     }
 }

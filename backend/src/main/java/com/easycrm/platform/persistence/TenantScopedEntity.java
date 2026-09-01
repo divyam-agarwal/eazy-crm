@@ -2,8 +2,8 @@ package com.easycrm.platform.persistence;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
-import org.hibernate.annotations.TenantId;
 import java.util.UUID;
+import org.hibernate.annotations.TenantId;
 
 @MappedSuperclass
 public abstract class TenantScopedEntity extends BaseEntity {
@@ -12,5 +12,7 @@ public abstract class TenantScopedEntity extends BaseEntity {
     @Column(name = "tenant_id", nullable = false, updatable = false)
     private UUID tenantId;
 
-    public UUID getTenantId() { return tenantId; }
+    public UUID getTenantId() {
+        return tenantId;
+    }
 }

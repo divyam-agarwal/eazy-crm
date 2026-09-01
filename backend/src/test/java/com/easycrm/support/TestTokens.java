@@ -5,16 +5,21 @@ import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
 import com.easycrm.tenant.TenantStatus;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
-import java.util.UUID;
 
 @Component
 public class TestTokens {
-    @Autowired JwtService jwt;
-    @Autowired TenantRepository tenants;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    JwtService jwt;
+
+    @Autowired
+    TenantRepository tenants;
+
+    @Autowired
+    TransactionTemplate tx;
 
     public String owner(UUID tenantId) {
         return jwt.mint(tenantId, UUID.randomUUID(), "OWNER");
@@ -44,8 +49,7 @@ public class TestTokens {
         } finally {
             TenantContext.clear();
         }
-        return new ProvisionedOwner(tenant.getId(),
-            jwt.mint(tenant.getId(), UUID.randomUUID(), "OWNER"));
+        return new ProvisionedOwner(tenant.getId(), jwt.mint(tenant.getId(), UUID.randomUUID(), "OWNER"));
     }
 
     /**
@@ -58,8 +62,8 @@ public class TestTokens {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         try {
             tx.executeWithoutResult(s -> tenants.findById(tenantId)
-                .orElseThrow(() -> new IllegalStateException("no such tenant: " + tenantId))
-                .setStatus(TenantStatus.SUSPENDED));
+                    .orElseThrow(() -> new IllegalStateException("no such tenant: " + tenantId))
+                    .setStatus(TenantStatus.SUSPENDED));
         } finally {
             TenantContext.clear();
         }

@@ -5,14 +5,16 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
 import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "price_list_item",
-       uniqueConstraints = @UniqueConstraint(name = "uq_pli_tenant_list_product",
-                                             columnNames = {"tenant_id", "price_list_id", "product_id"}))
+@Table(
+        name = "price_list_item",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_pli_tenant_list_product",
+                        columnNames = {"tenant_id", "price_list_id", "product_id"}))
 public class PriceListItem extends TenantScopedEntity {
 
     @Column(name = "price_list_id", nullable = false)
@@ -36,8 +38,19 @@ public class PriceListItem extends TenantScopedEntity {
         this.discountPct = discountPct;
     }
 
-    public UUID getPriceListId() { return priceListId; }
-    public UUID getProductId() { return productId; }
-    public BigDecimal getOverrideRate() { return overrideRate; }
-    public BigDecimal getDiscountPct() { return discountPct; }
+    public UUID getPriceListId() {
+        return priceListId;
+    }
+
+    public UUID getProductId() {
+        return productId;
+    }
+
+    public BigDecimal getOverrideRate() {
+        return overrideRate;
+    }
+
+    public BigDecimal getDiscountPct() {
+        return discountPct;
+    }
 }

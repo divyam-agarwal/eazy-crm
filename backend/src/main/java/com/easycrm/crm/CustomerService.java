@@ -10,11 +10,10 @@ import com.easycrm.platform.gst.Gstin;
 import com.easycrm.platform.gst.StateCode;
 import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 @Service
 public class CustomerService {
@@ -38,19 +37,27 @@ public class CustomerService {
                 throw new ConflictException("customer with this GSTIN already exists");
             });
         }
-        Customer saved = customers.save(new Customer(req.businessName(), r.gstin(), r.stateCode(),
-            req.billingAddress(), req.shippingAddress(), creditDays(req),
-            req.assignedTo(), req.priceListId(), req.source()));
+        Customer saved = customers.save(new Customer(
+                req.businessName(),
+                r.gstin(),
+                r.stateCode(),
+                req.billingAddress(),
+                req.shippingAddress(),
+                creditDays(req),
+                req.assignedTo(),
+                req.priceListId(),
+                req.source()));
         return CustomerResponse.of(saved);
     }
 
     @Transactional(readOnly = true)
-    public CustomerResponse get(UUID id) { return CustomerResponse.of(find(id)); }
+    public CustomerResponse get(UUID id) {
+        return CustomerResponse.of(find(id));
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<CustomerResponse> list(Boolean active, Pageable pageable) {
-        return PageResponse.of(
-            finder.pageCustomers(CustomerSpecifications.filter(active), pageable)
+        return PageResponse.of(finder.pageCustomers(CustomerSpecifications.filter(active), pageable)
                 .map(CustomerResponse::of));
     }
 
@@ -59,19 +66,31 @@ public class CustomerService {
         Resolved r = resolveGstinAndState(req);
         assignableUsers.require(req.assignedTo());
         Customer c = find(id);
-        c.update(req.businessName(), r.gstin(), r.stateCode(), req.billingAddress(),
-            req.shippingAddress(), creditDays(req), req.assignedTo(), req.priceListId(), req.source());
+        c.update(
+                req.businessName(),
+                r.gstin(),
+                r.stateCode(),
+                req.billingAddress(),
+                req.shippingAddress(),
+                creditDays(req),
+                req.assignedTo(),
+                req.priceListId(),
+                req.source());
         return CustomerResponse.of(c);
     }
 
     @Transactional
     public CustomerResponse deactivate(UUID id) {
-        Customer c = find(id); c.deactivate(); return CustomerResponse.of(c);
+        Customer c = find(id);
+        c.deactivate();
+        return CustomerResponse.of(c);
     }
 
     @Transactional
     public CustomerResponse activate(UUID id) {
-        Customer c = find(id); c.activate(); return CustomerResponse.of(c);
+        Customer c = find(id);
+        c.activate();
+        return CustomerResponse.of(c);
     }
 
     /**
@@ -80,8 +99,7 @@ public class CustomerService {
      * caller must not be able to tell them apart.
      */
     private Customer find(UUID id) {
-        return finder.findCustomer(id)
-            .orElseThrow(() -> new NotFoundException("customer not found"));
+        return finder.findCustomer(id).orElseThrow(() -> new NotFoundException("customer not found"));
     }
 
     private int creditDays(CustomerRequest req) {
@@ -93,7 +111,8 @@ public class CustomerService {
         if (req.gstin() != null && !req.gstin().isBlank()) {
             Gstin g = Gstin.parse(req.gstin()); // validates charset, checksum, and state prefix
             String derived = g.stateCode();
-            if (req.stateCode() != null && !req.stateCode().isBlank()
+            if (req.stateCode() != null
+                    && !req.stateCode().isBlank()
                     && !req.stateCode().equals(derived)) {
                 throw new ValidationException("stateCode", "must match the GSTIN state code");
             }

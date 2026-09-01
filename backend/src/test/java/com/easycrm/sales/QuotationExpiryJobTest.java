@@ -1,11 +1,14 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.job.TenantJobRunner;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.scheduling.support.CronExpression;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.easycrm.platform.job.TenantJobRunner;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -14,14 +17,10 @@ import java.time.ZoneOffset;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.function.ToIntFunction;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.scheduling.support.CronExpression;
 
 /**
  * Plain JUnit, no Spring context, no database. Every other test in the suite drives
@@ -91,7 +90,6 @@ class QuotationExpiryJobTest {
 
         assertThat(cron).isNotNull();
         CronExpression expr = CronExpression.parse(cron);
-        assertThat(expr.next(LocalDateTime.of(2026, 8, 31, 0, 0)))
-            .isEqualTo(LocalDateTime.of(2026, 8, 31, 0, 30));
+        assertThat(expr.next(LocalDateTime.of(2026, 8, 31, 0, 0))).isEqualTo(LocalDateTime.of(2026, 8, 31, 0, 30));
     }
 }

@@ -7,12 +7,11 @@ import com.easycrm.catalog.ProductRepository;
 import com.easycrm.crm.Customer;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.visibility.VisibleFinder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Resolves the default line rate for (customer, product): the customer's price-list override
@@ -28,8 +27,7 @@ public class PriceResolver {
     private final PriceListItemRepository priceListItems;
     private final VisibleFinder finder;
 
-    public PriceResolver(ProductRepository products, PriceListItemRepository priceListItems,
-                         VisibleFinder finder) {
+    public PriceResolver(ProductRepository products, PriceListItemRepository priceListItems, VisibleFinder finder) {
         this.products = products;
         this.priceListItems = priceListItems;
         this.finder = finder;
@@ -43,26 +41,27 @@ public class PriceResolver {
         // this cannot change an outcome -- routed through the finder anyway for guard
         // consistency (VisibilityScopingArchTest forbids CustomerRepository.findById
         // outside VisibleFinder).
-        Customer customer = finder.findCustomer(customerId)
-            .orElseThrow(() -> new NotFoundException("customer not found"));
-        Product product = products.findById(productId)
-            .orElseThrow(() -> new NotFoundException("product not found"));
+        Customer customer =
+                finder.findCustomer(customerId).orElseThrow(() -> new NotFoundException("customer not found"));
+        Product product = products.findById(productId).orElseThrow(() -> new NotFoundException("product not found"));
 
         BigDecimal rate = product.getBaseRate();
         UUID priceListId = customer.getPriceListId();
         if (priceListId != null) {
             PriceListItem item = priceListItems
-                .findByPriceListIdAndProductId(priceListId, productId).orElse(null);
+                    .findByPriceListIdAndProductId(priceListId, productId)
+                    .orElse(null);
             if (item != null) {
                 if (item.getOverrideRate() != null) {
                     rate = item.getOverrideRate();
                 } else if (item.getDiscountPct() != null) {
-                    BigDecimal factor = BigDecimal.ONE.subtract(item.getDiscountPct().divide(HUNDRED));
+                    BigDecimal factor =
+                            BigDecimal.ONE.subtract(item.getDiscountPct().divide(HUNDRED));
                     rate = product.getBaseRate().multiply(factor).setScale(2, RoundingMode.HALF_UP);
                 }
             }
         }
-        return new Resolved(rate, product.getName(), product.getHsnCode(),
-                            product.getUom().name(), product.getGstRate());
+        return new Resolved(
+                rate, product.getName(), product.getHsnCode(), product.getUom().name(), product.getGstRate());
     }
 }

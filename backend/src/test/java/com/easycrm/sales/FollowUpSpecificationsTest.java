@@ -1,8 +1,12 @@
 package com.easycrm.sales;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.support.IntegrationTest;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,11 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.support.TransactionTemplate;
-
-import java.time.Instant;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The disjointness property of §9, asserted directly: three follow-ups placed on either
@@ -25,27 +24,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 class FollowUpSpecificationsTest extends IntegrationTest {
 
-    @Autowired FollowUpRepository followUps;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    FollowUpRepository followUps;
+
+    @Autowired
+    TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID me = UUID.randomUUID();
     private final UUID subject = UUID.randomUUID();
 
     // Fixed clock values, not Instant.now(): the boundaries are what is under test.
-    private static final Instant NOW = Instant.parse("2026-08-30T06:30:00Z");        // 12:00 IST
+    private static final Instant NOW = Instant.parse("2026-08-30T06:30:00Z"); // 12:00 IST
     private static final Instant END_OF_TODAY = Instant.parse("2026-08-30T18:30:00Z"); // 00:00 IST +1
 
     @BeforeEach
     void seed() {
         asTenant(() -> {
-            followUps.saveAndFlush(f(NOW.minusSeconds(7200), "overdue"));    // 10:00 IST
-            followUps.saveAndFlush(f(NOW.plusSeconds(7200), "due today"));   // 14:00 IST
+            followUps.saveAndFlush(f(NOW.minusSeconds(7200), "overdue")); // 10:00 IST
+            followUps.saveAndFlush(f(NOW.plusSeconds(7200), "due today")); // 14:00 IST
             followUps.saveAndFlush(f(END_OF_TODAY.plusSeconds(3600), "upcoming"));
         });
     }
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void overdueReturnsOnlyThePastOne() {
@@ -69,8 +74,8 @@ class FollowUpSpecificationsTest extends IntegrationTest {
         int upcoming = notesFor(FollowUpScope.UPCOMING).size();
 
         assertThat(overdue + dueToday + upcoming)
-            .as("the three scopes must partition PENDING exactly — see FollowUpScope")
-            .isEqualTo(notesFor(FollowUpScope.ALL).size());
+                .as("the three scopes must partition PENDING exactly — see FollowUpScope")
+                .isEqualTo(notesFor(FollowUpScope.ALL).size());
     }
 
     @Test
@@ -86,12 +91,15 @@ class FollowUpSpecificationsTest extends IntegrationTest {
 
     private java.util.List<String> notesFor(FollowUpScope scope) {
         return TenantContext.runAs(
-            new TenantContext.TenantPrincipal(tenantId, me, "OWNER"),
-            () -> tx.execute(s -> followUps.findAll(
-                    FollowUpSpecifications.filter(scope, null, null, null, null,
-                        NOW, END_OF_TODAY),
-                    PageRequest.of(0, 50))
-                .getContent().stream().map(FollowUp::getNote).toList()));
+                new TenantContext.TenantPrincipal(tenantId, me, "OWNER"),
+                () -> tx.execute(s -> followUps
+                        .findAll(
+                                FollowUpSpecifications.filter(scope, null, null, null, null, NOW, END_OF_TODAY),
+                                PageRequest.of(0, 50))
+                        .getContent()
+                        .stream()
+                        .map(FollowUp::getNote)
+                        .toList()));
     }
 
     private FollowUp f(Instant dueAt, String note) {
@@ -99,7 +107,8 @@ class FollowUpSpecificationsTest extends IntegrationTest {
     }
 
     private void asTenant(Runnable body) {
-        TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, me, "OWNER"),
-            () -> tx.executeWithoutResult(s -> body.run()));
+        TenantContext.runAs(
+                new TenantContext.TenantPrincipal(tenantId, me, "OWNER"),
+                () -> tx.executeWithoutResult(s -> body.run()));
     }
 }

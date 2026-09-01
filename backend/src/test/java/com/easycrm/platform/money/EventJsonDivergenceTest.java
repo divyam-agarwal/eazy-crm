@@ -1,14 +1,13 @@
 package com.easycrm.platform.money;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.support.IntegrationTest;
+import java.math.BigDecimal;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.ObjectMapper;
-
-import java.math.BigDecimal;
-import java.time.Instant;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Pins where the event wire and the HTTP wire agree and where they diverge (LLD #1 Appendix B
@@ -19,12 +18,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class EventJsonDivergenceTest extends IntegrationTest {
 
-    @Autowired ObjectMapper applicationMapper;
+    @Autowired
+    ObjectMapper applicationMapper;
 
     record Sample(BigDecimal amount, Instant at, String absent) {}
 
     private static final Sample SAMPLE =
-        new Sample(new BigDecimal("12.50"), Instant.parse("2026-08-27T09:15:30Z"), null);
+            new Sample(new BigDecimal("12.50"), Instant.parse("2026-08-27T09:15:30Z"), null);
 
     @Test
     void bothWiresAgreeThatMoneyIsAString() {

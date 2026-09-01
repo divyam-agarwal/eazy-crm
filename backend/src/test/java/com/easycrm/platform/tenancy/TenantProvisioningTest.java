@@ -1,5 +1,7 @@
 package com.easycrm.platform.tenancy;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.iam.Role;
 import com.easycrm.iam.User;
 import com.easycrm.iam.UserRepository;
@@ -12,8 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Proves the atomic-provisioning mechanism used by signup: because a Hibernate session
  * resolves its tenant at session-open (and never re-reads it), the tenant context must be
@@ -22,11 +22,19 @@ import static org.junit.jupiter.api.Assertions.*;
  * in one transaction, with @TenantId + RLS both satisfied. See engineering-challenges #9.
  */
 class TenantProvisioningTest extends IntegrationTest {
-    @Autowired TenantRepository tenants;
-    @Autowired UserRepository users;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    TenantRepository tenants;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    UserRepository users;
+
+    @Autowired
+    TransactionTemplate tx;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void insertsTenantAndItsFirstTenantScopedRowAtomically() {

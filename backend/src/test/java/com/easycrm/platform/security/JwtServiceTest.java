@@ -1,13 +1,13 @@
 package com.easycrm.platform.security;
 
-import com.easycrm.platform.tenancy.TenantContext;
-import org.junit.jupiter.api.Test;
-import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.easycrm.platform.tenancy.TenantContext;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+
 class JwtServiceTest {
-    private final JwtService jwt = new JwtService(
-        new JwtProperties("0123456789-0123456789-0123456789-secret", 900));
+    private final JwtService jwt = new JwtService(new JwtProperties("0123456789-0123456789-0123456789-secret", 900));
 
     @Test
     void mintThenParseRoundTrips() {

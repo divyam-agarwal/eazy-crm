@@ -17,6 +17,8 @@ public interface RateLimitStore {
     Decision tryConsume(String key, RateLimitPolicy policy);
 
     record Decision(boolean allowed, long nanosToWaitForRefill) {
-        static Decision allow() { return new Decision(true, 0); }
+        static Decision allow() {
+            return new Decision(true, 0);
+        }
     }
 }

@@ -1,11 +1,10 @@
 package com.easycrm.iam;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface InvitationRepository extends JpaRepository<Invitation, UUID> {
 
@@ -27,5 +26,5 @@ public interface InvitationRepository extends JpaRepository<Invitation, UUID> {
      */
     @Transactional(readOnly = true)
     Optional<Invitation> findByTenantIdAndStatusAndEmailIgnoreCase(
-        UUID tenantId, InvitationStatus status, String email);
+            UUID tenantId, InvitationStatus status, String email);
 }

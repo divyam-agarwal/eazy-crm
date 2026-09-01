@@ -1,8 +1,8 @@
 package com.easycrm.platform.tenancy;
 
+import java.util.UUID;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.stereotype.Component;
-import java.util.UUID;
 
 @Component
 public class TenantIdentifierResolver implements CurrentTenantIdentifierResolver<UUID> {

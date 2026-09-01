@@ -2,12 +2,11 @@ package com.easycrm.platform.tenancy;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
+import java.util.UUID;
 import org.springframework.orm.jpa.EntityManagerHolder;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
-import java.util.UUID;
 
 /**
  * Sets a transaction-scoped Postgres GUC (app.current_tenant) so Row-Level Security
@@ -17,7 +16,9 @@ import java.util.UUID;
  */
 public class TenantAwareTransactionManager extends JpaTransactionManager {
 
-    public TenantAwareTransactionManager(EntityManagerFactory emf) { super(emf); }
+    public TenantAwareTransactionManager(EntityManagerFactory emf) {
+        super(emf);
+    }
 
     @Override
     protected void doBegin(Object transaction, TransactionDefinition definition) {
@@ -26,11 +27,11 @@ public class TenantAwareTransactionManager extends JpaTransactionManager {
         if (tenantId == null) return; // leave GUC unset -> scoped tables see zero rows
 
         EntityManagerHolder holder =
-            (EntityManagerHolder) TransactionSynchronizationManager.getResource(getEntityManagerFactory());
+                (EntityManagerHolder) TransactionSynchronizationManager.getResource(getEntityManagerFactory());
         if (holder == null) return;
         EntityManager em = holder.getEntityManager();
         em.createNativeQuery("SELECT set_config('app.current_tenant', :tid, true)")
-          .setParameter("tid", tenantId.toString())
-          .getSingleResult();
+                .setParameter("tid", tenantId.toString())
+                .getSingleResult();
     }
 }

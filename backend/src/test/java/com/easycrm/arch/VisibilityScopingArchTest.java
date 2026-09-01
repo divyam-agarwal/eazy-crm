@@ -1,5 +1,7 @@
 package com.easycrm.arch;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+
 import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -9,21 +11,18 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
-import org.junit.jupiter.api.Test;
-
 import java.util.Set;
-
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import org.junit.jupiter.api.Test;
 
 class VisibilityScopingArchTest {
 
     /** Repositories whose rows are subject to intra-tenant visibility filtering. */
     private static final Set<String> GUARDED_REPOSITORIES = Set.of(
-        "com.easycrm.crm.CustomerRepository",
-        "com.easycrm.sales.EnquiryRepository",
-        "com.easycrm.sales.QuotationRepository",
-        "com.easycrm.sales.OrderRepository",
-        "com.easycrm.sales.FollowUpRepository");
+            "com.easycrm.crm.CustomerRepository",
+            "com.easycrm.sales.EnquiryRepository",
+            "com.easycrm.sales.QuotationRepository",
+            "com.easycrm.sales.OrderRepository",
+            "com.easycrm.sales.FollowUpRepository");
 
     /**
      * Methods any class may still call on a guarded repository. Everything else must go
@@ -36,27 +35,28 @@ class VisibilityScopingArchTest {
      * See spec 2026-08-29-record-visibility-design.md §6, §6.1, §8.
      */
     private static final Set<String> ALLOWED_METHODS = Set.of(
-        // Writes, not reads.
-        "save",
-        // Uniqueness pre-check: must see the whole tenant or the invariant breaks (§6).
-        "findByGstin",
-        // Dedupe pre-check: same reasoning (§6).
-        "findByNormalizedPhone",
-        // Reached only from an already-checked quotation; a quotation and its order derive
-        // visibility from the SAME customer, so filtering it is a provable no-op (§6.1).
-        "findByQuotationId");
+            // Writes, not reads.
+            "save",
+            // Uniqueness pre-check: must see the whole tenant or the invariant breaks (§6).
+            "findByGstin",
+            // Dedupe pre-check: same reasoning (§6).
+            "findByNormalizedPhone",
+            // Reached only from an already-checked quotation; a quotation and its order derive
+            // visibility from the SAME customer, so filtering it is a provable no-op (§6.1).
+            "findByQuotationId");
 
     @Test
     void onlyTheVisibilityPackageMayReadAGuardedRepository() {
         JavaClasses classes = new ClassFileImporter()
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages("com.easycrm");
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("com.easycrm");
 
         ArchRule rule = noClasses()
-            .that().resideOutsideOfPackage("com.easycrm.platform.visibility..")
-            .should(callAGuardedRepositoryOutsideTheAllowlist())
-            .because("intra-tenant visibility is applied in VisibleFinder; a read that "
-                   + "bypasses it silently returns another user's records");
+                .that()
+                .resideOutsideOfPackage("com.easycrm.platform.visibility..")
+                .should(callAGuardedRepositoryOutsideTheAllowlist())
+                .because("intra-tenant visibility is applied in VisibleFinder; a read that "
+                        + "bypasses it silently returns another user's records");
 
         rule.check(classes);
     }
@@ -80,8 +80,7 @@ class VisibilityScopingArchTest {
                 checkAccesses(item, events, item.getMethodReferencesFromSelf());
             }
 
-            private void checkAccesses(JavaClass item, ConditionEvents events,
-                                        Set<? extends JavaAccess<?>> accesses) {
+            private void checkAccesses(JavaClass item, ConditionEvents events, Set<? extends JavaAccess<?>> accesses) {
                 for (JavaAccess<?> call : accesses) {
                     String owner = call.getTargetOwner().getFullName();
                     if (!GUARDED_REPOSITORIES.contains(owner)) continue;

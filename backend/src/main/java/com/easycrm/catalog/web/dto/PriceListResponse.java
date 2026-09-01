@@ -1,7 +1,6 @@
 package com.easycrm.catalog.web.dto;
 
 import com.easycrm.catalog.PriceList;
-
 import java.util.UUID;
 
 public record PriceListResponse(UUID id, String name, boolean active) {

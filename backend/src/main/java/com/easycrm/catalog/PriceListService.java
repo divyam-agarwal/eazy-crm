@@ -5,18 +5,19 @@ import com.easycrm.catalog.web.dto.PriceListResponse;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.web.PageResponse;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 @Service
 public class PriceListService {
 
     private final PriceListRepository priceLists;
 
-    public PriceListService(PriceListRepository priceLists) { this.priceLists = priceLists; }
+    public PriceListService(PriceListRepository priceLists) {
+        this.priceLists = priceLists;
+    }
 
     @Transactional
     public PriceListResponse create(PriceListRequest req) {
@@ -27,13 +28,13 @@ public class PriceListService {
     }
 
     @Transactional(readOnly = true)
-    public PriceListResponse get(UUID id) { return PriceListResponse.of(find(id)); }
+    public PriceListResponse get(UUID id) {
+        return PriceListResponse.of(find(id));
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<PriceListResponse> list(Boolean active, Pageable pageable) {
-        var page = (active == null)
-            ? priceLists.findAll(pageable)
-            : priceLists.findByActive(active, pageable);
+        var page = (active == null) ? priceLists.findAll(pageable) : priceLists.findByActive(active, pageable);
         return PageResponse.of(page.map(PriceListResponse::of));
     }
 
@@ -49,12 +50,16 @@ public class PriceListService {
 
     @Transactional
     public PriceListResponse deactivate(UUID id) {
-        PriceList p = find(id); p.deactivate(); return PriceListResponse.of(p);
+        PriceList p = find(id);
+        p.deactivate();
+        return PriceListResponse.of(p);
     }
 
     @Transactional
     public PriceListResponse activate(UUID id) {
-        PriceList p = find(id); p.activate(); return PriceListResponse.of(p);
+        PriceList p = find(id);
+        p.activate();
+        return PriceListResponse.of(p);
     }
 
     private PriceList find(UUID id) {

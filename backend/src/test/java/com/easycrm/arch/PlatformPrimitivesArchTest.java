@@ -1,5 +1,8 @@
 package com.easycrm.arch;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
@@ -12,12 +15,8 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvent;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
-import org.junit.jupiter.api.Test;
-
 import java.util.Set;
-
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * R1 — a JSON mapper built anywhere but platform-primitives loses BigDecimalStringModule, and money
@@ -46,14 +45,14 @@ class PlatformPrimitivesArchTest {
 
     /** Types whose construction re-introduces TB3. */
     private static final Set<String> MAPPER_TYPES = Set.of(
-        "tools.jackson.databind.ObjectMapper",
-        "tools.jackson.databind.json.JsonMapper",
-        "tools.jackson.databind.json.JsonMapper$Builder");
+            "tools.jackson.databind.ObjectMapper",
+            "tools.jackson.databind.json.JsonMapper",
+            "tools.jackson.databind.json.JsonMapper$Builder");
 
     private static JavaClasses appClasses() {
         return new ClassFileImporter()
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages("com.easycrm");
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("com.easycrm");
     }
 
     @Test
@@ -69,18 +68,19 @@ class PlatformPrimitivesArchTest {
         // exists in this project's own source, never in the primitives jar, so its presence is
         // proof this project's bytecode specifically was imported.
         assertThat(classes.contain("com.easycrm.EasyCrmApplication"))
-            .as("root project's own bytecode (not just the platform-primitives jar also on "
-              + "this classpath) was imported")
-            .isTrue();
+                .as("root project's own bytecode (not just the platform-primitives jar also on "
+                        + "this classpath) was imported")
+                .isTrue();
     }
 
     @Test
     void noOneOutsidePlatformPrimitivesConstructsAJsonMapper() {
         ArchRule rule = noClasses()
-            .that().resideOutsideOfPackage("com.easycrm.platform.money..")
-            .should(constructAJsonMapper())
-            .because("a mapper built elsewhere loses BigDecimalStringModule and sends money as a "
-                   + "JSON number (TB3). Use EventJson.mapper(), or inject Boot's ObjectMapper");
+                .that()
+                .resideOutsideOfPackage("com.easycrm.platform.money..")
+                .should(constructAJsonMapper())
+                .because("a mapper built elsewhere loses BigDecimalStringModule and sends money as a "
+                        + "JSON number (TB3). Use EventJson.mapper(), or inject Boot's ObjectMapper");
 
         rule.check(appClasses());
     }

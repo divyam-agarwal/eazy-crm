@@ -13,7 +13,9 @@ public final class Gstin {
 
     private final String value;
 
-    private Gstin(String value) { this.value = value; }
+    private Gstin(String value) {
+        this.value = value;
+    }
 
     public static Gstin parse(String raw) {
         if (raw == null) throw new ValidationException("gstin", "GSTIN is required");
@@ -45,6 +47,11 @@ public final class Gstin {
         return CHARSET.charAt((CP - (sum % CP)) % CP);
     }
 
-    public String value() { return value; }
-    public String stateCode() { return value.substring(0, 2); }
+    public String value() {
+        return value;
+    }
+
+    public String stateCode() {
+        return value.substring(0, 2);
+    }
 }

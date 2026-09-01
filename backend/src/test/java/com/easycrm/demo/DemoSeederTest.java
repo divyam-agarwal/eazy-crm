@@ -1,22 +1,27 @@
 package com.easycrm.demo;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class DemoSeederTest extends IntegrationTest {
-    @Autowired TenantRepository tenants;
-    @Autowired DemoRecordRepository records;
+    @Autowired
+    TenantRepository tenants;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    DemoRecordRepository records;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void seedsTwoTenantsEachWithRecords() {

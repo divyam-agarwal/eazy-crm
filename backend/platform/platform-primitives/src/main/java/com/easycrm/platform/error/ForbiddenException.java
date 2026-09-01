@@ -6,5 +6,7 @@ package com.easycrm.platform.error;
  * so that the response cannot confirm the record exists.
  */
 public class ForbiddenException extends RuntimeException {
-    public ForbiddenException(String message) { super(message); }
+    public ForbiddenException(String message) {
+        super(message);
+    }
 }

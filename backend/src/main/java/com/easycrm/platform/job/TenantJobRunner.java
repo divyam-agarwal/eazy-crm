@@ -4,6 +4,10 @@ import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
 import com.easycrm.tenant.TenantStatus;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -11,11 +15,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.List;
-import java.util.UUID;
-import java.util.function.Supplier;
-import java.util.function.ToIntFunction;
 
 /**
  * Runs a unit of work once per tenant, with no HTTP request and no JWT behind it. The
@@ -54,8 +53,7 @@ public class TenantJobRunner {
 
     private static final Logger log = LoggerFactory.getLogger(TenantJobRunner.class);
 
-    private static final List<TenantStatus> JOB_ELIGIBLE =
-        List.of(TenantStatus.TRIAL, TenantStatus.ACTIVE);
+    private static final List<TenantStatus> JOB_ELIGIBLE = List.of(TenantStatus.TRIAL, TenantStatus.ACTIVE);
 
     private final TenantRepository tenants;
     private final TransactionTemplate tx;
@@ -97,8 +95,7 @@ public class TenantJobRunner {
             }
         }
 
-        log.info("job {} finished: {} tenants swept, {} failed, {} items processed",
-                 jobName, swept, failed, items);
+        log.info("job {} finished: {} tenants swept, {} failed, {} items processed", jobName, swept, failed, items);
         return new JobSummary(swept, failed, items);
     }
 
@@ -113,8 +110,7 @@ public class TenantJobRunner {
         try {
             return runInTenant(tenantId, body);
         } catch (ObjectOptimisticLockingFailureException e) {
-            log.info("job {} hit a concurrent update for tenant {}; retrying once",
-                     jobName, tenantId);
+            log.info("job {} hit a concurrent update for tenant {}; retrying once", jobName, tenantId);
             return runInTenant(tenantId, body);
         }
     }
@@ -127,8 +123,7 @@ public class TenantJobRunner {
      */
     private int runInTenant(UUID tenantId, ToIntFunction<UUID> body) {
         Supplier<Integer> work = () -> tx.execute(status -> body.applyAsInt(tenantId));
-        Integer processed = TenantContext.runAs(
-            new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"), work);
+        Integer processed = TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"), work);
         return processed == null ? 0 : processed;
     }
 }

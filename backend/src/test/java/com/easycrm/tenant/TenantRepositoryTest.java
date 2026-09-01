@@ -1,12 +1,14 @@
 package com.easycrm.tenant;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import static org.junit.jupiter.api.Assertions.*;
 
 class TenantRepositoryTest extends IntegrationTest {
-    @Autowired TenantRepository tenants;
+    @Autowired
+    TenantRepository tenants;
 
     @Test
     void savesAndFindsBySlug() {

@@ -3,7 +3,6 @@ package com.easycrm.sales.web.dto;
 import com.easycrm.platform.visibility.SubjectType;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-
 import java.util.UUID;
 
 /**
@@ -17,7 +16,7 @@ import java.util.UUID;
  * is rewriting history.
  */
 public record ActivityUpdateRequest(
-    @NotNull SubjectType subjectType,
-    @NotNull UUID subjectId,
-    @Size(max = 2000) String body,
-    @Size(max = 200) String outcome) {}
+        @NotNull SubjectType subjectType,
+        @NotNull UUID subjectId,
+        @Size(max = 2000) String body,
+        @Size(max = 200) String outcome) {}

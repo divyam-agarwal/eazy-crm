@@ -1,16 +1,17 @@
 package com.easycrm.sales;
 
+import java.time.LocalDate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDate;
 
 @Service
 public class DocumentNumberService {
 
     private final DocumentCounterRepository counters;
 
-    public DocumentNumberService(DocumentCounterRepository counters) { this.counters = counters; }
+    public DocumentNumberService(DocumentCounterRepository counters) {
+        this.counters = counters;
+    }
 
     /**
      * Assigns the next gapless quote number for the tenant/FY of {@code onDate}. Must run in
@@ -21,8 +22,8 @@ public class DocumentNumberService {
     @Transactional
     public String nextQuoteNo(LocalDate onDate) {
         String fy = financialYear(onDate);
-        DocumentCounter counter = counters.findForUpdate("QUOTE", fy)
-            .orElseGet(() -> counters.save(new DocumentCounter("QUOTE", fy)));
+        DocumentCounter counter =
+                counters.findForUpdate("QUOTE", fy).orElseGet(() -> counters.save(new DocumentCounter("QUOTE", fy)));
         long value = counter.getNextVal();
         counter.increment();
         return String.format("QT/%s/%04d", fy, value);
@@ -36,8 +37,8 @@ public class DocumentNumberService {
     @Transactional
     public String nextOrderNo(LocalDate onDate) {
         String fy = financialYear(onDate);
-        DocumentCounter counter = counters.findForUpdate("ORDER", fy)
-            .orElseGet(() -> counters.save(new DocumentCounter("ORDER", fy)));
+        DocumentCounter counter =
+                counters.findForUpdate("ORDER", fy).orElseGet(() -> counters.save(new DocumentCounter("ORDER", fy)));
         long value = counter.getNextVal();
         counter.increment();
         return String.format("ORD/%s/%04d", fy, value);

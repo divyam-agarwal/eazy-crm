@@ -2,13 +2,12 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.job.TenantJobRunner;
 import com.easycrm.platform.time.DueWindow;
+import java.time.Clock;
+import java.time.LocalDate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-
-import java.time.Clock;
-import java.time.LocalDate;
 
 /**
  * Nightly quotation auto-expiry. Deliberately thin: it resolves today's IST date and hands
@@ -46,11 +45,13 @@ public class QuotationExpiryJob {
     public void run() {
         try {
             LocalDate asOf = DueWindow.todayDate(clock.instant());
-            TenantJobRunner.JobSummary summary =
-                runner.forEachTenant(JOB_NAME, tenantId -> sweep.run(asOf));
-            log.info("quotation-expiry as of {}: {} expired across {} tenants ({} failed)",
-                     asOf, summary.itemsProcessed(), summary.tenantsSwept(),
-                     summary.tenantsFailed());
+            TenantJobRunner.JobSummary summary = runner.forEachTenant(JOB_NAME, tenantId -> sweep.run(asOf));
+            log.info(
+                    "quotation-expiry as of {}: {} expired across {} tenants ({} failed)",
+                    asOf,
+                    summary.itemsProcessed(),
+                    summary.tenantsSwept(),
+                    summary.tenantsFailed());
         } catch (RuntimeException e) {
             log.error("quotation-expiry run failed before it could sweep any tenant", e);
         }

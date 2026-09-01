@@ -7,13 +7,15 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "product",
-       uniqueConstraints = @UniqueConstraint(name = "uq_product_tenant_sku",
-                                             columnNames = {"tenant_id", "sku"}))
+@Table(
+        name = "product",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_product_tenant_sku",
+                        columnNames = {"tenant_id", "sku"}))
 public class Product extends TenantScopedEntity {
 
     @Column(nullable = false, length = 64)
@@ -40,8 +42,7 @@ public class Product extends TenantScopedEntity {
 
     protected Product() {}
 
-    public Product(String sku, String name, String hsnCode, Uom uom,
-                   BigDecimal gstRate, BigDecimal baseRate) {
+    public Product(String sku, String name, String hsnCode, Uom uom, BigDecimal gstRate, BigDecimal baseRate) {
         this.sku = sku;
         this.name = name;
         this.hsnCode = hsnCode;
@@ -59,14 +60,39 @@ public class Product extends TenantScopedEntity {
         this.baseRate = baseRate;
     }
 
-    public void activate() { this.active = true; }
-    public void deactivate() { this.active = false; }
+    public void activate() {
+        this.active = true;
+    }
 
-    public String getSku() { return sku; }
-    public String getName() { return name; }
-    public String getHsnCode() { return hsnCode; }
-    public Uom getUom() { return uom; }
-    public BigDecimal getGstRate() { return gstRate; }
-    public BigDecimal getBaseRate() { return baseRate; }
-    public boolean isActive() { return active; }
+    public void deactivate() {
+        this.active = false;
+    }
+
+    public String getSku() {
+        return sku;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getHsnCode() {
+        return hsnCode;
+    }
+
+    public Uom getUom() {
+        return uom;
+    }
+
+    public BigDecimal getGstRate() {
+        return gstRate;
+    }
+
+    public BigDecimal getBaseRate() {
+        return baseRate;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
 }

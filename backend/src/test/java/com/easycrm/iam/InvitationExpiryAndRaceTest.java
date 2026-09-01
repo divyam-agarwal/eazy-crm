@@ -1,17 +1,12 @@
 package com.easycrm.iam;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.support.TransactionTemplate;
-
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -21,23 +16,41 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 class InvitationExpiryAndRaceTest extends IntegrationTest {
 
-    @Autowired MockMvc mvc;
-    @Autowired TestTokens tokens;
-    @Autowired InvitationRepository invitations;
-    @Autowired UserRepository users;
-    @Autowired TokenHasher hasher;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    MockMvc mvc;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    TestTokens tokens;
+
+    @Autowired
+    InvitationRepository invitations;
+
+    @Autowired
+    UserRepository users;
+
+    @Autowired
+    TokenHasher hasher;
+
+    @Autowired
+    TransactionTemplate tx;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private static final String ACCEPT = "{\"password\":\"correct-horse\"}";
 
@@ -47,8 +60,7 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         try {
             tx.executeWithoutResult(s -> invitations.save(new Invitation(
-                tenantId, email, Role.SALES_EXEC, hasher.sha256Hex(raw),
-                expiresAt, UUID.randomUUID())));
+                    tenantId, email, Role.SALES_EXEC, hasher.sha256Hex(raw), expiresAt, UUID.randomUUID())));
         } finally {
             TenantContext.clear();
         }
@@ -58,16 +70,21 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
     /** The 404 body an accept produces for the given token. */
     private String rejectedAcceptBody(String token) throws Exception {
         return mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound())
-            .andReturn().getResponse().getContentAsString();
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isNotFound())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
     }
 
     /** The 404 body a preview produces for the given token. */
     private String rejectedPreviewBody(String token) throws Exception {
         return mvc.perform(get("/api/v1/auth/invitations/" + token))
-            .andExpect(status().isNotFound())
-            .andReturn().getResponse().getContentAsString();
+                .andExpect(status().isNotFound())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
     }
 
     /**
@@ -79,21 +96,23 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
     @Test
     void anExpiredInvitationCannotBeAccepted() throws Exception {
         var owner = tokens.provisionOwner("27");
-        String raw = seed(owner.tenantId(), "expired@shop.in",
-            Instant.now().minus(1, ChronoUnit.MINUTES));
+        String raw = seed(owner.tenantId(), "expired@shop.in", Instant.now().minus(1, ChronoUnit.MINUTES));
 
-        assertEquals(rejectedAcceptBody("never-existed"), rejectedAcceptBody(raw),
-            "an expired token must be indistinguishable from one that never existed");
+        assertEquals(
+                rejectedAcceptBody("never-existed"),
+                rejectedAcceptBody(raw),
+                "an expired token must be indistinguishable from one that never existed");
     }
 
     @Test
     void anExpiredInvitationCannotBePreviewed() throws Exception {
         var owner = tokens.provisionOwner("27");
-        String raw = seed(owner.tenantId(), "expprev@shop.in",
-            Instant.now().minus(1, ChronoUnit.MINUTES));
+        String raw = seed(owner.tenantId(), "expprev@shop.in", Instant.now().minus(1, ChronoUnit.MINUTES));
 
-        assertEquals(rejectedPreviewBody("never-existed"), rejectedPreviewBody(raw),
-            "preview must not reveal that a token merely expired");
+        assertEquals(
+                rejectedPreviewBody("never-existed"),
+                rejectedPreviewBody(raw),
+                "preview must not reveal that a token merely expired");
     }
 
     /**
@@ -109,17 +128,16 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         seed(owner.tenantId(), "again@shop.in", Instant.now().minus(1, ChronoUnit.MINUTES));
 
         mvc.perform(post("/api/v1/invitations")
-                .header("Authorization", "Bearer " + owner.token())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"again@shop.in\",\"role\":\"SALES_EXEC\"}"))
-            .andExpect(status().isCreated());
+                        .header("Authorization", "Bearer " + owner.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"again@shop.in\",\"role\":\"SALES_EXEC\"}"))
+                .andExpect(status().isCreated());
 
         // Exactly one PENDING row survives: the dead one was revoked, not left alongside.
-        mvc.perform(get("/api/v1/invitations")
-                .header("Authorization", "Bearer " + owner.token()))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(1))
-            .andExpect(jsonPath("$[0].expired").value(false));
+        mvc.perform(get("/api/v1/invitations").header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].expired").value(false));
     }
 
     /** A LIVE pending invitation still blocks a re-invite — only the expired one is retired. */
@@ -129,10 +147,10 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         seed(owner.tenantId(), "live@shop.in", Instant.now().plus(1, ChronoUnit.DAYS));
 
         mvc.perform(post("/api/v1/invitations")
-                .header("Authorization", "Bearer " + owner.token())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"live@shop.in\",\"role\":\"SALES_EXEC\"}"))
-            .andExpect(status().isConflict());
+                        .header("Authorization", "Bearer " + owner.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"live@shop.in\",\"role\":\"SALES_EXEC\"}"))
+                .andExpect(status().isConflict());
     }
 
     // Expiry is lazy (D6): the row stays PENDING, and the list DERIVES expired=true.
@@ -142,11 +160,10 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         var owner = tokens.provisionOwner("27");
         seed(owner.tenantId(), "flagged@shop.in", Instant.now().minus(1, ChronoUnit.MINUTES));
 
-        mvc.perform(get("/api/v1/invitations")
-                .header("Authorization", "Bearer " + owner.token()))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].email").value("flagged@shop.in"))
-            .andExpect(jsonPath("$[0].expired").value(true));
+        mvc.perform(get("/api/v1/invitations").header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].email").value("flagged@shop.in"))
+                .andExpect(jsonPath("$[0].expired").value(true));
     }
 
     /**
@@ -165,16 +182,17 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
     @Test
     void twoConcurrentAcceptsCreateExactlyOneUser() throws Exception {
         var owner = tokens.provisionOwner("27");
-        String raw = seed(owner.tenantId(), "race@shop.in",
-            Instant.now().plus(1, ChronoUnit.DAYS));
+        String raw = seed(owner.tenantId(), "race@shop.in", Instant.now().plus(1, ChronoUnit.DAYS));
 
         CyclicBarrier startLine = new CyclicBarrier(2);
         Callable<Integer> attempt = () -> {
             startLine.await();
-            return mvc.perform(
-                    post("/api/v1/auth/invitations/" + raw + "/accept")
-                        .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-                .andReturn().getResponse().getStatus();
+            return mvc.perform(post("/api/v1/auth/invitations/" + raw + "/accept")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(ACCEPT))
+                    .andReturn()
+                    .getResponse()
+                    .getStatus();
         };
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -192,9 +210,8 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         // And exactly one user row exists for that address.
         TenantContext.set(new TenantContext.TenantPrincipal(owner.tenantId(), null, "SYSTEM"));
         try {
-            tx.executeWithoutResult(s ->
-                assertTrue(users.findByEmail("race@shop.in").isPresent(),
-                    "the winning accept must have created the user"));
+            tx.executeWithoutResult(s -> assertTrue(
+                    users.findByEmail("race@shop.in").isPresent(), "the winning accept must have created the user"));
         } finally {
             TenantContext.clear();
         }
@@ -210,22 +227,22 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
     @Test
     void twoInvitationsToOneAddressCannotBothBecomeUsers() throws Exception {
         var owner = tokens.provisionOwner("27");
-        String first = seed(owner.tenantId(), "twice@shop.in",
-            Instant.now().plus(1, ChronoUnit.DAYS));
+        String first = seed(owner.tenantId(), "twice@shop.in", Instant.now().plus(1, ChronoUnit.DAYS));
 
         // Accept the first so its row leaves PENDING, freeing the partial index, then seed
         // a second invitation to the same address — leaving one used token and one live
         // token for one address, which is the state under test.
         mvc.perform(post("/api/v1/auth/invitations/" + first + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated());
 
-        String second = seed(owner.tenantId(), "twice@shop.in",
-            Instant.now().plus(1, ChronoUnit.DAYS));
+        String second = seed(owner.tenantId(), "twice@shop.in", Instant.now().plus(1, ChronoUnit.DAYS));
 
         mvc.perform(post("/api/v1/auth/invitations/" + second + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isConflict());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isConflict());
     }
 
     /**
@@ -239,20 +256,20 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
     @Test
     void twoCaseVariantsOfOneAddressCannotBothBecomeUsers() throws Exception {
         var owner = tokens.provisionOwner("27");
-        String first = seed(owner.tenantId(), "casey@shop.in",
-            Instant.now().plus(1, ChronoUnit.DAYS));
+        String first = seed(owner.tenantId(), "casey@shop.in", Instant.now().plus(1, ChronoUnit.DAYS));
 
         mvc.perform(post("/api/v1/auth/invitations/" + first + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated());
 
         // Accepting the first freed the PENDING partial index, so a differently-spelled
         // second invitation to the same human can exist alongside it.
-        String second = seed(owner.tenantId(), "Casey@Shop.in",
-            Instant.now().plus(1, ChronoUnit.DAYS));
+        String second = seed(owner.tenantId(), "Casey@Shop.in", Instant.now().plus(1, ChronoUnit.DAYS));
 
         mvc.perform(post("/api/v1/auth/invitations/" + second + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isConflict());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isConflict());
     }
 }

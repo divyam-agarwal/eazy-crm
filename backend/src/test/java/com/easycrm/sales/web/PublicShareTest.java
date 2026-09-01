@@ -1,5 +1,9 @@
 package com.easycrm.sales.web;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.sales.QuotationRepository;
@@ -9,6 +13,7 @@ import com.easycrm.sales.pdf.QuotationPdfService;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
 import com.jayway.jsonpath.JsonPath;
+import java.util.UUID;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.AfterEach;
@@ -20,48 +25,76 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 class PublicShareTest extends IntegrationTest {
-    @Autowired MockMvc mvc;
-    @Autowired TestTokens tokens;
-    @Autowired ShareLinkRepository links;
-    @Autowired QuotationRepository quotations;
-    @Autowired QuotationPdfService pdfService;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    MockMvc mvc;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    TestTokens tokens;
+
+    @Autowired
+    ShareLinkRepository links;
+
+    @Autowired
+    QuotationRepository quotations;
+
+    @Autowired
+    QuotationPdfService pdfService;
+
+    @Autowired
+    TransactionTemplate tx;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private String sentQuotationId(String auth, String buyerName) throws Exception {
-        String cId = JsonPath.read(mvc.perform(post("/api/v1/customers").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content("""
+        String cId = JsonPath.read(
+                mvc.perform(post("/api/v1/customers")
+                                .header("Authorization", auth)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
                     {"businessName":"%s","stateCode":"27","source":"MANUAL"}""".formatted(buyerName)))
-            .andReturn().getResponse().getContentAsString(), "$.id");
-        String pId = JsonPath.read(mvc.perform(post("/api/v1/products").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content("""
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.id");
+        String pId = JsonPath.read(
+                mvc.perform(post("/api/v1/products")
+                                .header("Authorization", auth)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
                     {"sku":"SKU-%s","name":"Widget","hsnCode":"84821011","uom":"PCS",
-                     "gstRate":"18","baseRate":"100.00"}"""
-                    .formatted(UUID.randomUUID().toString().substring(0, 8))))
-            .andReturn().getResponse().getContentAsString(), "$.id");
-        String qId = JsonPath.read(mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content(
-                    "{\"customerId\":\"%s\",\"items\":[{\"productId\":\"%s\",\"qty\":\"10\"}]}"
-                        .formatted(cId, pId)))
-            .andReturn().getResponse().getContentAsString(), "$.id");
+                     "gstRate":"18","baseRate":"100.00"}""".formatted(
+                                                UUID.randomUUID().toString().substring(0, 8))))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.id");
+        String qId = JsonPath.read(
+                mvc.perform(post("/api/v1/quotations")
+                                .header("Authorization", auth)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"customerId\":\"%s\",\"items\":[{\"productId\":\"%s\",\"qty\":\"10\"}]}"
+                                        .formatted(cId, pId)))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.id");
         mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth));
         return qId;
     }
 
     private String shareToken(String auth, String quotationId) throws Exception {
-        String url = JsonPath.read(mvc.perform(post("/api/v1/quotations/" + quotationId + "/share")
-            .header("Authorization", auth)).andReturn().getResponse().getContentAsString(),
-            "$.publicUrl");
+        String url = JsonPath.read(
+                mvc.perform(post("/api/v1/quotations/" + quotationId + "/share").header("Authorization", auth))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.publicUrl");
         return url.substring(url.lastIndexOf('/') + 1);
     }
 
@@ -77,11 +110,13 @@ class PublicShareTest extends IntegrationTest {
         String token = shareToken(auth, sentQuotationId(auth, "Bharat Industries"));
         TenantContext.clear();
 
-        byte[] pdf = mvc.perform(get("/public/q/" + token))   // deliberately no header
-            .andExpect(status().isOk())
-            .andExpect(header().string("Content-Type", "application/pdf"))
-            .andExpect(header().string("X-Robots-Tag", "noindex, nofollow"))
-            .andReturn().getResponse().getContentAsByteArray();
+        byte[] pdf = mvc.perform(get("/public/q/" + token)) // deliberately no header
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("X-Robots-Tag", "noindex, nofollow"))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
 
         // The tenant came from the share_link row, not from a JWT.
         assertTrue(textOf(pdf).contains("Bharat Industries"), textOf(pdf));
@@ -105,11 +140,11 @@ class PublicShareTest extends IntegrationTest {
         // regardless of *why* the token failed - a differing message would itself confirm
         // to a holder whether their token is genuine.
         mvc.perform(get("/public/q/" + UUID.randomUUID()))
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.error.message").value("not found"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.message").value("not found"));
         mvc.perform(get("/public/q/not-a-real-token"))
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.error.message").value("not found"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.message").value("not found"));
     }
 
     @Test
@@ -124,17 +159,16 @@ class PublicShareTest extends IntegrationTest {
         var ownerB = tokens.provisionOwner("29");
         String qId = sentQuotationId("Bearer " + ownerA.token(), "Tenant A Buyer");
         UUID versionId = TenantContext.runAs(
-            new TenantContext.TenantPrincipal(ownerA.tenantId(), null, "OWNER"),
-            () -> quotations.findById(UUID.fromString(qId)).orElseThrow().getCurrentVersionId());
+                new TenantContext.TenantPrincipal(ownerA.tenantId(), null, "OWNER"),
+                () -> quotations.findById(UUID.fromString(qId)).orElseThrow().getCurrentVersionId());
         TenantContext.clear();
 
         String forgedToken = "forged-" + UUID.randomUUID();
-        tx.executeWithoutResult(s ->
-            links.save(new ShareLink(forgedToken, ownerB.tenantId(), versionId)));
+        tx.executeWithoutResult(s -> links.save(new ShareLink(forgedToken, ownerB.tenantId(), versionId)));
 
         mvc.perform(get("/public/q/" + forgedToken))
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.error.message").value("not found"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.message").value("not found"));
     }
 
     @Test
@@ -142,8 +176,8 @@ class PublicShareTest extends IntegrationTest {
         var owner = tokens.provisionOwner("27");
         String qId = sentQuotationId("Bearer " + owner.token(), "Bharat Industries");
         UUID versionId = TenantContext.runAs(
-            new TenantContext.TenantPrincipal(owner.tenantId(), null, "OWNER"),
-            () -> quotations.findById(UUID.fromString(qId)).orElseThrow().getCurrentVersionId());
+                new TenantContext.TenantPrincipal(owner.tenantId(), null, "OWNER"),
+                () -> quotations.findById(UUID.fromString(qId)).orElseThrow().getCurrentVersionId());
         TenantContext.clear();
 
         // What the whole endpoint rests on, at the unit level: with no tenant installed,
@@ -170,7 +204,10 @@ class PublicShareTest extends IntegrationTest {
         TenantContext.clear();
 
         String text = textOf(mvc.perform(get("/public/q/" + tokenA))
-            .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray());
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray());
 
         assertTrue(text.contains("Tenant A Buyer"), text);
         assertFalse(text.contains("Tenant B Buyer"), text);
@@ -190,8 +227,14 @@ class PublicShareTest extends IntegrationTest {
         assertNotEquals(v1Token, v2Token);
         // The customer who received the v1 link still sees exactly what they were sent.
         assertTrue(textOf(mvc.perform(get("/public/q/" + v1Token))
-            .andReturn().getResponse().getContentAsByteArray()).contains("(v1)"));
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsByteArray())
+                .contains("(v1)"));
         assertTrue(textOf(mvc.perform(get("/public/q/" + v2Token))
-            .andReturn().getResponse().getContentAsByteArray()).contains("(v2)"));
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsByteArray())
+                .contains("(v2)"));
     }
 }

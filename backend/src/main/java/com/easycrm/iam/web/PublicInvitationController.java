@@ -35,8 +35,8 @@ public class PublicInvitationController {
     }
 
     @PostMapping("/{token}/accept")
-    public ResponseEntity<AuthResponse> accept(@PathVariable String token,
-                                               @Valid @RequestBody AcceptInvitationRequest req) {
+    public ResponseEntity<AuthResponse> accept(
+            @PathVariable String token, @Valid @RequestBody AcceptInvitationRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(invitations.accept(token, req));
     }
 

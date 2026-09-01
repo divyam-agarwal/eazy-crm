@@ -5,4 +5,7 @@ package com.easycrm.sales;
  * they are a record of something the application itself observed, and letting a user
  * rewrite one would make the log unreliable exactly where it is most trustworthy.
  */
-public enum ActivitySource { MANUAL, SYSTEM }
+public enum ActivitySource {
+    MANUAL,
+    SYSTEM
+}

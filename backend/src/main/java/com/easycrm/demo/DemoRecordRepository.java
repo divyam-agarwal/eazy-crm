@@ -1,6 +1,6 @@
 package com.easycrm.demo;
 
-import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface DemoRecordRepository extends JpaRepository<DemoRecord, UUID> {}

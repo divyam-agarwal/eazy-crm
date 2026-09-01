@@ -5,7 +5,6 @@ import com.easycrm.sales.ActivityType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -18,10 +17,10 @@ import java.util.UUID;
  * <p>nextFollowUp is added in Task 12 (the log-and-schedule flow).
  */
 public record ActivityCreateRequest(
-    @NotNull SubjectType subjectType,
-    @NotNull UUID subjectId,
-    @NotNull ActivityType type,
-    @Size(max = 2000) String body,
-    @Size(max = 200) String outcome,
-    Instant occurredAt,
-    @Valid NextFollowUpRequest nextFollowUp) {}
+        @NotNull SubjectType subjectType,
+        @NotNull UUID subjectId,
+        @NotNull ActivityType type,
+        @Size(max = 2000) String body,
+        @Size(max = 200) String outcome,
+        Instant occurredAt,
+        @Valid NextFollowUpRequest nextFollowUp) {}

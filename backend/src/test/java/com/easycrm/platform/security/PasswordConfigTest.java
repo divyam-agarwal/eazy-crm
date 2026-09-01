@@ -1,9 +1,9 @@
 package com.easycrm.platform.security;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class PasswordConfigTest {
     private final PasswordEncoder encoder = new PasswordConfig().passwordEncoder();

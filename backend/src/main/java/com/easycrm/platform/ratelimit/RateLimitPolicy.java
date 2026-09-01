@@ -3,12 +3,11 @@ package com.easycrm.platform.ratelimit;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.server.PathContainer;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
-
-import java.time.Duration;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * One named limit bound to a path pattern: {@code capacity} requests per
@@ -25,8 +24,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * on whatever route it's attached to — a self-inflicted outage that should fail at
  * startup, not surface as "every request 429s" in production.
  */
-public record RateLimitPolicy(@NotBlank String name, @NotBlank String path,
-                              @Positive long capacity, @NotNull Duration refillPeriod) {
+public record RateLimitPolicy(
+        @NotBlank String name,
+        @NotBlank String path,
+        @Positive long capacity,
+        @NotNull Duration refillPeriod) {
 
     // Keyed on `path`, which comes only from configuration (application.yml), never
     // from request input. The number of distinct keys is therefore bounded by the

@@ -7,9 +7,12 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 @Entity
-@Table(name = "price_list",
-       uniqueConstraints = @UniqueConstraint(name = "uq_price_list_tenant_name",
-                                             columnNames = {"tenant_id", "name"}))
+@Table(
+        name = "price_list",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_price_list_tenant_name",
+                        columnNames = {"tenant_id", "name"}))
 public class PriceList extends TenantScopedEntity {
 
     @Column(nullable = false)
@@ -25,10 +28,23 @@ public class PriceList extends TenantScopedEntity {
         this.active = true;
     }
 
-    public void rename(String name) { this.name = name; }
-    public void activate() { this.active = true; }
-    public void deactivate() { this.active = false; }
+    public void rename(String name) {
+        this.name = name;
+    }
 
-    public String getName() { return name; }
-    public boolean isActive() { return active; }
+    public void activate() {
+        this.active = true;
+    }
+
+    public void deactivate() {
+        this.active = false;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
 }

@@ -9,4 +9,9 @@ package com.easycrm.platform.visibility;
  * gain a matching branch, or the new subject type resolves to nothing and every activity
  * against it 404s.
  */
-public enum SubjectType { CUSTOMER, ENQUIRY, QUOTATION, ORDER }
+public enum SubjectType {
+    CUSTOMER,
+    ENQUIRY,
+    QUOTATION,
+    ORDER
+}

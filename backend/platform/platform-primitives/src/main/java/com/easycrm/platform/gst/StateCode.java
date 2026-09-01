@@ -1,7 +1,6 @@
 package com.easycrm.platform.gst;
 
 import com.easycrm.platform.error.ValidationException;
-
 import java.util.HashSet;
 import java.util.Set;
 
@@ -9,6 +8,7 @@ import java.util.Set;
 public final class StateCode {
 
     private static final Set<String> VALID;
+
     static {
         Set<String> v = new HashSet<>();
         for (int i = 1; i <= 38; i++) v.add(String.format("%02d", i));

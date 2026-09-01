@@ -4,7 +4,6 @@ import com.easycrm.platform.persistence.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -49,10 +48,27 @@ public class RefreshToken extends BaseEntity {
         this.replacedById = replacedById;
     }
 
-    public String getTokenHash() { return tokenHash; }
-    public UUID getUserId() { return userId; }
-    public UUID getTenantId() { return tenantId; }
-    public Instant getExpiresAt() { return expiresAt; }
-    public Instant getRevokedAt() { return revokedAt; }
-    public UUID getReplacedById() { return replacedById; }
+    public String getTokenHash() {
+        return tokenHash;
+    }
+
+    public UUID getUserId() {
+        return userId;
+    }
+
+    public UUID getTenantId() {
+        return tenantId;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
+    public Instant getRevokedAt() {
+        return revokedAt;
+    }
+
+    public UUID getReplacedById() {
+        return replacedById;
+    }
 }

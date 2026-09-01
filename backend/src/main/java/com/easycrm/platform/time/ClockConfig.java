@@ -1,9 +1,8 @@
 package com.easycrm.platform.time;
 
+import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.time.Clock;
 
 /**
  * The codebase's first Clock bean. Services take it rather than calling Instant.now() so
@@ -18,5 +17,7 @@ import java.time.Clock;
 public class ClockConfig {
 
     @Bean
-    public Clock clock() { return Clock.systemUTC(); }
+    public Clock clock() {
+        return Clock.systemUTC();
+    }
 }

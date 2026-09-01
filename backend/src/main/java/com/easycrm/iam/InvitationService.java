@@ -15,12 +15,6 @@ import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
 import com.easycrm.tenant.TenantStatus;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
-
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -28,6 +22,11 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class InvitationService {
@@ -50,12 +49,19 @@ public class InvitationService {
     private final TransactionTemplate tx;
     private final String publicBaseUrl;
 
-    public InvitationService(InvitationRepository invitations, UserRepository users,
-                             TenantRepository tenants,
-                             TokenHasher hasher, RoleGuard roleGuard, AuditService audit,
-                             EmailSender emailSender, PasswordEncoder encoder, JwtService jwt,
-                             RefreshTokenService refreshTokens, TransactionTemplate tx,
-                             @Value("${easycrm.public-base-url}") String publicBaseUrl) {
+    public InvitationService(
+            InvitationRepository invitations,
+            UserRepository users,
+            TenantRepository tenants,
+            TokenHasher hasher,
+            RoleGuard roleGuard,
+            AuditService audit,
+            EmailSender emailSender,
+            PasswordEncoder encoder,
+            JwtService jwt,
+            RefreshTokenService refreshTokens,
+            TransactionTemplate tx,
+            @Value("${easycrm.public-base-url}") String publicBaseUrl) {
         this.invitations = invitations;
         this.users = users;
         this.tenants = tenants;
@@ -87,11 +93,9 @@ public class InvitationService {
         Minted minted = tx.execute(status -> mintInTransaction(req, rawToken));
 
         String acceptUrl = publicBaseUrl + "/invite/" + rawToken;
-        emailSender.send(req.email(), "You have been invited to EasyCRM",
-            "Open this link to join: " + acceptUrl);
+        emailSender.send(req.email(), "You have been invited to EasyCRM", "Open this link to join: " + acceptUrl);
 
-        return new InvitationResponse(minted.id(), minted.email(), req.role(),
-            minted.expiresAt(), acceptUrl);
+        return new InvitationResponse(minted.id(), minted.email(), req.role(), minted.expiresAt(), acceptUrl);
     }
 
     private record Minted(UUID id, String email, Instant expiresAt) {}
@@ -105,9 +109,8 @@ public class InvitationService {
         // carries no user id (the "SYSTEM" one), so this is unreachable; say so out loud
         // rather than encoding a silent null.
         UUID invitedBy = TenantContext.get()
-            .map(TenantContext.TenantPrincipal::userId)
-            .orElseThrow(() -> new IllegalStateException(
-                "an owner principal must carry a user id to invite"));
+                .map(TenantContext.TenantPrincipal::userId)
+                .orElseThrow(() -> new IllegalStateException("an owner principal must carry a user id to invite"));
 
         // Already a member? The read is RLS-scoped to this tenant. IgnoreCase because an
         // address is one identity however it is spelled: an exact match would let
@@ -123,31 +126,33 @@ public class InvitationService {
         // DataIntegrityViolation backstop's generic one. Case-folded to agree with that
         // index, which is on lower(email).
         invitations
-            .findByTenantIdAndStatusAndEmailIgnoreCase(
-                tenantId, InvitationStatus.PENDING, req.email())
-            .ifPresent(existing -> {
-                if (!existing.isExpired(Instant.now())) {
-                    throw new ConflictException("that email already has a pending invitation");
-                }
-                // Expiry is lazy (D6), so an expired invitation stays PENDING forever and
-                // would otherwise block this address from ever being re-invited — the
-                // owner's own list already shows it as expired. Retire it here and carry
-                // on; the partial index frees itself in this same transaction.
-                //
-                // saveAndFlush, not save: Hibernate's action queue runs ALL inserts before
-                // ANY update, so a plain save would let the new PENDING row hit
-                // uq_invitation_pending_email while the old one is still PENDING on disk.
-                // The flush forces the UPDATE out first.
-                existing.revoke();
-                invitations.saveAndFlush(existing);
-            });
+                .findByTenantIdAndStatusAndEmailIgnoreCase(tenantId, InvitationStatus.PENDING, req.email())
+                .ifPresent(existing -> {
+                    if (!existing.isExpired(Instant.now())) {
+                        throw new ConflictException("that email already has a pending invitation");
+                    }
+                    // Expiry is lazy (D6), so an expired invitation stays PENDING forever and
+                    // would otherwise block this address from ever being re-invited — the
+                    // owner's own list already shows it as expired. Retire it here and carry
+                    // on; the partial index frees itself in this same transaction.
+                    //
+                    // saveAndFlush, not save: Hibernate's action queue runs ALL inserts before
+                    // ANY update, so a plain save would let the new PENDING row hit
+                    // uq_invitation_pending_email while the old one is still PENDING on disk.
+                    // The flush forces the UPDATE out first.
+                    existing.revoke();
+                    invitations.saveAndFlush(existing);
+                });
 
         Invitation inv = invitations.save(new Invitation(
-            tenantId, req.email(), Role.valueOf(req.role()), hasher.sha256Hex(rawToken),
-            Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS), invitedBy));
+                tenantId,
+                req.email(),
+                Role.valueOf(req.role()),
+                hasher.sha256Hex(rawToken),
+                Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS),
+                invitedBy));
 
-        audit.record("INVITE_SENT", invitedBy,
-            Map.of("email", req.email(), "role", req.role()));
+        audit.record("INVITE_SENT", invitedBy, Map.of("email", req.email(), "role", req.role()));
 
         return new Minted(inv.getId(), inv.getEmail(), inv.getExpiresAt());
     }
@@ -156,25 +161,25 @@ public class InvitationService {
     public List<PendingInvitationResponse> listPending() {
         roleGuard.requireOwner("only an owner may view invitations");
         Instant now = Instant.now();
-        return invitations
-            .findByTenantIdAndStatus(TenantContext.tenantId(), InvitationStatus.PENDING)
-            .stream()
-            .map(i -> new PendingInvitationResponse(i.getId(), i.getEmail(),
-                i.getRole().name(), i.getExpiresAt(), i.isExpired(now)))
-            .toList();
+        return invitations.findByTenantIdAndStatus(TenantContext.tenantId(), InvitationStatus.PENDING).stream()
+                .map(i -> new PendingInvitationResponse(
+                        i.getId(), i.getEmail(), i.getRole().name(), i.getExpiresAt(), i.isExpired(now)))
+                .toList();
     }
 
     @Transactional
     public void revoke(UUID id) {
         roleGuard.requireOwner("only an owner may revoke an invitation");
-        Invitation inv = invitations.findById(id)
-            .filter(i -> i.getTenantId().equals(TenantContext.tenantId()))
-            .orElseThrow(() -> new NotFoundException("invitation not found"));
-        inv.revoke();                 // throws ConflictException unless PENDING
+        Invitation inv = invitations
+                .findById(id)
+                .filter(i -> i.getTenantId().equals(TenantContext.tenantId()))
+                .orElseThrow(() -> new NotFoundException("invitation not found"));
+        inv.revoke(); // throws ConflictException unless PENDING
         invitations.save(inv);
-        audit.record("INVITE_REVOKED",
-            TenantContext.get().map(TenantContext.TenantPrincipal::userId).orElse(null),
-            Map.of("email", inv.getEmail()));
+        audit.record(
+                "INVITE_REVOKED",
+                TenantContext.get().map(TenantContext.TenantPrincipal::userId).orElse(null),
+                Map.of("email", inv.getEmail()));
     }
 
     /**
@@ -192,24 +197,38 @@ public class InvitationService {
             return tx.execute(status -> {
                 // Re-read inside the transaction and claim it. @Version means a concurrent
                 // second accept of this same token loses here and gets a 409.
-                Invitation claimed = invitations.findById(inv.getId())
-                    .orElseThrow(() -> new NotFoundException("invitation not found"));
+                Invitation claimed = invitations
+                        .findById(inv.getId())
+                        .orElseThrow(() -> new NotFoundException("invitation not found"));
 
                 User user = users.save(new User(
-                    claimed.getEmail(), req.phone(), encoder.encode(req.password()),
-                    claimed.getRole(), UserStatus.ACTIVE));
+                        claimed.getEmail(),
+                        req.phone(),
+                        encoder.encode(req.password()),
+                        claimed.getRole(),
+                        UserStatus.ACTIVE));
 
                 claimed.accept(user.getId(), Instant.now());
                 invitations.save(claimed);
 
-                audit.record("INVITE_ACCEPTED", user.getId(),
-                    Map.of("email", claimed.getEmail(), "role", claimed.getRole().name()));
+                audit.record(
+                        "INVITE_ACCEPTED",
+                        user.getId(),
+                        Map.of(
+                                "email",
+                                claimed.getEmail(),
+                                "role",
+                                claimed.getRole().name()));
 
-                String access = jwt.mint(claimed.getTenantId(), user.getId(),
-                    claimed.getRole().name());
+                String access = jwt.mint(
+                        claimed.getTenantId(), user.getId(), claimed.getRole().name());
                 String refresh = refreshTokens.issue(user.getId(), claimed.getTenantId());
-                return new AuthResponse(access, refresh, claimed.getTenantId(),
-                    user.getId(), claimed.getRole().name());
+                return new AuthResponse(
+                        access,
+                        refresh,
+                        claimed.getTenantId(),
+                        user.getId(),
+                        claimed.getRole().name());
             });
         } finally {
             TenantContext.clear();
@@ -227,8 +246,10 @@ public class InvitationService {
     @Transactional(readOnly = true)
     public InvitationPreviewResponse preview(String rawToken) {
         Live live = requireLive(rawToken);
-        return new InvitationPreviewResponse(live.tenant().getBusinessName(),
-            live.invitation().getEmail(), live.invitation().getRole().name());
+        return new InvitationPreviewResponse(
+                live.tenant().getBusinessName(),
+                live.invitation().getEmail(),
+                live.invitation().getRole().name());
     }
 
     /** A live invitation and the tenant it admits you to. */
@@ -253,14 +274,15 @@ public class InvitationService {
      * — which is the state accept calls it in, deliberately and necessarily (see accept).
      */
     private Live requireLive(String rawToken) {
-        Invitation inv = invitations.findByTokenHash(hasher.sha256Hex(rawToken))
-            .filter(i -> i.getStatus() == InvitationStatus.PENDING)
-            .filter(i -> !i.isExpired(Instant.now()))
-            .orElseThrow(() -> new NotFoundException("invitation not found"));
+        Invitation inv = invitations
+                .findByTokenHash(hasher.sha256Hex(rawToken))
+                .filter(i -> i.getStatus() == InvitationStatus.PENDING)
+                .filter(i -> !i.isExpired(Instant.now()))
+                .orElseThrow(() -> new NotFoundException("invitation not found"));
 
         Tenant tenant = tenants.findById(inv.getTenantId())
-            .filter(t -> t.getStatus() != TenantStatus.SUSPENDED)
-            .orElseThrow(() -> new NotFoundException("invitation not found"));
+                .filter(t -> t.getStatus() != TenantStatus.SUSPENDED)
+                .orElseThrow(() -> new NotFoundException("invitation not found"));
 
         return new Live(inv, tenant);
     }

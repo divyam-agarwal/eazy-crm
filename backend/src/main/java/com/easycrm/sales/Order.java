@@ -8,17 +8,21 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
-@Table(name = "sales_order", // "order" is a reserved SQL word
-       uniqueConstraints = {
-           @UniqueConstraint(name = "uq_order_tenant_no", columnNames = {"tenant_id", "order_no"}),
-           @UniqueConstraint(name = "uq_order_tenant_quotation", columnNames = {"tenant_id", "quotation_id"})
-       })
+@Table(
+        name = "sales_order", // "order" is a reserved SQL word
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uq_order_tenant_no",
+                    columnNames = {"tenant_id", "order_no"}),
+            @UniqueConstraint(
+                    name = "uq_order_tenant_quotation",
+                    columnNames = {"tenant_id", "quotation_id"})
+        })
 public class Order extends TenantScopedEntity {
 
     @Column(name = "order_no", nullable = false, length = 32)
@@ -57,9 +61,16 @@ public class Order extends TenantScopedEntity {
 
     protected Order() {}
 
-    public Order(UUID quotationId, UUID quotationVersionId, UUID customerId, String orderNo,
-                 BigDecimal subTotal, BigDecimal totalTax, BigDecimal grandTotal,
-                 String poReference, LocalDate poDate) {
+    public Order(
+            UUID quotationId,
+            UUID quotationVersionId,
+            UUID customerId,
+            String orderNo,
+            BigDecimal subTotal,
+            BigDecimal totalTax,
+            BigDecimal grandTotal,
+            String poReference,
+            LocalDate poDate) {
         this.quotationId = quotationId;
         this.quotationVersionId = quotationVersionId;
         this.customerId = customerId;
@@ -94,8 +105,7 @@ public class Order extends TenantScopedEntity {
      */
     public void cancel(String reason) {
         if (status.isTerminal()) {
-            throw new ValidationException("status",
-                "a " + status.name().toLowerCase() + " order cannot be cancelled");
+            throw new ValidationException("status", "a " + status.name().toLowerCase() + " order cannot be cancelled");
         }
         if (reason == null || reason.isBlank()) {
             throw new ValidationException("cancelReason", "a reason is required to cancel an order");
@@ -104,15 +114,47 @@ public class Order extends TenantScopedEntity {
         this.cancelReason = reason;
     }
 
-    public String getOrderNo() { return orderNo; }
-    public UUID getQuotationId() { return quotationId; }
-    public UUID getQuotationVersionId() { return quotationVersionId; }
-    public UUID getCustomerId() { return customerId; }
-    public String getPoReference() { return poReference; }
-    public LocalDate getPoDate() { return poDate; }
-    public BigDecimal getSubTotal() { return subTotal; }
-    public BigDecimal getTotalTax() { return totalTax; }
-    public BigDecimal getGrandTotal() { return grandTotal; }
-    public OrderStatus getStatus() { return status; }
-    public String getCancelReason() { return cancelReason; }
+    public String getOrderNo() {
+        return orderNo;
+    }
+
+    public UUID getQuotationId() {
+        return quotationId;
+    }
+
+    public UUID getQuotationVersionId() {
+        return quotationVersionId;
+    }
+
+    public UUID getCustomerId() {
+        return customerId;
+    }
+
+    public String getPoReference() {
+        return poReference;
+    }
+
+    public LocalDate getPoDate() {
+        return poDate;
+    }
+
+    public BigDecimal getSubTotal() {
+        return subTotal;
+    }
+
+    public BigDecimal getTotalTax() {
+        return totalTax;
+    }
+
+    public BigDecimal getGrandTotal() {
+        return grandTotal;
+    }
+
+    public OrderStatus getStatus() {
+        return status;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
 }

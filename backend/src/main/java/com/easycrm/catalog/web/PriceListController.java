@@ -5,12 +5,11 @@ import com.easycrm.catalog.web.dto.PriceListRequest;
 import com.easycrm.catalog.web.dto.PriceListResponse;
 import com.easycrm.platform.web.PageResponse;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/price-lists")
@@ -18,7 +17,9 @@ public class PriceListController {
 
     private final PriceListService service;
 
-    public PriceListController(PriceListService service) { this.service = service; }
+    public PriceListController(PriceListService service) {
+        this.service = service;
+    }
 
     @PostMapping
     public ResponseEntity<PriceListResponse> create(@Valid @RequestBody PriceListRequest req) {
@@ -26,11 +27,12 @@ public class PriceListController {
     }
 
     @GetMapping("/{id}")
-    public PriceListResponse get(@PathVariable UUID id) { return service.get(id); }
+    public PriceListResponse get(@PathVariable UUID id) {
+        return service.get(id);
+    }
 
     @GetMapping
-    public PageResponse<PriceListResponse> list(@RequestParam(required = false) Boolean active,
-                                                Pageable pageable) {
+    public PageResponse<PriceListResponse> list(@RequestParam(required = false) Boolean active, Pageable pageable) {
         return service.list(active, pageable);
     }
 
@@ -40,8 +42,12 @@ public class PriceListController {
     }
 
     @PostMapping("/{id}/deactivate")
-    public PriceListResponse deactivate(@PathVariable UUID id) { return service.deactivate(id); }
+    public PriceListResponse deactivate(@PathVariable UUID id) {
+        return service.deactivate(id);
+    }
 
     @PostMapping("/{id}/activate")
-    public PriceListResponse activate(@PathVariable UUID id) { return service.activate(id); }
+    public PriceListResponse activate(@PathVariable UUID id) {
+        return service.activate(id);
+    }
 }

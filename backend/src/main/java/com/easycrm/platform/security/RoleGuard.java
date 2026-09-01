@@ -24,9 +24,8 @@ public class RoleGuard {
     private static final String OWNER = "OWNER";
 
     public void requireOwner(String message) {
-        String role = TenantContext.get()
-            .map(TenantContext.TenantPrincipal::role)
-            .orElse(null);
+        String role =
+                TenantContext.get().map(TenantContext.TenantPrincipal::role).orElse(null);
         if (!OWNER.equals(role)) {
             throw new ForbiddenException(message);
         }

@@ -50,8 +50,8 @@ public final class EventJson {
             // resolves to ALWAYS for a plain field at write time — so this already matches today's
             // behaviour. Stated explicitly anyway so a future default change cannot alter the event
             // contract.
-            .changeDefaultPropertyInclusion(inc -> inc.withValueInclusion(
-                    com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS))
+            .changeDefaultPropertyInclusion(
+                    inc -> inc.withValueInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS))
             // An additive-only contract means a newer producer sends fields this consumer has never
             // heard of. Failing on them would make every additive change a breaking change. Already
             // Jackson 3's default (FAIL_ON_UNKNOWN_PROPERTIES is enabledByDefault=false); stated

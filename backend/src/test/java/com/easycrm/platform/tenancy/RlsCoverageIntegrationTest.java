@@ -1,10 +1,9 @@
 package com.easycrm.platform.tenancy;
 
-import com.easycrm.support.IntegrationTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import javax.sql.DataSource;
+import com.easycrm.support.IntegrationTest;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -12,9 +11,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import javax.sql.DataSource;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * The layer-3 guard: it fails when a tenant-scoped table is missing any part of its
@@ -48,10 +47,10 @@ class RlsCoverageIntegrationTest extends IntegrationTest {
      * list has three entries and the other has four.)
      */
     private static final Set<String> GLOBAL_TABLES = Set.of(
-        "refresh_token",   // pre-auth session table, looked up by hash
-        "share_link",      // pre-auth share table: resolves the tenant itself
-        "invitation"       // pre-auth invite table: resolves the tenant itself
-    );
+            "refresh_token", // pre-auth session table, looked up by hash
+            "share_link", // pre-auth share table: resolves the tenant itself
+            "invitation" // pre-auth invite table: resolves the tenant itself
+            );
 
     /**
      * Every base table in {@code public} holding a live {@code tenant_id} column, with
@@ -75,7 +74,8 @@ class RlsCoverageIntegrationTest extends IntegrationTest {
          ORDER BY c.relname
         """;
 
-    @Autowired DataSource dataSource; // app (non-owner) datasource; pg_catalog is world-readable
+    @Autowired
+    DataSource dataSource; // app (non-owner) datasource; pg_catalog is world-readable
 
     @Test
     void everyTenantScopedTableHasRlsEnabledForcedAndPolicied() throws Exception {
@@ -83,31 +83,32 @@ class RlsCoverageIntegrationTest extends IntegrationTest {
         Set<String> seen = new LinkedHashSet<>();
 
         try (Connection conn = dataSource.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(TENANT_TABLE_RLS_STATE)) {
+                Statement st = conn.createStatement();
+                ResultSet rs = st.executeQuery(TENANT_TABLE_RLS_STATE)) {
             while (rs.next()) {
                 String table = rs.getString("relname");
                 seen.add(table);
                 if (GLOBAL_TABLES.contains(table)) continue;
                 violations.addAll(describeViolations(
-                    table, rs.getBoolean("relrowsecurity"),
-                    rs.getBoolean("relforcerowsecurity"), rs.getInt("policies")));
+                        table,
+                        rs.getBoolean("relrowsecurity"),
+                        rs.getBoolean("relforcerowsecurity"),
+                        rs.getInt("policies")));
             }
         }
 
         // Sanity: the query has to be finding the schema at all. Naming a table that has
         // existed since V9 distinguishes "everything passed" from "nothing was checked".
-        assertTrue(seen.contains("product"),
-            "guard query matched no known tenant table — it is not checking anything");
-        assertEquals(List.of(), violations,
-            "tenant-scoped tables are missing part of their Row-Level Security");
+        assertTrue(seen.contains("product"), "guard query matched no known tenant table — it is not checking anything");
+        assertEquals(List.of(), violations, "tenant-scoped tables are missing part of their Row-Level Security");
 
         // A stale exemption is as much a bug as a missing one: if a global table is
         // renamed or dropped, the allowlist should stop claiming to exempt it.
         for (String exempt : GLOBAL_TABLES) {
-            assertTrue(seen.contains(exempt),
-                "GLOBAL_TABLES exempts '" + exempt + "', which is not a tenant_id-bearing "
-                    + "table any more — remove the stale entry");
+            assertTrue(
+                    seen.contains(exempt),
+                    "GLOBAL_TABLES exempts '" + exempt + "', which is not a tenant_id-bearing "
+                            + "table any more — remove the stale entry");
         }
     }
 
@@ -119,48 +120,50 @@ class RlsCoverageIntegrationTest extends IntegrationTest {
     @Test
     void theGuardDetectsAnUnforcedTenantTable() throws Exception {
         // DDL needs the owner: the app role has USAGE on the schema but no CREATE.
-        try (Connection owner = ownerConnection(); Statement ddl = owner.createStatement()) {
+        try (Connection owner = ownerConnection();
+                Statement ddl = owner.createStatement()) {
             ddl.execute("CREATE TABLE rls_guard_probe (id UUID PRIMARY KEY, tenant_id UUID NOT NULL)");
             try {
                 List<String> violations = new ArrayList<>();
                 boolean probeSeen = false;
 
                 try (Connection conn = dataSource.getConnection();
-                     Statement st = conn.createStatement();
-                     ResultSet rs = st.executeQuery(TENANT_TABLE_RLS_STATE)) {
+                        Statement st = conn.createStatement();
+                        ResultSet rs = st.executeQuery(TENANT_TABLE_RLS_STATE)) {
                     while (rs.next()) {
                         if (!"rls_guard_probe".equals(rs.getString("relname"))) continue;
                         probeSeen = true;
                         violations.addAll(describeViolations(
-                            "rls_guard_probe", rs.getBoolean("relrowsecurity"),
-                            rs.getBoolean("relforcerowsecurity"), rs.getInt("policies")));
+                                "rls_guard_probe",
+                                rs.getBoolean("relrowsecurity"),
+                                rs.getBoolean("relforcerowsecurity"),
+                                rs.getInt("policies")));
                     }
                 }
 
                 assertTrue(probeSeen, "the guard query did not even see the probe table");
-                assertEquals(3, violations.size(),
-                    "a tenant_id table with no RLS at all should trip all three checks, got: "
-                        + violations);
+                assertEquals(
+                        3,
+                        violations.size(),
+                        "a tenant_id table with no RLS at all should trip all three checks, got: " + violations);
             } finally {
                 ddl.execute("DROP TABLE IF EXISTS rls_guard_probe");
             }
         }
     }
 
-    private static List<String> describeViolations(
-            String table, boolean rlsEnabled, boolean rlsForced, int policies) {
+    private static List<String> describeViolations(String table, boolean rlsEnabled, boolean rlsForced, int policies) {
         List<String> violations = new ArrayList<>();
         if (!rlsEnabled) {
-            violations.add(table + ": RLS not enabled (ALTER TABLE " + table
-                + " ENABLE ROW LEVEL SECURITY)");
+            violations.add(table + ": RLS not enabled (ALTER TABLE " + table + " ENABLE ROW LEVEL SECURITY)");
         }
         if (!rlsForced) {
-            violations.add(table + ": RLS not forced, so the table owner bypasses it silently "
-                + "(ALTER TABLE " + table + " FORCE ROW LEVEL SECURITY)");
+            violations.add(table + ": RLS not forced, so the table owner bypasses it silently " + "(ALTER TABLE "
+                    + table + " FORCE ROW LEVEL SECURITY)");
         }
         if (policies == 0) {
             violations.add(table + ": no policy — RLS with no policy denies everything, "
-                + "which is a different bug, not isolation");
+                    + "which is a different bug, not isolation");
         }
         return violations;
     }

@@ -1,14 +1,13 @@
 package com.easycrm.support;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 
 @SpringBootTest
 // The limiter is OFF for the suite at large, and this is correctness, not tidiness. Every
@@ -33,19 +32,15 @@ import java.sql.SQLException;
 // test class's fixtures and fail intermittently, somewhere else, for reasons that look
 // unrelated. "-" is Spring's Scheduled.CRON_DISABLED value, which skips task registration
 // entirely rather than scheduling something that never fires.
-@TestPropertySource(properties = {
-    "easycrm.rate-limit.enabled=false",
-    "easycrm.jobs.quotation-expiry.cron=-"
-})
+@TestPropertySource(properties = {"easycrm.rate-limit.enabled=false", "easycrm.jobs.quotation-expiry.cron=-"})
 public abstract class IntegrationTest {
 
     // Singleton container: started ONCE for the whole JVM and shared across every
     // integration test class. Reliable (one startup, not N) and fast. Testcontainers'
     // ryuk reaper stops it at JVM exit — we never call stop() ourselves.
-    static final PostgreSQLContainer<?> POSTGRES =
-        new PostgreSQLContainer<>("postgres:16-alpine")
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("easycrm")
-            .withUsername("owner")       // owner role: runs Flyway, owns tables
+            .withUsername("owner") // owner role: runs Flyway, owns tables
             .withPassword("owner");
 
     static {
@@ -74,7 +69,6 @@ public abstract class IntegrationTest {
      * <p>Caller closes it.
      */
     protected static Connection ownerConnection() throws SQLException {
-        return DriverManager.getConnection(
-            POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     }
 }

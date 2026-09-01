@@ -1,12 +1,11 @@
 package com.easycrm.platform.ratelimit;
 
 import jakarta.validation.Valid;
+import java.util.List;
+import java.util.Optional;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
-
-import java.util.List;
-import java.util.Optional;
 
 /**
  * Limits are configuration, not code: a deployment retunes them without a release.
@@ -21,8 +20,9 @@ import java.util.Optional;
  */
 @ConfigurationProperties("easycrm.rate-limit")
 @Validated
-public record RateLimitProperties(@DefaultValue("true") boolean enabled,
-                                  @DefaultValue @Valid List<RateLimitPolicy> policies) {
+public record RateLimitProperties(
+        @DefaultValue("true") boolean enabled,
+        @DefaultValue @Valid List<RateLimitPolicy> policies) {
 
     /** First match wins; an unmatched path is unlimited. */
     public Optional<RateLimitPolicy> policyFor(String requestPath) {

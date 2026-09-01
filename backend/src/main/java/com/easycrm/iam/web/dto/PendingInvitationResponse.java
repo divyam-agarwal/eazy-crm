@@ -10,5 +10,4 @@ import java.util.UUID;
  * <p>{@code expired} is DERIVED at read time and never stored — invitation expiry is lazy
  * (spec §7), unlike quotation expiry, which is materialised by a nightly job.
  */
-public record PendingInvitationResponse(UUID id, String email, String role,
-                                        Instant expiresAt, boolean expired) {}
+public record PendingInvitationResponse(UUID id, String email, String role, Instant expiresAt, boolean expired) {}

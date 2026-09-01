@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
  * when {@code type} is present.
  */
 public record FollowUpCompleteRequest(
-    @Size(max = 500) String note,
-    ActivityType type,
-    @Size(max = 2000) String body,
-    @Size(max = 200) String outcome) {}
+        @Size(max = 500) String note,
+        ActivityType type,
+        @Size(max = 2000) String body,
+        @Size(max = 200) String outcome) {}

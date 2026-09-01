@@ -1,13 +1,13 @@
 package com.easycrm.sales;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves the auto-expiry cron really is disabled for the test suite. Without this, every
@@ -21,17 +21,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 class QuotationExpiryJobSchedulingTest extends IntegrationTest {
 
-    @Autowired Environment environment;
+    @Autowired
+    Environment environment;
     // Nothing but @EnableScheduling registers this bean. Its absence would fail context
     // load for every test in the suite -- so if someone ever deletes SchedulingConfig, the
     // job would silently never run in production, and this @Autowired field is the only
     // thing standing between that regression and all 461 tests staying green.
-    @Autowired ScheduledAnnotationBeanPostProcessor scheduledPostProcessor;
-    @Autowired QuotationExpiryJob job;
+    @Autowired
+    ScheduledAnnotationBeanPostProcessor scheduledPostProcessor;
+
+    @Autowired
+    QuotationExpiryJob job;
 
     @Test
     void theCronIsDisabledForTheTestSuite() {
-        assertThat(environment.getProperty("easycrm.jobs.quotation-expiry.cron")).isEqualTo("-");
+        assertThat(environment.getProperty("easycrm.jobs.quotation-expiry.cron"))
+                .isEqualTo("-");
     }
 
     @Test

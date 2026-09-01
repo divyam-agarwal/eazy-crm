@@ -12,6 +12,7 @@ import com.easycrm.sales.web.dto.FollowUpResponse;
 import com.easycrm.sales.web.dto.FollowUpSummaryResponse;
 import com.easycrm.sales.web.dto.FollowUpUpdateRequest;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,24 +25,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/v1/follow-ups")
 public class FollowUpController {
 
     private final FollowUpService service;
 
-    public FollowUpController(FollowUpService service) { this.service = service; }
+    public FollowUpController(FollowUpService service) {
+        this.service = service;
+    }
 
     @PostMapping
-    public ResponseEntity<FollowUpResponse> create(
-            @Valid @RequestBody FollowUpCreateRequest req) {
+    public ResponseEntity<FollowUpResponse> create(@Valid @RequestBody FollowUpCreateRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
     }
 
     @GetMapping("/{id}")
-    public FollowUpResponse get(@PathVariable UUID id) { return service.get(id); }
+    public FollowUpResponse get(@PathVariable UUID id) {
+        return service.get(id);
+    }
 
     /** Unlike activities, this list needs no subject: a follow-up is filtered by owner. */
     @GetMapping
@@ -56,24 +58,23 @@ public class FollowUpController {
     }
 
     @GetMapping("/summary")
-    public FollowUpSummaryResponse summary() { return service.summary(); }
+    public FollowUpSummaryResponse summary() {
+        return service.summary();
+    }
 
     /** Full-header-replace; an omitted nullable field is cleared. Pending only. */
     @PatchMapping("/{id}")
-    public FollowUpResponse update(@PathVariable UUID id,
-                                   @Valid @RequestBody FollowUpUpdateRequest req) {
+    public FollowUpResponse update(@PathVariable UUID id, @Valid @RequestBody FollowUpUpdateRequest req) {
         return service.update(id, req);
     }
 
     @PostMapping("/{id}/complete")
-    public FollowUpResponse complete(@PathVariable UUID id,
-                                     @Valid @RequestBody FollowUpCompleteRequest req) {
+    public FollowUpResponse complete(@PathVariable UUID id, @Valid @RequestBody FollowUpCompleteRequest req) {
         return service.complete(id, req);
     }
 
     @PostMapping("/{id}/cancel")
-    public FollowUpResponse cancel(@PathVariable UUID id,
-                                   @Valid @RequestBody FollowUpCancelRequest req) {
+    public FollowUpResponse cancel(@PathVariable UUID id, @Valid @RequestBody FollowUpCancelRequest req) {
         return service.cancel(id, req.reason());
     }
 }

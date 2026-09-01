@@ -7,7 +7,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -60,8 +59,7 @@ public class Invitation extends BaseEntity {
 
     protected Invitation() {}
 
-    public Invitation(UUID tenantId, String email, Role role, String tokenHash,
-                      Instant expiresAt, UUID invitedBy) {
+    public Invitation(UUID tenantId, String email, Role role, String tokenHash, Instant expiresAt, UUID invitedBy) {
         this.tenantId = tenantId;
         this.email = email;
         this.role = role;
@@ -98,13 +96,39 @@ public class Invitation extends BaseEntity {
         }
     }
 
-    public UUID getTenantId() { return tenantId; }
-    public String getEmail() { return email; }
-    public Role getRole() { return role; }
-    public String getTokenHash() { return tokenHash; }
-    public InvitationStatus getStatus() { return status; }
-    public Instant getExpiresAt() { return expiresAt; }
-    public UUID getInvitedBy() { return invitedBy; }
-    public Instant getAcceptedAt() { return acceptedAt; }
-    public UUID getAcceptedUserId() { return acceptedUserId; }
+    public UUID getTenantId() {
+        return tenantId;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public String getTokenHash() {
+        return tokenHash;
+    }
+
+    public InvitationStatus getStatus() {
+        return status;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
+    public UUID getInvitedBy() {
+        return invitedBy;
+    }
+
+    public Instant getAcceptedAt() {
+        return acceptedAt;
+    }
+
+    public UUID getAcceptedUserId() {
+        return acceptedUserId;
+    }
 }

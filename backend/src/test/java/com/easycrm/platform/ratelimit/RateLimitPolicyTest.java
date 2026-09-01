@@ -1,11 +1,10 @@
 package com.easycrm.platform.ratelimit;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
 class RateLimitPolicyTest {
 
@@ -45,11 +44,14 @@ class RateLimitPolicyTest {
 
     @Test
     void firstMatchingPolicyWinsAndUnmatchedPathsAreUnlimited() {
-        RateLimitProperties props = new RateLimitProperties(true, List.of(
-            new RateLimitPolicy("public-share", "/public/q/*", 60, Duration.ofHours(1)),
-            new RateLimitPolicy("auth", "/api/v1/auth/**", 30, Duration.ofMinutes(1))));
+        RateLimitProperties props = new RateLimitProperties(
+                true,
+                List.of(
+                        new RateLimitPolicy("public-share", "/public/q/*", 60, Duration.ofHours(1)),
+                        new RateLimitPolicy("auth", "/api/v1/auth/**", 30, Duration.ofMinutes(1))));
 
-        assertEquals("public-share", props.policyFor("/public/q/tok").orElseThrow().name());
+        assertEquals(
+                "public-share", props.policyFor("/public/q/tok").orElseThrow().name());
         assertEquals("auth", props.policyFor("/api/v1/auth/login").orElseThrow().name());
         // Unmatched: health checks and the future frontend must never be throttled
         // by a limit nobody sized for them.

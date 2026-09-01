@@ -1,25 +1,34 @@
 package com.easycrm.platform.ratelimit;
 
-import io.github.bucket4j.TimeMeter;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
+import io.github.bucket4j.TimeMeter;
 import java.time.Duration;
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
 class InMemoryRateLimitStoreTest {
 
     /** A clock the test moves by hand, so refill is deterministic and instant. */
     static final class FakeClock implements TimeMeter {
         private long nanos = 0;
-        void advance(Duration d) { nanos += d.toNanos(); }
-        @Override public long currentTimeNanos() { return nanos; }
-        @Override public boolean isWallClockBased() { return false; }
+
+        void advance(Duration d) {
+            nanos += d.toNanos();
+        }
+
+        @Override
+        public long currentTimeNanos() {
+            return nanos;
+        }
+
+        @Override
+        public boolean isWallClockBased() {
+            return false;
+        }
     }
 
-    private static final RateLimitPolicy POLICY =
-        new RateLimitPolicy("test", "/**", 3, Duration.ofMinutes(1));
+    private static final RateLimitPolicy POLICY = new RateLimitPolicy("test", "/**", 3, Duration.ofMinutes(1));
 
     @Test
     void allowsUpToCapacityThenDenies() {
@@ -30,8 +39,7 @@ class InMemoryRateLimitStoreTest {
         }
         RateLimitStore.Decision denied = store.tryConsume("1.2.3.4", POLICY);
         assertFalse(denied.allowed());
-        assertTrue(denied.nanosToWaitForRefill() > 0,
-            "a denial must say how long to wait, or Retry-After is a guess");
+        assertTrue(denied.nanosToWaitForRefill() > 0, "a denial must say how long to wait, or Retry-After is a guess");
     }
 
     @Test
@@ -43,8 +51,9 @@ class InMemoryRateLimitStoreTest {
 
         clock.advance(Duration.ofMinutes(1));
 
-        assertTrue(store.tryConsume("1.2.3.4", POLICY).allowed(),
-            "the bucket must actually refill — otherwise this is a permanent ban, not a limit");
+        assertTrue(
+                store.tryConsume("1.2.3.4", POLICY).allowed(),
+                "the bucket must actually refill — otherwise this is a permanent ban, not a limit");
     }
 
     @Test
@@ -53,8 +62,9 @@ class InMemoryRateLimitStoreTest {
         for (int i = 0; i < 3; i++) store.tryConsume("1.2.3.4", POLICY);
         assertFalse(store.tryConsume("1.2.3.4", POLICY).allowed());
 
-        assertTrue(store.tryConsume("5.6.7.8", POLICY).allowed(),
-            "one noisy client must not exhaust everyone else's allowance");
+        assertTrue(
+                store.tryConsume("5.6.7.8", POLICY).allowed(),
+                "one noisy client must not exhaust everyone else's allowance");
     }
 
     @Test
@@ -63,9 +73,9 @@ class InMemoryRateLimitStoreTest {
         RateLimitPolicy other = new RateLimitPolicy("other", "/**", 3, Duration.ofMinutes(1));
         for (int i = 0; i < 3; i++) store.tryConsume("1.2.3.4", POLICY);
 
-        assertTrue(store.tryConsume("1.2.3.4", other).allowed(),
-            "buckets are keyed by policy AND client, so the auth limit cannot drain "
-                + "the public-share limit");
+        assertTrue(
+                store.tryConsume("1.2.3.4", other).allowed(),
+                "buckets are keyed by policy AND client, so the auth limit cannot drain " + "the public-share limit");
     }
 
     @Test
@@ -73,9 +83,10 @@ class InMemoryRateLimitStoreTest {
         InMemoryRateLimitStore store = new InMemoryRateLimitStore(new FakeClock());
         for (int i = 0; i < 60_000; i++) store.tryConsume("10.0." + (i / 250) + "." + (i % 250), POLICY);
 
-        assertTrue(store.bucketCount() <= InMemoryRateLimitStore.MAX_BUCKETS,
-            "the key is attacker-controlled: unbounded storage makes the rate limiter "
-                + "its own memory-exhaustion vector, got " + store.bucketCount());
+        assertTrue(
+                store.bucketCount() <= InMemoryRateLimitStore.MAX_BUCKETS,
+                "the key is attacker-controlled: unbounded storage makes the rate limiter "
+                        + "its own memory-exhaustion vector, got " + store.bucketCount());
     }
 
     /**
@@ -87,26 +98,32 @@ class InMemoryRateLimitStoreTest {
      */
     @Test
     void evictionWindowTracksTheLongestConfiguredRefillPeriod() {
-        RateLimitProperties sixHourPolicy = new RateLimitProperties(true, List.of(
-            new RateLimitPolicy("public-share", "/public/q/*", 60, Duration.ofHours(6)),
-            new RateLimitPolicy("auth", "/api/v1/auth/**", 30, Duration.ofMinutes(1))));
+        RateLimitProperties sixHourPolicy = new RateLimitProperties(
+                true,
+                List.of(
+                        new RateLimitPolicy("public-share", "/public/q/*", 60, Duration.ofHours(6)),
+                        new RateLimitPolicy("auth", "/api/v1/auth/**", 30, Duration.ofMinutes(1))));
 
         InMemoryRateLimitStore store = new InMemoryRateLimitStore(sixHourPolicy, new FakeClock());
 
-        assertEquals(Duration.ofHours(12), store.evictionWindow(),
-            "twice the longest configured refill period (6h), not a hardcoded 2h — "
-                + "otherwise a 6h-tuned policy is silently enforced as a 2h policy");
+        assertEquals(
+                Duration.ofHours(12),
+                store.evictionWindow(),
+                "twice the longest configured refill period (6h), not a hardcoded 2h — "
+                        + "otherwise a 6h-tuned policy is silently enforced as a 2h policy");
     }
 
     @Test
     void evictionWindowIsFlooredForATinyConfiguredRefillPeriod() {
-        RateLimitProperties tinyPolicy = new RateLimitProperties(true, List.of(
-            new RateLimitPolicy("test", "/public/q/*", 3, Duration.ofSeconds(1))));
+        RateLimitProperties tinyPolicy = new RateLimitProperties(
+                true, List.of(new RateLimitPolicy("test", "/public/q/*", 3, Duration.ofSeconds(1))));
 
         InMemoryRateLimitStore store = new InMemoryRateLimitStore(tinyPolicy, new FakeClock());
 
-        assertEquals(InMemoryRateLimitStore.MIN_EVICTION_WINDOW, store.evictionWindow(),
-            "twice a 1-second refill period is absurdly short; the floor must apply");
+        assertEquals(
+                InMemoryRateLimitStore.MIN_EVICTION_WINDOW,
+                store.evictionWindow(),
+                "twice a 1-second refill period is absurdly short; the floor must apply");
     }
 
     @Test

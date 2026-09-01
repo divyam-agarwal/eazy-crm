@@ -1,9 +1,8 @@
 package com.easycrm.sales;
 
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-
-import java.util.UUID;
 
 /**
  * Unlike ActivityRepository, this one extends JpaRepository normally: a follow-up has its
@@ -15,6 +14,4 @@ import java.util.UUID;
  * ALLOWED_METHODS set, which is a visibility decision requiring the same review as adding
  * a table to TenantScopingArchTest.GLOBAL_TABLES.
  */
-public interface FollowUpRepository
-        extends JpaRepository<FollowUp, UUID>, JpaSpecificationExecutor<FollowUp> {
-}
+public interface FollowUpRepository extends JpaRepository<FollowUp, UUID>, JpaSpecificationExecutor<FollowUp> {}

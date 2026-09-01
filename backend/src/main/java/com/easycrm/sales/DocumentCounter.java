@@ -7,9 +7,12 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 @Entity
-@Table(name = "document_counter",
-       uniqueConstraints = @UniqueConstraint(name = "uq_doc_counter_tenant_type_fy",
-                                             columnNames = {"tenant_id", "doc_type", "fy"}))
+@Table(
+        name = "document_counter",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_doc_counter_tenant_type_fy",
+                        columnNames = {"tenant_id", "doc_type", "fy"}))
 public class DocumentCounter extends TenantScopedEntity {
 
     @Column(name = "doc_type", nullable = false, length = 16)
@@ -29,8 +32,19 @@ public class DocumentCounter extends TenantScopedEntity {
         this.nextVal = 1;
     }
 
-    public long getNextVal() { return nextVal; }
-    public void increment() { this.nextVal++; }
-    public String getDocType() { return docType; }
-    public String getFy() { return fy; }
+    public long getNextVal() {
+        return nextVal;
+    }
+
+    public void increment() {
+        this.nextVal++;
+    }
+
+    public String getDocType() {
+        return docType;
+    }
+
+    public String getFy() {
+        return fy;
+    }
 }

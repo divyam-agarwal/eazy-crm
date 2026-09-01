@@ -1,5 +1,10 @@
 package com.easycrm.iam.web;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
@@ -12,32 +17,36 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 class InvitationAcceptTest extends IntegrationTest {
 
-    @Autowired MockMvc mvc;
-    @Autowired TestTokens tokens;
-    @Autowired com.easycrm.platform.ratelimit.RateLimitProperties rateLimits;
+    @Autowired
+    MockMvc mvc;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    TestTokens tokens;
+
+    @Autowired
+    com.easycrm.platform.ratelimit.RateLimitProperties rateLimits;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private static final String ACCEPT = "{\"password\":\"correct-horse\"}";
 
     /** Invite, and return the raw token pulled out of acceptUrl's last path segment. */
-    private String inviteAndExtractToken(String bearer, String email, String role)
-            throws Exception {
+    private String inviteAndExtractToken(String bearer, String email, String role) throws Exception {
         String body = mvc.perform(post("/api/v1/invitations")
-                .header("Authorization", "Bearer " + bearer)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"" + email + "\",\"role\":\"" + role + "\"}"))
-            .andExpect(status().isCreated())
-            .andReturn().getResponse().getContentAsString();
+                        .header("Authorization", "Bearer " + bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"role\":\"" + role + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
         String acceptUrl = JsonPath.read(body, "$.acceptUrl");
         return acceptUrl.substring(acceptUrl.lastIndexOf('/') + 1);
     }
@@ -48,14 +57,15 @@ class InvitationAcceptTest extends IntegrationTest {
         String token = inviteAndExtractToken(owner.token(), "new@shop.in", "SALES_EXEC");
 
         mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.accessToken").exists())
-            .andExpect(jsonPath("$.refreshToken").exists())
-            .andExpect(jsonPath("$.userId").exists())
-            // The user lands in the INVITING tenant, with the INVITED role.
-            .andExpect(jsonPath("$.tenantId").value(owner.tenantId().toString()))
-            .andExpect(jsonPath("$.role").value("SALES_EXEC"));
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.accessToken").exists())
+                .andExpect(jsonPath("$.refreshToken").exists())
+                .andExpect(jsonPath("$.userId").exists())
+                // The user lands in the INVITING tenant, with the INVITED role.
+                .andExpect(jsonPath("$.tenantId").value(owner.tenantId().toString()))
+                .andExpect(jsonPath("$.role").value("SALES_EXEC"));
     }
 
     /**
@@ -69,15 +79,18 @@ class InvitationAcceptTest extends IntegrationTest {
         String token = inviteAndExtractToken(owner.token(), "works@shop.in", "SALES_EXEC");
 
         String body = mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated())
-            .andReturn().getResponse().getContentAsString();
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
         String access = JsonPath.read(body, "$.accessToken");
 
         mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + access))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.email").value("works@shop.in"))
-            .andExpect(jsonPath("$.role").value("SALES_EXEC"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("works@shop.in"))
+                .andExpect(jsonPath("$.role").value("SALES_EXEC"));
     }
 
     @Test
@@ -86,11 +99,13 @@ class InvitationAcceptTest extends IntegrationTest {
         String token = inviteAndExtractToken(owner.token(), "once@shop.in", "SALES_EXEC");
 
         mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated());
         mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -99,20 +114,23 @@ class InvitationAcceptTest extends IntegrationTest {
         String token = inviteAndExtractToken(owner.token(), "gone@shop.in", "SALES_EXEC");
 
         mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated());
 
-        mvc.perform(get("/api/v1/invitations")
-                .header("Authorization", "Bearer " + owner.token()))
-            .andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/v1/invitations").header("Authorization", "Bearer " + owner.token()))
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     /** The 404 body an accept produces for the given token. */
     private String rejectedAcceptBody(String token) throws Exception {
         return mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound())
-            .andReturn().getResponse().getContentAsString();
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isNotFound())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
     }
 
     /**
@@ -125,21 +143,24 @@ class InvitationAcceptTest extends IntegrationTest {
     void aRevokedInvitationCannotBeAccepted() throws Exception {
         var owner = tokens.provisionOwner("27");
         String body = mvc.perform(post("/api/v1/invitations")
-                .header("Authorization", "Bearer " + owner.token())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"rev@shop.in\",\"role\":\"SALES_EXEC\"}"))
-            .andExpect(status().isCreated())
-            .andReturn().getResponse().getContentAsString();
+                        .header("Authorization", "Bearer " + owner.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"rev@shop.in\",\"role\":\"SALES_EXEC\"}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
         String acceptUrl = JsonPath.read(body, "$.acceptUrl");
         String token = acceptUrl.substring(acceptUrl.lastIndexOf('/') + 1);
         String id = JsonPath.read(body, "$.id");
 
-        mvc.perform(delete("/api/v1/invitations/" + id)
-                .header("Authorization", "Bearer " + owner.token()))
-            .andExpect(status().isNoContent());
+        mvc.perform(delete("/api/v1/invitations/" + id).header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isNoContent());
 
-        assertEquals(rejectedAcceptBody("never-existed"), rejectedAcceptBody(token),
-            "a revoked token must be indistinguishable from one that never existed");
+        assertEquals(
+                rejectedAcceptBody("never-existed"),
+                rejectedAcceptBody(token),
+                "a revoked token must be indistinguishable from one that never existed");
     }
 
     /**
@@ -159,15 +180,18 @@ class InvitationAcceptTest extends IntegrationTest {
 
         tokens.suspend(owner.tenantId());
 
-        assertEquals(rejectedAcceptBody("never-existed"), rejectedAcceptBody(token),
-            "a suspended tenant's invitation must look exactly like an unknown token");
+        assertEquals(
+                rejectedAcceptBody("never-existed"),
+                rejectedAcceptBody(token),
+                "a suspended tenant's invitation must look exactly like an unknown token");
     }
 
     @Test
     void anUnknownTokenIs404() throws Exception {
         mvc.perform(post("/api/v1/auth/invitations/not-a-real-token/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isNotFound());
     }
 
     // Enumeration safety: an unknown token and a consumed one must be indistinguishable —
@@ -177,21 +201,27 @@ class InvitationAcceptTest extends IntegrationTest {
         var owner = tokens.provisionOwner("27");
         String token = inviteAndExtractToken(owner.token(), "enum@shop.in", "SALES_EXEC");
         mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated());
 
         String consumed = mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound())
-            .andReturn().getResponse().getContentAsString();
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isNotFound())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
 
         String unknown = mvc.perform(post("/api/v1/auth/invitations/nonexistent-token/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound())
-            .andReturn().getResponse().getContentAsString();
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isNotFound())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
 
-        assertEquals(unknown, consumed,
-            "a consumed token must be indistinguishable from one that never existed");
+        assertEquals(unknown, consumed, "a consumed token must be indistinguishable from one that never existed");
     }
 
     @Test
@@ -199,9 +229,9 @@ class InvitationAcceptTest extends IntegrationTest {
         var owner = tokens.provisionOwner("27");
         String token = inviteAndExtractToken(owner.token(), "short@shop.in", "SALES_EXEC");
         mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"password\":\"short\"}"))
-            .andExpect(status().isBadRequest());
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"short\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     /**
@@ -213,8 +243,8 @@ class InvitationAcceptTest extends IntegrationTest {
     @Test
     void theAcceptRouteResolvesToTheAuthRateLimitPolicy() {
         var policy = rateLimits.policyFor("/api/v1/auth/invitations/some-token/accept");
-        assertTrue(policy.isPresent(),
-            "the accept route must match a rate-limit policy — an unmatched path is unlimited");
+        assertTrue(
+                policy.isPresent(), "the accept route must match a rate-limit policy — an unmatched path is unlimited");
         assertEquals("auth", policy.get().name());
     }
 
@@ -223,9 +253,10 @@ class InvitationAcceptTest extends IntegrationTest {
         var owner = tokens.provisionOwner("27");
         String token = inviteAndExtractToken(owner.token(), "co@shop.in", "OWNER");
         mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.role").value("OWNER"));
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("OWNER"));
     }
 
     // The accepted user must be a real member of the tenant, not a phantom: they can
@@ -235,12 +266,15 @@ class InvitationAcceptTest extends IntegrationTest {
         var owner = tokens.provisionOwner("27");
         String token = inviteAndExtractToken(owner.token(), "reads@shop.in", "SALES_EXEC");
         String body = mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isCreated())
-            .andReturn().getResponse().getContentAsString();
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ACCEPT))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
         String access = JsonPath.read(body, "$.accessToken");
 
         mvc.perform(get("/api/v1/customers").header("Authorization", "Bearer " + access))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 }

@@ -1,3 +1,7 @@
 package com.easycrm.tenant;
 
-public enum TenantStatus { TRIAL, ACTIVE, SUSPENDED }
+public enum TenantStatus {
+    TRIAL,
+    ACTIVE,
+    SUSPENDED
+}

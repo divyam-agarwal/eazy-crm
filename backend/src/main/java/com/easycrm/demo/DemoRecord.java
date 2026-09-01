@@ -14,7 +14,11 @@ public class DemoRecord extends TenantScopedEntity {
 
     protected DemoRecord() {}
 
-    public DemoRecord(String label) { this.label = label; }
+    public DemoRecord(String label) {
+        this.label = label;
+    }
 
-    public String getLabel() { return label; }
+    public String getLabel() {
+        return label;
+    }
 }

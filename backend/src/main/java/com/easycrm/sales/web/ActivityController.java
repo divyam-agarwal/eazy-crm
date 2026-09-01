@@ -7,6 +7,7 @@ import com.easycrm.sales.web.dto.ActivityCreateRequest;
 import com.easycrm.sales.web.dto.ActivityResponse;
 import com.easycrm.sales.web.dto.ActivityUpdateRequest;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,15 +20,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/v1/activities")
 public class ActivityController {
 
     private final ActivityService service;
 
-    public ActivityController(ActivityService service) { this.service = service; }
+    public ActivityController(ActivityService service) {
+        this.service = service;
+    }
 
     @PostMapping
     public ResponseEntity<ActivityResponse> create(@Valid @RequestBody ActivityCreateRequest req) {
@@ -41,9 +42,8 @@ public class ActivityController {
      * any code runs. See spec 2026-08-30-activity-follow-up-design.md §4.2, §9.
      */
     @GetMapping
-    public PageResponse<ActivityResponse> list(@RequestParam SubjectType subjectType,
-                                               @RequestParam UUID subjectId,
-                                               Pageable pageable) {
+    public PageResponse<ActivityResponse> list(
+            @RequestParam SubjectType subjectType, @RequestParam UUID subjectId, Pageable pageable) {
         return service.list(subjectType, subjectId, pageable);
     }
 
@@ -53,8 +53,7 @@ public class ActivityController {
      * cleared. Own MANUAL rows only.
      */
     @PatchMapping("/{id}")
-    public ActivityResponse update(@PathVariable UUID id,
-                                   @Valid @RequestBody ActivityUpdateRequest req) {
+    public ActivityResponse update(@PathVariable UUID id, @Valid @RequestBody ActivityUpdateRequest req) {
         return service.update(id, req);
     }
 }

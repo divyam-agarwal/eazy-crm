@@ -1,16 +1,15 @@
 package com.easycrm.platform.pdf;
 
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
-import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDDocumentInformation;
-import org.springframework.stereotype.Component;
-
 import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.springframework.stereotype.Component;
 
 /**
  * Renders well-formed XHTML to PDF bytes. Knows nothing about any domain object.
