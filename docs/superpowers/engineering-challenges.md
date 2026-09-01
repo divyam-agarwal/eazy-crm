@@ -3235,3 +3235,58 @@ day-boundary bug is timezone-dependent, write (or at least reason through) the t
 at the actual rollover instant, not merely at a convenient time during your own working
 day — a test that only runs correctly during a specific window of the clock is not
 exercising the property it claims to.
+
+---
+
+## Challenge 54 — Revoking an invitation needs the one hand-written tenant filter in the codebase
+
+**Phase:** Implementation (user-invitations slice, pending list and revoke)
+
+### The problem
+
+`CLAUDE.md` states a hard rule: never hand-write `WHERE tenant_id = ?`; tenant isolation
+is structural, via Hibernate `@TenantId` plus Postgres RLS. `InvitationService.revoke(UUID
+id)` does exactly the thing the rule forbids:
+
+```java
+Invitation inv = invitations.findById(id)
+    .filter(i -> i.getTenantId().equals(TenantContext.tenantId()))
+    .orElseThrow(() -> new NotFoundException("invitation not found"));
+```
+
+`invitation` is a deliberately GLOBAL table (like `refresh_token` and `share_link`):
+accepting an invite is pre-auth and has to resolve *which* tenant the opaque token
+belongs to before any tenant context exists, so neither `@TenantId` nor an RLS policy can
+apply to it — there is no tenant to filter by until the row has already been read. That
+means the structural mechanism the rest of the codebase relies on is simply absent here,
+and the tenant check has to be written by hand or not exist at all. Without it, any
+authenticated owner could revoke any tenant's invitation just by guessing or enumerating
+UUIDs, since `findById` alone has no tenant awareness whatsoever.
+
+### The solution
+
+Treat the global table as the deliberate, narrow exception the structural rule already
+anticipates, and defend it in the two ways a `@TenantId` column would otherwise give for
+free:
+
+1. Filter in code, immediately after `findById`, before the id is trusted for anything —
+   `.filter(i -> i.getTenantId().equals(TenantContext.tenantId()))`. This is the only
+   hand-written tenant comparison in the codebase, and it is load-bearing precisely
+   because it is the *only* mechanism, not a redundant belt-and-braces check.
+2. Collapse "wrong tenant" and "does not exist" into the same response: both fall through
+   to `NotFoundException` (404), never `ForbiddenException` (403). A 403 would leak that
+   the id is valid *somewhere*, just not in the caller's tenant — turning `DELETE
+   /invitations/{id}` into an oracle for enumerating other tenants' invitation ids.
+
+### Lesson
+
+A blanket rule like "never hand-write a tenant filter" is shorthand for "tenant isolation
+should be structural wherever a structural mechanism can apply" — it is not a claim that
+every table has such a mechanism available. A table that must be readable before a tenant
+is known (pre-auth acceptance, password reset, anything resolved from an opaque token)
+sits outside `@TenantId`/RLS by construction, and the right response is to name the
+exception explicitly and give it the same rigor a missed structural check would have had,
+not to bend the table into looking tenant-scoped or to skip the check because "the rule
+says not to." And once a check exists only to keep one tenant's data invisible to
+another, its failure mode must not distinguish "belongs to someone else" from "does not
+exist" — any status code that does is itself a small cross-tenant information leak.
