@@ -2,12 +2,12 @@ package com.easycrm.platform.error;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The error envelope is the first thing any client has to handle, and the typed-record
@@ -21,6 +21,10 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 class ApiErrorWireFormatTest {
 
     private final ApiExceptionHandler handler = new ApiExceptionHandler();
+
+    // tools.jackson.databind, not com.fasterxml.jackson.databind: Spring Boot 4.1 writes actual
+    // HTTP responses with Jackson 3, and com.fasterxml.jackson.databind is only a transitive
+    // dependency here -- a test built against it would pin a mapper the app never uses at runtime.
     private final ObjectMapper mapper = new ObjectMapper();
 
     private String json(ResponseEntity<?> resp) throws Exception {

@@ -3811,28 +3811,46 @@ findings that predate a change, not a place to launder new ones.
 
 ### The solution
 
-A compact constructor on `ApiError` that replaces the incoming map with `Map.copyOf(fields)` (null
-passed through unchanged, so the existing "no fields" case still omits the key rather than
-serializing `null`): the record no longer stores the caller's map, and the auto-generated accessor
-returns something the caller can't mutate afterward — both findings cleared on the next
-`spotbugsMain` run.
+A compact constructor on `ApiError` that replaces the incoming map with a defensive copy — both
+findings cleared on the next `spotbugsMain` run, since the record no longer stores the caller's
+map and the auto-generated accessor returns something the caller can't mutate afterward. The first
+version of this fix used `Map.copyOf(fields)` and shipped believing "the wire format does not
+change." A follow-up review caught that this was wrong on a stricter, byte-for-byte reading:
+`Map.copyOf` returns `ImmutableCollections.MapN`, whose iteration order is salt-randomized *per JVM
+boot*. Measured directly — a 4-key map serialized in four different key orders across five JVM
+runs, where the `HashMap` the old handler built gave the same order every time. Nothing in the test
+suite caught this (all 23 `$.error.*` assertions across the suite are `jsonPath`, i.e.
+order-insensitive, and this task's own characterization test's only multi-key map has exactly one
+key), but it meant the emitted bytes for any multi-field error — reachable; `ProductService.validate`
+emits up to three — genuinely differed run to run, contradicting the task's actual acceptance bar
+("the JSON on the wire must not change") rather than a weaker "produces an equivalent document"
+reading of it.
 
-The one thing worth having checked before trusting this: `Map.copyOf` rejects a `null` *value*
-inside the map, not just a `null` map. One of the two call sites that populate `fields` — the
-`MethodArgumentNotValidException` handler — builds it from `FieldError.getDefaultMessage()` per
-bean-validation constraint. If any annotation on this codebase's DTOs were ever declared without a
-message and resolved to `null`, this defensive copy would turn a 400 response into an unhandled
-500 — a wire-format regression the characterization test wouldn't catch, because it never exercises
-that handler with a null message. It doesn't happen here (every constraint in use has an
-interpolated default message), and the full suite's `MethodArgumentNotValidException` scenarios all
-passed after the change, but the risk is real for any future constraint added without one.
+The fix landed on `Collections.unmodifiableMap(new LinkedHashMap<>(fields))` instead. The
+`LinkedHashMap` copy preserves the caller's `HashMap`'s iteration order *at copy time*, so the
+emitted bytes go back to matching the pre-conversion output exactly, not just semantically; the
+`unmodifiableMap` wrapper is what SpotBugs needs to clear `EI_EXPOSE_REP` (copying alone, without
+also denying further mutation, isn't enough — a `LinkedHashMap` returned bare is still a mutable
+map from SpotBugs' point of view). Both were verified to still satisfy SpotBugs together, not
+assumed. This form is also null-tolerant the same way `Map.copyOf` was not: `Map.copyOf` rejects a
+`null` *value* inside the map (not just a `null` map), and one of the two call sites populating
+`fields` — the `MethodArgumentNotValidException` handler — builds it from
+`FieldError.getDefaultMessage()` per bean-validation constraint, which is `null` only if some
+constraint were ever declared without a message. `LinkedHashMap`'s copy constructor has no such
+restriction, so that latent 500-on-400-path risk is closed as a side effect rather than merely
+documented as unlikely.
 
 ### Lesson
 
-A record component typed as `Map`/`List`/`Set` fails `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` on the very
-first build that introduces it — this is not something to discover by running `clean check` and
-being surprised; assume a mutable-collection record component needs a defensive copy (`Map.copyOf`
-/ `List.copyOf` in a compact constructor, or `Collections.unmodifiable*` where nulls must survive)
-from the start. And a SpotBugs baseline file that says "fix new findings in code" means exactly
-that: it's a ratchet against the pre-existing backlog, not a general-purpose escape hatch for
-anything a change introduces.
+Two separate lessons, from two passes at the same three lines of code. First, the one from the
+initial pass still holds: a record component typed as `Map`/`List`/`Set` fails
+`EI_EXPOSE_REP`/`EI_EXPOSE_REP2` on the very first build that introduces it, and a SpotBugs
+baseline file that says "fix new findings in code" is a ratchet against the pre-existing backlog,
+not a general-purpose escape hatch for anything a change introduces. Second, the one the review
+added: "doesn't change the wire format" is a byte-for-byte claim, and defensive-copy idioms are not
+interchangeable just because they're all "immutable collection from a mutable one" — `Map.copyOf`
+buys immutability at the cost of *iteration order becoming an implementation detail again*, the
+exact property the wrapped-`LinkedHashMap` form was chosen to preserve. When a task's acceptance
+bar is stated as "identical," verify the specific idiom against that literal bar (here: run it and
+diff the bytes, or reason about the concrete JDK class returned) rather than reaching for whichever
+immutable-copy one-liner is shortest and trusting it's equivalent by category.

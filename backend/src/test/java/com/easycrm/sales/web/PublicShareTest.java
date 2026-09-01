@@ -141,7 +141,12 @@ class PublicShareTest extends IntegrationTest {
         // to a holder whether their token is genuine.
         mvc.perform(get("/public/q/" + UUID.randomUUID()))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.message").value("not found"));
+                .andExpect(jsonPath("$.error.message").value("not found"))
+                // A NotFoundException carries no field detail, and ApiError#fields must be
+                // omitted entirely rather than serialized as "fields":null - the one thing
+                // the typed error envelope (ApiErrorWireFormatTest) exists to protect,
+                // asserted here against the real Boot/Jackson-3 wire, not a hand-built mapper.
+                .andExpect(jsonPath("$.error.fields").doesNotExist());
         mvc.perform(get("/public/q/not-a-real-token"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.message").value("not found"));
