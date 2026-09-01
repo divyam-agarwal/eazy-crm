@@ -6,8 +6,8 @@
 **Baseline:** `main` at `4ed641c` (519 tests, 0 failures, 0 errors)
 **Wave:** 1 of 3 (build hygiene → observability → OpenAPI), plus a short Wave 1.5 split out of
 this one in §3. Every later wave gets its own spec.
-**Prerequisite not yet met:** the `eazy-crm` GitHub remote does not exist yet — creating a public
-repo needs the user's own approval and was blocked when attempted. §8 assumes it exists.
+**Prerequisite met:** `origin` is `git@github.com:divyam-agarwal/eazy-crm.git` (public), with `main`
+tracking `origin/main`, as of `c17e097`. §8's workflow has somewhere to run.
 
 ---
 
