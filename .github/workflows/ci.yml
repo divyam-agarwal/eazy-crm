@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, build-hygiene] # TEMP: build-hygiene added only to test this workflow pre-merge; remove before finishing Task 6
+    branches: [main]
   pull_request:
 
 # A newer push to the same ref supersedes an in-flight run.
@@ -37,7 +37,7 @@ jobs:
         run: ./gradlew clean check --no-daemon --console=plain
 
       - name: Upload reports
-        if: always() # TEMP: always upload for this verification run; revert to failure() before finishing Task 6
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: reports
