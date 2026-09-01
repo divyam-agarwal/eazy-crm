@@ -5,10 +5,19 @@
 // ":platform" project that allprojects{} would wrongly configure, while subprojects{}
 // would miss the root project where all 198 main sources live.
 //
-// KNOWN GRADLE LIMITATION: type-safe `libs.` accessors are NOT available inside a
-// precompiled script plugin. Versions needed at *configuration* time here (find-sec-bugs)
-// are literals with a comment, not catalog references. Do not spend time trying to make
-// `libs` work in this file — it does not, by design.
+// KNOWN GRADLE LIMITATION: type-safe `libs.versions.x.get()` accessors are NOT available
+// inside a precompiled script plugin — those are generated for the *including* build via
+// the `versionCatalogs {}` block in its own settings.gradle.kts, and this file is compiled
+// as part of a separate buildSrc build that predates that generation step. The untyped
+// lookup below (`VersionCatalogsExtension`, obtained via `extensions.getByType`) is NOT
+// subject to that limitation — buildSrc's own settings.gradle.kts registers a catalog
+// named "libs" pointing at the same gradle/libs.versions.toml (see buildSrc/settings.gradle.kts),
+// and that catalog is visible to this plugin at configuration time through the untyped API.
+// This is the documented workaround: no type safety on the key name, but a single
+// TOML-sourced value with no hand-kept duplicate.
+val libsCatalog = extensions.getByType(org.gradle.api.artifacts.VersionCatalogsExtension::class.java).named("libs")
+val palantirJavaFormatVersion = libsCatalog.findVersion("palantirJavaFormat").get().requiredVersion
+val findSecBugsVersion = libsCatalog.findVersion("findsecbugs").get().requiredVersion
 
 plugins {
     java
@@ -25,11 +34,11 @@ spotless {
         // 4-space, 120-col -- the closest match to the style already in the tree, chosen
         // to keep the one-time reformat diff as small as a whole-tree reformat can be.
         //
-        // Pinned to the same value as libs.versions.palantirJavaFormat in the TOML
-        // (2.97.0). Type-safe `libs.` accessors don't work inside a precompiled script
-        // plugin (see the known-limitation comment at the top of this file), so this is a
-        // literal that must be kept in sync with the catalog by hand.
-        palantirJavaFormat("2.97.0")
+        // Sourced from gradle/libs.versions.toml (`palantirJavaFormat`) via the untyped
+        // VersionCatalogsExtension lookup at the top of this file -- see the comment there
+        // for why the type-safe `libs.versions.x.get()` form doesn't work here. The catalog
+        // is the single source of truth; nothing to keep in sync by hand.
+        palantirJavaFormat(palantirJavaFormatVersion)
         removeUnusedImports()
         trimTrailingWhitespace()
         endWithNewline()
@@ -69,10 +78,11 @@ dependencies {
     // mint/parse, a bcrypt password path, a permitAll route that renders a PDF, and a
     // rate limiter keyed on an attacker-controlled value.
     //
-    // Literal version, not libs.findsecbugs: type-safe catalog accessors do not exist
-    // inside a precompiled script plugin. Keep it equal to `findsecbugs` in
-    // gradle/libs.versions.toml.
-    "spotbugsPlugins"("com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0")
+    // Sourced from gradle/libs.versions.toml (`findsecbugs`) via the untyped
+    // VersionCatalogsExtension lookup at the top of this file, for the same reason
+    // palantirJavaFormatVersion is above: the type-safe `libs.versions.x.get()` accessors
+    // don't exist inside a precompiled script plugin, but the untyped catalog lookup does.
+    "spotbugsPlugins"("com.h3xstream.findsecbugs:findsecbugs-plugin:$findSecBugsVersion")
 }
 
 // Test sources are excluded as noise: assertion-heavy test code trips a large number of

@@ -27,9 +27,15 @@ spotbugs = "6.5.11"
 # output bytes, so bumping it reformats the tree. Treat a bump as its own commit.
 # Verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release: 2.97.0).
 # Documented floor was 2.50.0.
+# This is the single source of truth: easycrm.quality-conventions.gradle.kts reads it back
+# via the untyped VersionCatalogsExtension lookup (type-safe `libs.` accessors are not
+# available inside a precompiled script plugin, but that untyped lookup is) -- see the
+# comment at the top of that file. Bump only here.
 palantirJavaFormat = "2.97.0"
 # Verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release: 1.14.0).
 # Documented floor was 1.13.0.
+# Single source of truth for the same reason as palantirJavaFormat above -- read back by
+# easycrm.quality-conventions.gradle.kts via the untyped catalog lookup. Bump only here.
 findsecbugs = "1.14.0"
 
 [libraries]

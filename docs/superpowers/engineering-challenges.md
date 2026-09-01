@@ -3731,7 +3731,7 @@ only the second is safe to assume survives after a mechanical, semantics-preserv
 
 ---
 
-## Challenge 61 — A precompiled Gradle script plugin cannot see the version catalog
+## Challenge 61 — A precompiled Gradle script plugin cannot see typed version catalog accessors (but can see the catalog itself)
 
 **Phase:** Implementation
 
@@ -3748,31 +3748,40 @@ configuration time: the `palantirJavaFormat(...)` formatter version and the find
 coordinate. The obvious move is `libs.versions.palantirJavaFormat.get()`, the same type-safe
 accessor every other build file in the project already uses.
 
-It does not resolve. Gradle's type-safe catalog accessors (`libs.*`) are generated for the
-*including* build via the `versionCatalogs {}` mechanism its own `settings.gradle.kts` enables —
-but `buildSrc` is itself a separate, independently-built Gradle project with its own
-`settings.gradle.kts`, built *before* the parent build even starts evaluating, and that separate
-build has no visibility into the parent's catalog block. The accessor genuinely does not exist at
-that point in the build's lifecycle; it is not a typo or a missing import, and no amount of
-searching for the right accessor name would have found one.
+It does not resolve. Gradle's *type-safe* catalog accessors (`libs.versions.x.get()`,
+`libs.someLib`) are generated source, produced by a `generateExternalPluginSpecBuilders`-style
+task keyed to the specific build script that declares the catalog. A precompiled script plugin is
+compiled as part of `buildSrc` itself — a separate, independently-built Gradle project — and no
+generation step ever produces `libs` accessors scoped to a *plugin* file, even when that plugin's
+own build (`buildSrc/settings.gradle.kts`) declares a catalog named `libs`. The accessor genuinely
+does not exist at that point in the build's lifecycle; it is not a typo or a missing import.
 
 ### The solution
 
-The two versions are literals inside `easycrm.quality-conventions.gradle.kts`, each with a comment
-naming the exact catalog key it must be kept equal to (`palantirJavaFormat` and `findsecbugs` in
-`gradle/libs.versions.toml`); the catalog's own version comments say the reverse. Nothing
-*enforces* the two staying equal — a version bump in the TOML now requires a human to remember the
-buildSrc file exists and update it too. That obligation is written down at both sites rather than
-solved, because there is no clean Gradle mechanism at this scope to remove it — a composite-build
-trick to share the catalog, or a small helper that reads the TOML by hand, were both considered
-and rejected as more moving parts than two comments earn for two version numbers.
+Initially assumed unfixable and worked around with two hand-kept literal versions, one in the TOML
+and one in the plugin file, each commented to say "keep this equal to the other." **That
+conclusion was wrong** — a subsequent review pushed back on it and proved the fix by appending a
+probe line to the plugin file and running `./gradlew help`:
+
+```kotlin
+extensions.getByType(org.gradle.api.artifacts.VersionCatalogsExtension::class.java).named("libs")
+```
+
+This resolved `palantirJavaFormat=2.97.0` and `findsecbugs=1.14.0` correctly in both Gradle
+projects. The type-safe *accessor* (`libs.versions.x.get()`) is unavailable inside a precompiled
+script plugin for the structural reason above, but the *catalog itself* is an ordinary extension
+object registered on the project by `buildSrc/settings.gradle.kts`'s `versionCatalogs {}` block,
+and any plugin — precompiled or not — can look it up untyped via `VersionCatalogsExtension` and
+call `.findVersion("key")`. `easycrm.quality-conventions.gradle.kts` now does exactly that once at
+the top of the file, and both `palantirJavaFormat(...)` and the find-sec-bugs plugin coordinate
+read from the result. `gradle/libs.versions.toml` is the single source of truth again; no comment
+pair to keep in sync by hand.
 
 ### Lesson
 
-A version catalog does not have uniform reach across a multi-build Gradle project — `buildSrc`
-(and any `includeBuild` composite) is its own build with its own catalog visibility, so a value a
-precompiled script plugin needs at configuration time is a second source of truth *by
-construction*, not by oversight. The fix is not eliminating the duplication — there is no clean
-way to, at this scope — but making it loud: a comment at each site naming the other, so a version
-bump that updates only one location is a five-second grep away from being caught, rather than a
-silent drift discovered only when the two plugins disagree about what "the pinned version" is.
+"Type-safe accessors don't work here" and "the version catalog isn't visible here" are not the
+same claim — the first is a real, structural limitation of precompiled script plugins; the second
+does not follow from it and should have been checked, not assumed, before writing "no clean way to
+eliminate it" into a comment. `VersionCatalogsExtension` is the general escape hatch any Gradle
+plugin can use to read a registered catalog without generated accessors; reach for it before
+concluding a catalog is unreachable from a given file.
