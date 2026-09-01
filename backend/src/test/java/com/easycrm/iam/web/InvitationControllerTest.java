@@ -1,5 +1,7 @@
 package com.easycrm.iam.web;
 
+import com.easycrm.iam.AuthService;
+import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
@@ -22,6 +24,7 @@ class InvitationControllerTest extends IntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired TestTokens tokens;
+    @Autowired AuthService auth;
 
     @AfterEach void clear() { TenantContext.clear(); }
 
@@ -105,6 +108,39 @@ class InvitationControllerTest extends IntegrationTest {
                 .header("Authorization", "Bearer " + owner.token())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(invite("CASE@shop.in", "SALES_EXEC")))
+            .andExpect(status().isConflict());
+    }
+
+    /**
+     * An address that is already a member cannot be re-invited under a different
+     * capitalisation. The member check folds case (findByEmailIgnoreCase) precisely
+     * because the invitation side already did: an exact-match check here would have let
+     * "Ravi@shop.in" be invited over an existing "ravi@shop.in", and the accept would then
+     * have created a SECOND ACTIVE user — possibly with a different role — for one human,
+     * because uq_user_tenant_email compares the raw column. V32's lower(email) index is
+     * the structural half; this is the readable-error half.
+     */
+    @Test
+    void invitingACaseVariantOfAnExistingMemberIs409() throws Exception {
+        // A REAL owner row, not provisionOwner's phantom principal: the member check is a
+        // query against app_user, so the user has to actually exist.
+        var signed = auth.signup(new SignupRequest(
+            "inv-case-" + UUID.randomUUID().toString().substring(0, 8), "Biz", "27", null,
+            "ravi@shop.in", null, "correct-horse"));
+        TenantContext.clear();
+        String ownerToken = tokens.as(signed.tenantId(), signed.userId(), "OWNER");
+
+        mvc.perform(post("/api/v1/invitations")
+                .header("Authorization", "Bearer " + ownerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invite("Ravi@Shop.in", "SALES_EXEC")))
+            .andExpect(status().isConflict());
+
+        // And the exact spelling is still refused, which was never in doubt.
+        mvc.perform(post("/api/v1/invitations")
+                .header("Authorization", "Bearer " + ownerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invite("ravi@shop.in", "SALES_EXEC")))
             .andExpect(status().isConflict());
     }
 

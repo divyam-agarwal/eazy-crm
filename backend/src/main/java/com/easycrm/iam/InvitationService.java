@@ -25,7 +25,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -99,24 +98,48 @@ public class InvitationService {
     /** Carries no annotation on purpose — the caller supplies the transaction. */
     private Minted mintInTransaction(InviteRequest req, String rawToken) {
         UUID tenantId = TenantContext.tenantId();
+        // NOT orElse(null): invited_by is NOT NULL, so a null here would surface as a
+        // DataIntegrityViolation's generic 409 — a broken server-side invariant dressed up
+        // as the caller's fault. requireOwner has already rejected the only principal that
+        // carries no user id (the "SYSTEM" one), so this is unreachable; say so out loud
+        // rather than encoding a silent null.
         UUID invitedBy = TenantContext.get()
-            .map(TenantContext.TenantPrincipal::userId).orElse(null);
+            .map(TenantContext.TenantPrincipal::userId)
+            .orElseThrow(() -> new IllegalStateException(
+                "an owner principal must carry a user id to invite"));
 
-        // Already a member? The read is RLS-scoped to this tenant.
-        users.findByEmail(req.email()).ifPresent(u -> {
+        // Already a member? The read is RLS-scoped to this tenant. IgnoreCase because an
+        // address is one identity however it is spelled: an exact match would let
+        // "Ravi@shop.in" be invited over an existing "ravi@shop.in" and create a second
+        // ACTIVE user for one human. uq_user_tenant_email_lower (V32) closes the
+        // check-then-act window this pre-check leaves open.
+        users.findByEmailIgnoreCase(req.email()).ifPresent(u -> {
             throw new ConflictException("that email is already a user of this workspace");
         });
 
         // Already invited? The partial unique index is the real guard against a race; this
         // pre-check exists so the ordinary case gets a clear message rather than the
-        // DataIntegrityViolation backstop's generic one.
-        boolean alreadyPending = invitations
-            .findByTenantIdAndStatus(tenantId, InvitationStatus.PENDING).stream()
-            .anyMatch(i -> i.getEmail().toLowerCase(Locale.ROOT)
-                            .equals(req.email().toLowerCase(Locale.ROOT)));
-        if (alreadyPending) {
-            throw new ConflictException("that email already has a pending invitation");
-        }
+        // DataIntegrityViolation backstop's generic one. Case-folded to agree with that
+        // index, which is on lower(email).
+        invitations
+            .findByTenantIdAndStatusAndEmailIgnoreCase(
+                tenantId, InvitationStatus.PENDING, req.email())
+            .ifPresent(existing -> {
+                if (!existing.isExpired(Instant.now())) {
+                    throw new ConflictException("that email already has a pending invitation");
+                }
+                // Expiry is lazy (D6), so an expired invitation stays PENDING forever and
+                // would otherwise block this address from ever being re-invited — the
+                // owner's own list already shows it as expired. Retire it here and carry
+                // on; the partial index frees itself in this same transaction.
+                //
+                // saveAndFlush, not save: Hibernate's action queue runs ALL inserts before
+                // ANY update, so a plain save would let the new PENDING row hit
+                // uq_invitation_pending_email while the old one is still PENDING on disk.
+                // The flush forces the UPDATE out first.
+                existing.revoke();
+                invitations.saveAndFlush(existing);
+            });
 
         Invitation inv = invitations.save(new Invitation(
             tenantId, req.email(), Role.valueOf(req.role()), hasher.sha256Hex(rawToken),
