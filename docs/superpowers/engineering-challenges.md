@@ -3627,3 +3627,61 @@ content; `xml.etree.ElementTree.parse()` (or equivalent) is a one-line well-form
 oracle that is cheaper than re-reasoning about hashes. And never hand-write `--` into an
 XML comment — it is invisible in most editors' comment styling and invalid regardless of
 position within the comment body, not just adjacent to `<!--`/`-->`.
+
+---
+
+## Challenge 59 — A first-ever CI workflow is untestable pre-merge under its own trigger rules
+
+**Phase:** Implementation
+
+### The problem
+
+Task 6 (build-hygiene slice) adds the repo's first-ever `.github/workflows/ci.yml`,
+triggered on `push: branches: [main]` and `pull_request:`. The task required proving the
+workflow actually goes green — with real evidence, not a guess — before calling it done,
+but under three simultaneous constraints: push the feature branch only, never push to
+`main`, and never open a PR (all three explicit, non-negotiable).
+
+Those three constraints are individually reasonable (don't touch `main`, don't create
+review noise for a branch mid-iteration) but together they're incompatible with how
+GitHub Actions decides whether to run a workflow at all. `push.branches: [main]` matches
+only pushes whose ref is `refs/heads/main` — pushing `build-hygiene` matches neither that
+filter nor `pull_request` (no PR event exists). Confirmed empirically, not assumed: after
+the first push, `gh run list`, `gh workflow list`, and `gh api .../actions/workflows` and
+`.../actions/runs` all came back empty — GitHub hadn't even registered the workflow yet,
+let alone run it. The obvious escape hatch, adding a `workflow_dispatch:` trigger for a
+manual run, is also a dead end: GitHub only allows dispatching a `workflow_dispatch`
+workflow when that trigger already exists **on the default branch**, which by definition
+it doesn't for a workflow file that has never been merged. There is no `gh` flag or API
+call that manually enqueues a run for an event that doesn't apply to the pushed ref.
+
+### The solution
+
+Temporarily widened `push.branches` on the feature branch itself to include
+`build-hygiene` — a content change to a file the constraints already permitted to exist
+on that branch, distinct from pushing to `main` or opening a PR — pushed, watched the run
+go green, downloaded its `if: always()`-uploaded report artifact from a second run to read
+the actual test counts, then reverted both temporary changes in a follow-up commit so the
+file committed at the end exactly matches the target spec (`branches: [main]`,
+`upload reports: if: failure()`). The two test runs and the final commit share the
+identical `check` job body (checkout → setup-java → setup-gradle → `gradlew clean check`);
+only the trigger filter and an unrelated `if:` condition on the failure-only upload step
+differed between what ran and what's now committed, and neither affects what the job
+executes. The four intermediate commits (`workflow_dispatch` attempt, branch-filter
+widen, always-upload, revert) were left in the branch history rather than squashed away,
+so the reasoning is auditable rather than silently rewritten.
+
+### Lesson
+
+A brief's "push and watch the run" step can silently assume a trigger topology it never
+verified — treat "did a run actually start" as a fact to check via `gh run list`/`gh api`
+immediately after the first push, not an assumption to build on. When a task's own
+guardrails (no push to `main`, no PR) conflict with the only two events GitHub will
+actually fire a workflow for pre-merge, the workflow's trigger *filter* itself — not the
+job body — is the smallest surface that can be safely and reversibly edited to create a
+test signal, precisely because editing it doesn't touch the constraints being protected
+(nothing lands on `main`, no PR is opened) and it's trivial to prove reverted (`git diff`
+against the target spec). Prefer this over `workflow_dispatch` as a manual-trigger
+workaround for a not-yet-merged workflow: it looks like the standard escape hatch but
+silently doesn't work until the trigger is already on the default branch, which is exactly
+the chicken-and-egg state a first-ever CI workflow starts in.
