@@ -37,7 +37,7 @@ jobs:
         run: ./gradlew clean check --no-daemon --console=plain
 
       - name: Upload reports
-        if: failure()
+        if: always() # TEMP: always upload for this verification run; revert to failure() before finishing Task 6
         uses: actions/upload-artifact@v7
         with:
           name: reports
