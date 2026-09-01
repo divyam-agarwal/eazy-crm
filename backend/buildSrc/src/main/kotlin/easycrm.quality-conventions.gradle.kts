@@ -13,6 +13,7 @@
 plugins {
     java
     id("com.diffplug.spotless")
+    id("com.github.spotbugs")
 }
 
 spotless {
@@ -47,4 +48,39 @@ spotless {
     }
 }
 
-// SpotBugs config arrives in Task 4, JaCoCo in Task 5.
+spotbugs {
+    effort = com.github.spotbugs.snom.Effort.MAX
+    reportLevel = com.github.spotbugs.snom.Confidence.DEFAULT
+    // Every pre-existing finding is captured in baseline.xml; only NEW findings fail the
+    // build now.
+    ignoreFailures = false
+    excludeFilter = rootProject.file("config/spotbugs/exclude.xml")
+    // SpotBugs Gradle plugin 6.5.11 wires this to the underlying `-excludeBugs` flag:
+    // findings whose instanceHash matches an entry here are suppressed from the
+    // pass/fail decision (they still show up in the HTML/XML reports). One shared file
+    // covering both projects' pre-existing findings -- a hash from one project simply
+    // never matches anything in the other project's analysis.
+    baselineFile = rootProject.file("config/spotbugs/baseline.xml")
+}
+
+dependencies {
+    // find-sec-bugs is the half that earns SpotBugs its place in this codebase: JWT
+    // mint/parse, a bcrypt password path, a permitAll route that renders a PDF, and a
+    // rate limiter keyed on an attacker-controlled value.
+    //
+    // Literal version, not libs.findsecbugs: type-safe catalog accessors do not exist
+    // inside a precompiled script plugin. Keep it equal to `findsecbugs` in
+    // gradle/libs.versions.toml.
+    "spotbugsPlugins"("com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0")
+}
+
+// Test sources are excluded as noise: assertion-heavy test code trips a large number of
+// low-value patterns and drowns the signal from main.
+tasks.named("spotbugsTest") { enabled = false }
+
+tasks.withType<com.github.spotbugs.snom.SpotBugsTask>().configureEach {
+    reports.create("html") { required = true }
+    reports.create("xml") { required = true }
+}
+
+// JaCoCo config arrives in Task 5.

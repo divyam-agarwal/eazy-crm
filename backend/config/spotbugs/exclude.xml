@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Findings excluded permanently, by category. Distinct from baseline.xml, which is a
+     snapshot of pre-existing findings to be worked off over time. Empty for now. -->
+<FindBugsFilter>
+</FindBugsFilter>
