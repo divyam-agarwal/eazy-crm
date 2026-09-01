@@ -81,6 +81,15 @@ will not catch it for you beforehand; and **the `pull_request` trigger has never
 is dormant-but-correct config, not verified behaviour, which is the same untested-gate category as
 challenge #33.
 
+**What *is* proven, on real runs rather than by assertion:** the `push: [main]` half fired
+unattended on the build-hygiene merge and on the docs commit after it, both green
+(`33518708457`, `33518932037`, ~3m30s each), executing all four gates across both Gradle projects
+and observing the same 519 tests as a local run. A failing gate is proven to produce a failing run
+too — run `33510215755` went red on `spotlessJavaCheck` from a deliberate violation during the
+slice. So the alarm works; it just rings after the fact. Note also that two pushes in quick
+succession now both complete: `cancel-in-progress` is scoped to pull requests only, precisely so a
+follow-up commit cannot cancel the merge run you most want to see finish.
+
 **Below this point, §0 records the slice before this one — user invitations, merged as `f265cfe`.**
 It is history, not current state; `build-hygiene` has since landed on top of it. Read it when you
 touch the invitation/auth area, not to find out what to do next.
@@ -131,7 +140,7 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
    then `cd backend && ./gradlew clean check`. **`clean check` is the baseline command, not
    `clean test`** — it is strictly stronger (adds `spotlessCheck`, `spotbugsMain`,
    `jacocoTestCoverageVerification` across both projects) and is the same command CI runs, so a
-   green local run and a green CI run assert the same thing. On `main` at `83e6880` this is
+   green local run and a green CI run assert the same thing. On `main` at `c303b2c` this is
    **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
    **464-test** baseline before the invitations slice. Gradle prints no total for a
    multi-project build, so count it yourself:
@@ -1049,36 +1058,50 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested default — read this before proposing anything.** **Items #1, #2 and #3 are now all
-closed** (§3's `activity-follow-up`, `quotation-auto-expiry` and `user-invitations` entries), which
-is a real change in kind: the numbered backlog above is down to a single open item, and the
-correctness backlog is empty. Seven slices in a row have been hardening or moving the backend (RLS
-forcing, rate limiting, record-level visibility, activity/follow-up, scheduled auto-expiry, then
-user invitations). The honest ranking is now:
+**Suggested ranking — read this before proposing anything. Updated 2026-09-01, after `build-hygiene`.**
 
-- **#4 (cursor pagination) is the only open item left on the numbered list.** It is cross-cutting
-  and blocked on nothing, but it is also *not* urgent: no tenant is large enough for offset paging
-  to hurt, and the "before the first large tenant" note below is a better description of when it
-  starts to matter. It leads the board by elimination, not on merit — do not present it as an
-  obvious next step.
-- **PF19's entitlement-metering half stays blocked on design, not effort.** The public route has no
-  JWT, so there is nowhere to hang a per-tenant check; it needs the billing thread's decisions
-  before code, same as before this slice. If the user wants to move it, the unblocking work is a
-  *design* thread, not an implementation slice.
-- **`platform-web` is next by dependency order only, and dependency order is not priority order.**
-  Nothing has made the module queue more urgent; it is still the weakest claim of the three.
+The numbered list above is down to one open item (#4), the correctness backlog is empty, and eight
+slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level
+visibility, activity/follow-up, scheduled auto-expiry, user invitations, then build hygiene). **The
+strongest remaining candidates are not on the numbered list**, so the real option set is the six
+below. Present them; do not default into #4 because it is the last number standing.
 
-**With #1–#3 gone, the most honest thing to say is that the backend backlog no longer contains an
-obviously-strongest next item, and the strongest candidate may not be on this list at all.** Two
-things not currently numbered here now deserve to be raised with the user alongside #4:
-**the frontend** — nothing has ever been built, and the invitation slice just shipped a link
-(`/invite/{token}`) that has no page behind it, which is the first concrete piece of product that a
-backend slice cannot finish — and **members management** (list users, change a role, disable one),
-the natural sequel to invitations and the point at which a multi-user tenant becomes administrable
-rather than merely creatable. Neither is scoped anywhere yet, so both would start at brainstorming.
+- **Wave 3, OpenAPI — the strongest claim, and it is coupled to the frontend.** There are 18
+  controllers and no API document of any kind. Nothing has ever been built against this API, which
+  means the contract is currently whatever the controllers happen to do. springdoc plus a committed
+  spec snapshot plus `oasdiff` breaking-change detection in CI is a small slice that produces the
+  artefact the frontend will be built from — and it is also the honest substitute for the contract
+  testing (Pact, Spring Cloud Contract) that is deferred precisely because there is no second party
+  yet. Doing this *before* the frontend is the natural order; doing it after means the frontend
+  defines the contract by accident. See the design spec `2026-09-01-build-hygiene-design.md` §3.
+- **The frontend — the biggest product step, and the only one a backend slice cannot finish.**
+  Nothing has ever been built. The invitations slice shipped `/invite/{token}`, a link that is
+  pasted into WhatsApp and has **no page behind it**; wiring that route is the stated first task
+  when the frontend starts. Unscoped, so it begins at brainstorming, and it is large enough to want
+  decomposing into sub-projects before a spec.
+- **Wave 1.5, supply chain — the cheapest real win, blocked on nothing.** `gitleaks`, Dependabot or
+  Renovate, OWASP Dependency-Check, and `squawk` for unsafe Postgres DDL. Smaller than Wave 3 and
+  higher security value than anything else on this list, on a repo that is now **public** and ships
+  JWT auth, bcrypt and GST data. The one cost to plan for: Dependency-Check needs an NVD cache that
+  makes CI meaningfully slower.
+- **Members management — the natural sequel to invitations.** List existing users, change a role,
+  disable one. Today invite + accept + revoke + pending-list is the whole surface, so a multi-user
+  tenant is creatable but not administrable. Unscoped; starts at brainstorming.
+- **Wave 2, observability — real value, but sequence it deliberately.** Structured JSON logging, an
+  MDC correlation filter (`requestId`/`tenantId`/`userId`), GSTIN/phone/email redaction, Micrometer
+  with `/actuator/prometheus`, and tracing over OTLP. Two things make it more than housekeeping: the
+  two known production hazards (the in-process rate-limit store, the unlocked 00:30 expiry sweep)
+  are **invisible** today, and the "assert runtime behaviour" TODO earlier in this section
+  (`datasource-proxy`/`hypersistence-utils`/`quickperf`/`flexy-pool`/`digma`) largely lives or dies
+  with it — `digma` in particular is OTel-based and cannot be evaluated before tracing exists.
+- **#4 cursor pagination — leads by elimination, not merit.** Cross-cutting and blocked on nothing,
+  but no tenant is remotely large enough for offset paging to hurt. "Before the first large tenant"
+  below is a better description of when it starts to matter.
 
-Present the options and take the user's choice; do not default into #4 just because it is the last
-number standing.
+**Still blocked or still weak, unchanged:** PF19's entitlement-metering half needs the billing
+thread's *design* decisions, not effort — the public route has no JWT, so there is nowhere to hang a
+per-tenant check. And `platform-web` (LLD #2) is next by dependency order only; nothing has made the
+module queue more urgent, and `platform-primitives` landing did not change that.
 
 **Before any second app instance:** the rate limiter's store is in-process (§3) — running N
 instances behind a load balancer multiplies every configured limit by N, silently. Build the
