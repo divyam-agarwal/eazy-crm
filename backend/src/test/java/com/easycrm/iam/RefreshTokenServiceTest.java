@@ -34,4 +34,39 @@ class RefreshTokenServiceTest extends IntegrationTest {
     void rotateUnknownTokenIsUnauthorized() {
         assertThrows(UnauthorizedException.class, () -> service.rotate("not-a-real-token"));
     }
+
+    @Test
+    void revokeAllForUserRevokesEveryLiveSessionAndReportsHowMany() {
+        UUID tenantId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        String first = service.issue(userId, tenantId);
+        String second = service.issue(userId, tenantId);
+
+        assertEquals(2, service.revokeAllForUser(userId, tenantId));
+
+        assertThrows(UnauthorizedException.class, () -> service.rotate(first));
+        assertThrows(UnauthorizedException.class, () -> service.rotate(second));
+    }
+
+    @Test
+    void revokeAllForUserLeavesAnotherMembersSessionsAlone() {
+        UUID tenantId = UUID.randomUUID();
+        UUID mine = UUID.randomUUID();
+        UUID theirs = UUID.randomUUID();
+        service.issue(mine, tenantId);
+        String theirToken = service.issue(theirs, tenantId);
+
+        service.revokeAllForUser(mine, tenantId);
+
+        assertDoesNotThrow(() -> service.rotate(theirToken));
+    }
+
+    @Test
+    void revokeAllForUserIsScopedToTheTenant() {
+        UUID userId = UUID.randomUUID();
+        String otherTenantToken = service.issue(userId, UUID.randomUUID());
+
+        assertEquals(0, service.revokeAllForUser(userId, UUID.randomUUID()));
+        assertDoesNotThrow(() -> service.rotate(otherTenantToken));
+    }
 }
