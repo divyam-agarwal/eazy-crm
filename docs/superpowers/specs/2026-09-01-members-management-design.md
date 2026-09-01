@@ -180,9 +180,27 @@ it there would make `platform` depend on `iam` — breaking the stated rule that
 
 One aggregated 409 naming every blocker at once, not one at a time — an owner who clears
 customers, retries, and only then discovers follow-ups has been made to do the job twice.
-The counts also go into `ApiError.fields` keyed by `label()`, so a frontend can route to the
-right reassign screen instead of parsing prose. `ApiError.fields` is already a free-form
-`Map<String, Object>` for exactly this kind of payload.
+The counts also travel as structured data keyed by `label()`, so a frontend can route to the
+right reassign screen instead of parsing prose.
+
+**This needs a change to the error envelope (D11).** On this baseline `ConflictException`
+carries only a message, and `ApiExceptionHandler.conflict(...)` passes `null` where the
+envelope's `fields` would go — only `ValidationException` (422) has ever carried field
+detail. So `ConflictException` gains a second constructor taking a
+`Map<String, Object>`, and the 409 handler passes it through. The existing single-argument
+constructor stays and keeps returning no `fields` key, so **every other 409 in the codebase
+is byte-identical to today's**.
+
+Two execution notes for whoever implements it:
+
+- `ConflictException` lives in the **`platform-primitives` Gradle module**, not the root
+  project, and that module's JaCoCo floors are LINE `0.83` / BRANCH `0.99` against roughly
+  22 branches. One new untested branch drops it to ~0.956 and reddens the build. The new
+  constructor ships with its own test, in that module, or `check` fails.
+- `ApiExceptionHandler` is being refactored concurrently by the `openapi-contract` slice,
+  which replaces the inline `Map` envelope with typed `ApiError`/`ApiErrorResponse` records.
+  A merge conflict in `conflict(...)` is expected and is mechanical: whichever slice lands
+  second re-applies "pass the exception's fields through" to the other's shape.
 
 ---
 
@@ -298,9 +316,16 @@ Role changes otherwise propagate for free: `AuthService.refresh` already re-read
 | caller is not `OWNER` | 403 | `RoleGuard`, message specific per operation |
 | unknown id, or another tenant's member | 404 | structural via RLS (§3) |
 | would leave zero active owners | 409 | |
-| member still holds open work | 409 | counts in `ApiError.fields` (§4.4) |
+| member still holds open work | 409 | counts carried as structured `fields` (§4.4) |
 | already in that state | 409 | entity guard |
-| unknown role string | 422 | bean validation on the request DTO |
+| unknown role string | 400 | `@Pattern` bean validation on the request DTO |
+
+**400, not 422, for the unknown role** — and that is the house rule, not an accident.
+`InviteRequest` already validates `role` as a `@Pattern`-constrained `String` precisely so
+an unknown value is a bean-validation failure rather than a Jackson deserialisation error,
+and `MethodArgumentNotValidException` maps to `400`. 422 (`VALIDATION_FAILED` via
+`ValidationException`) is for *domain* validation thrown from a service. `ChangeRoleRequest`
+copies `InviteRequest`'s pattern verbatim.
 
 Unlike the invitations slice, **there is no consistent-404 enumeration contract here** and
 none is needed: every route is owner-only and behind a JWT, so there is no anonymous caller
@@ -391,6 +416,7 @@ Baseline is 519 tests on `e9d694e`; run `./gradlew clean check`, not `clean test
 | D8 | `PESSIMISTIC_WRITE` on the tenant row | closes write skew; `SERIALIZABLE` too costly (§5.2) |
 | D9 | `AuthService.refresh` gains a status check | without it disable is decorative (§6) |
 | D10 | Ship the two `assigned_to` indexes here | the slice adding the queries adds the indexes (§8) |
+| D11 | `ConflictException` gains an optional fields map | the 409 must be machine-readable; existing 409s stay byte-identical (§4.4) |
 
 ## 12. Risks
 
