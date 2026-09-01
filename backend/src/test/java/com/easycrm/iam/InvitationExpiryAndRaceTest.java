@@ -3,7 +3,6 @@ package com.easycrm.iam;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +17,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -154,6 +154,13 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
      * a second user. @Version on the invitation claim is what enforces it — the loser gets
      * a 409 from the OptimisticLockingFailureException handler, or a 404 if it lost the
      * read race instead. Either is acceptable; TWO users is not.
+     *
+     * <p>The CyclicBarrier is load-bearing. Without it the two tasks merely tend to
+     * overlap, and on a run where the first finishes before the second starts the test
+     * passes while exercising no concurrency at all — a green light for a @Version that
+     * had been removed. The barrier makes the overlap a precondition rather than luck. It
+     * cannot deadlock: the pool has exactly two threads and invokeAll submits exactly two
+     * tasks, so both parties always arrive.
      */
     @Test
     void twoConcurrentAcceptsCreateExactlyOneUser() throws Exception {
@@ -161,10 +168,14 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         String raw = seed(owner.tenantId(), "race@shop.in",
             Instant.now().plus(1, ChronoUnit.DAYS));
 
-        Callable<Integer> attempt = () -> mvc.perform(
-                post("/api/v1/auth/invitations/" + raw + "/accept")
-                    .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andReturn().getResponse().getStatus();
+        CyclicBarrier startLine = new CyclicBarrier(2);
+        Callable<Integer> attempt = () -> {
+            startLine.await();
+            return mvc.perform(
+                    post("/api/v1/auth/invitations/" + raw + "/accept")
+                        .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
+                .andReturn().getResponse().getStatus();
+        };
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {

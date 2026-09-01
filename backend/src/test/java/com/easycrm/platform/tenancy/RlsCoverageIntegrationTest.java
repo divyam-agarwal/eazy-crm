@@ -43,8 +43,9 @@ class RlsCoverageIntegrationTest extends IntegrationTest {
      * tenant-scoped. Mirrors {@code TenantScopingArchTest.GLOBAL_TABLES}; both lists
      * must be extended together, and only with review.
      *
-     * <p>({@code tenant}, the third entry there, needs no exemption — it has no
-     * {@code tenant_id} column at all, so the query below never sees it.)
+     * <p>({@code tenant}, the first entry there, needs no exemption — it has no
+     * {@code tenant_id} column at all, so the query below never sees it. That is why this
+     * list has three entries and the other has four.)
      */
     private static final Set<String> GLOBAL_TABLES = Set.of(
         "refresh_token",   // pre-auth session table, looked up by hash

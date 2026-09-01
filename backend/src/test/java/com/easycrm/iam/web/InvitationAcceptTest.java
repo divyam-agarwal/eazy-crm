@@ -12,9 +12,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.UUID;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -191,7 +190,7 @@ class InvitationAcceptTest extends IntegrationTest {
             .andExpect(status().isNotFound())
             .andReturn().getResponse().getContentAsString();
 
-        org.junit.jupiter.api.Assertions.assertEquals(unknown, consumed,
+        assertEquals(unknown, consumed,
             "a consumed token must be indistinguishable from one that never existed");
     }
 
@@ -214,7 +213,7 @@ class InvitationAcceptTest extends IntegrationTest {
     @Test
     void theAcceptRouteResolvesToTheAuthRateLimitPolicy() {
         var policy = rateLimits.policyFor("/api/v1/auth/invitations/some-token/accept");
-        org.junit.jupiter.api.Assertions.assertTrue(policy.isPresent(),
+        assertTrue(policy.isPresent(),
             "the accept route must match a rate-limit policy — an unmatched path is unlimited");
         assertEquals("auth", policy.get().name());
     }
