@@ -54,8 +54,8 @@ pre-auth half a second client), and the redundant `invitations.save(...)` on alr
 entities in `revoke` and `accept` (identical in both, so remove both or neither). `AuthService.refresh`
 has the same suspended-tenant hole; it predates this branch and was left alone on purpose.
 
-The suite is **513 tests, 0 failures, 0 errors** (490 root + 23 `platform-primitives`), up from the
-464-test `main` baseline (+49). **It has not been merged to `main`** — run
+The suite is **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
+464-test `main` baseline (+55). **It has not been merged to `main`** — run
 `finishing-a-development-branch` on it before starting anything new, unless you are picking this
 session up specifically to review or merge it. See §3 for what it delivered and §8 for what that
 closes.
@@ -732,7 +732,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 513 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
