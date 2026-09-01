@@ -316,10 +316,10 @@ All under `docs/superpowers/`:
   **SpotBugs 6.5.11 at `effort = MAX` + find-sec-bugs 1.14.0, gated by a baseline of
   today's findings — 32 total, split 29 root / 3 `platform-primitives`.** By category:
   `EI_EXPOSE_REP2` ×17, `EI_EXPOSE_REP` ×8, `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` ×3,
-  `CT_CONSTRUCTOR_THROW` ×3, `MS_EXPOSE_REP` ×1. 25 of the 32 are the defensive-copy family
+  `CT_CONSTRUCTOR_THROW` ×3, `MS_EXPOSE_REP` ×1. 26 of the 32 are the defensive-copy family
   (`EI_EXPOSE_REP2`/`EI_EXPOSE_REP`/`MS_EXPOSE_REP`), largely noise on JPA entities and records —
   see the §8 backlog item for the case to make that a permanent `config/spotbugs/exclude.xml`
-  category exclusion rather than baseline debt. The other 7
+  category exclusion rather than baseline debt. The other 6
   (`NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` ×3, `CT_CONSTRUCTOR_THROW` ×3) deserve a real look.
   **Zero SECURITY-category findings** from find-sec-bugs across JWT mint/parse, the bcrypt
   password path, the `permitAll` PDF route, and the rate limiter — verified as a genuine clean
@@ -873,7 +873,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
   reformat commit `2616049`; with it set, those lines correctly fall back to the real original
   commit `a855056b`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -1114,11 +1114,11 @@ re-deriving the reasoning from that spec each time.
 **The 32 baselined SpotBugs findings (§3) are a backlog item, not fixed by this slice — by
 design (spec D9).** Split 29 root / 3 `platform-primitives`; by category `EI_EXPOSE_REP2` ×17,
 `EI_EXPOSE_REP` ×8, `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` ×3, `CT_CONSTRUCTOR_THROW` ×3,
-`MS_EXPOSE_REP` ×1. 25 of the 32 are the defensive-copy family and are largely noise on JPA
+`MS_EXPOSE_REP` ×1. 26 of the 32 are the defensive-copy family and are largely noise on JPA
 entities and records that never mutate their own fields after construction — the better home for
 those is probably a permanent category exclusion in `config/spotbugs/exclude.xml` (currently
 empty, ready for this) rather than baseline debt that looks like it's waiting to be "paid off."
-The other 7 — 3× `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`, 3× `CT_CONSTRUCTOR_THROW` — are a
+The other 6 — 3× `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`, 3× `CT_CONSTRUCTOR_THROW` — are a
 different kind of finding and deserve someone actually reading each one, not a blanket exclusion.
 
 ### TODO — assert runtime behaviour, not just outcomes (raised 2026-09-01)
