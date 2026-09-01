@@ -1,7 +1,7 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-08-31 — **Scheduled quotation auto-expiry is built on branch
-`quotation-auto-expiry`, all seven tasks complete and green, pending merge (not yet on `main`).**
+**Last updated:** 2026-09-01 — **Scheduled quotation auto-expiry is built and merged to `main` as
+`2fb2b85`. Nothing is in flight; `main` is the baseline for new work.**
 The codebase's first non-request execution path now exists: a nightly job iterates every
 job-eligible tenant with no JWT behind it, and the reusable seam it landed —
 `platform/job/TenantJobRunner` — is what every future scheduled job should build on rather than
@@ -20,17 +20,19 @@ now **DONE** — see §8. The previous slice (activity log and follow-ups) is **
 
 ## 0. Resuming? Start here
 
-### One thing is in flight
+### Nothing is in flight
 
-**`quotation-auto-expiry` is complete but not merged.** Seven tasks (`DueWindow.todayDate` for
+**`main` is clean and is the baseline for new work.** Seven tasks (`DueWindow.todayDate` for
 IST-vs-UTC calendar-date comparisons, `Quotation.expire()`'s own `SENT` precondition,
 `QuotationSpecifications.expirableAsOf` + `VisibleFinder.listQuotations`, `TenantJobRunner` +
 `TenantRepository.findByStatusIn`, the `QuotationExpiredEvent` sweep with its audit and activity
 listeners, `SchedulingConfig`/`QuotationExpiryJob`/the cron property/the test-suite cron disable,
-and this docs wrap-up) are done on branch `quotation-auto-expiry`, commits `63a2865`..`7d89963` off
-`main` at `d7eae98`, every task reviewed clean. **It has not been merged to `main`** — run
-`finishing-a-development-branch` on it before starting anything new, unless you're picking this
-session up specifically to review or merge it.
+and the docs wrap-up) were done on branch `quotation-auto-expiry`, commits `63a2865`..`d843550` off
+`main` at `d7eae98`, every task reviewed clean. The whole-branch review returned MERGE after one
+fix wave, and the branch was merged `--no-ff` as **`2fb2b85`** on 2026-09-01 and deleted. The merged
+result was verified green (**464 tests, 0 failures, 0 errors**) before the branch went away. There
+is no unmerged feature branch to settle — start at item 1 below, then go to §8 and pick the next
+chunk with the user.
 
 **One loose end that is not code, carried forward from before this slice:** the Bucket4j entry
 written for `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that
@@ -44,8 +46,8 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On this branch (`quotation-auto-expiry`) this is
-   **461 tests, 0 failures, 0 errors** (438 root + 23 `platform-primitives`), up from `main`'s
+   then `cd backend && ./gradlew clean test`. On `main` this is now
+   **464 tests, 0 failures, 0 errors** (441 root + 23 `platform-primitives`), up from the
    **432 tests** baseline (409 root + 23 `platform-primitives`). Gradle prints no total for a
    multi-project build, so count it yourself:
 
@@ -59,7 +61,7 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 438, not 461, and this tripped an
+   -path './build/test-results/test/*.xml'` alone reports 441, not 464, and this tripped an
    implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
@@ -216,12 +218,12 @@ All under `docs/superpowers/`:
     ordering, why `asOf` must be computed in IST rather than the server's UTC clock, and the
     audit + activity event pair on expiry). Source of truth for *what* this slice built.
 36. **`plans/2026-08-31-quotation-auto-expiry.md`** — the seven-task implementation plan for it.
-    **Branch `quotation-auto-expiry` is complete, reviewed, and pending merge** — see §0 and §3.
+    Executed in full, every task reviewed clean; **merged to `main` as `2fb2b85`** — see §0 and §3.
 
 ## 3. Current state
 
-- **Latest code work: quotation auto-expiry** — **branch `quotation-auto-expiry`, complete and
-  reviewed, NOT YET MERGED to `main`.** Commits `63a2865`..`7d89963` off `main` at `d7eae98`.
+- **Latest code work: quotation auto-expiry** — **merged to `main` as `2fb2b85`** (branch deleted).
+  Commits `63a2865`..`d843550` off `main` at `d7eae98`.
   Seven tasks delivering the codebase's first non-request execution path and a reusable seam for
   every scheduled job after it.
 
@@ -265,8 +267,8 @@ All under `docs/superpowers/`:
   against the registered task list itself, not just the property value, so a disabled cron that
   somehow still registered a task would be caught.
 
-  **461 tests, 0 failures, 0 errors** — 438 in the root project, 23 in `platform-primitives`, up
-  from the 432-test `activity-follow-up` baseline (+29). New challenges #52–#53; annotations
+  **464 tests, 0 failures, 0 errors** — 441 in the root project, 23 in `platform-primitives`, up
+  from the 432-test `activity-follow-up` baseline (+32). New challenges #52–#53; annotations
   reference gained `@EnableScheduling` and `@Scheduled`. **What this slice does *not* do:** run
   more than one instance safely without duplicating work (no distributed lock — see the "Before
   any second app instance" note below); batch-load candidate versions (one `findById` per
@@ -632,8 +634,8 @@ the workflow from §0 step 4.
    push into: no WhatsApp Business API, email has no delivery-tracking/dedupe design, no frontend
    for in-app), and challenge #51 for why the eventual fix is additive, not a redesign. Record this
    as a decision, not an oversight, if it's ever asked why no scheduler exists.
-2. ~~**Scheduled auto-expiry**~~ — **DONE**, on branch `quotation-auto-expiry` (§0, §3), pending
-   merge. A nightly job at 00:30 IST expires every lapsed `SENT` quotation, with an audit row and a
+2. ~~**Scheduled auto-expiry**~~ — **DONE**, merged as `2fb2b85` (§0, §3).
+   A nightly job at 00:30 IST expires every lapsed `SENT` quotation, with an audit row and a
    timeline activity — exactly as this item described. It also landed the codebase's first
    non-request execution path and a reusable `TenantJobRunner` seam: every future scheduled job
    should build on that runner rather than growing its own `TenantContext.runAs`-before-transaction
@@ -747,11 +749,10 @@ Open and non-blocking. This list is the complete record of every `minor (deferre
 ledgers of **six** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
 items 23–24 from the `platform-primitives` slice (eight tasks), items 25–32 from
 `public-rate-limiting` (seven tasks), items 33–41 from `record-visibility` (nine tasks plus a
-whole-branch fix wave), items 42–46 from `activity-follow-up` (fourteen tasks), and item 47 from
-`quotation-auto-expiry` (seven tasks) — each cross-checked line-by-line against its ledger before
-that workspace was deleted at merge (or, for `activity-follow-up` and `quotation-auto-expiry`,
-whose workspaces are deleted or about to be — this list is the durable copy). So it really is
-**self-contained**:
+whole-branch fix wave), items 42–46 from `activity-follow-up` (fourteen tasks), and items 47–49 from
+`quotation-auto-expiry` (seven tasks plus a whole-branch fix wave) — each cross-checked
+line-by-line against its ledger before that workspace was deleted at merge. Every one of those
+workspaces is now gone, so this list is the durable copy. So it really is **self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
 
@@ -1021,7 +1022,9 @@ three are ordinary per-task findings judged safe to defer.
     visibility or control over work they assigned to someone else is an open design question —
     who may assign work to whom is out of scope for this slice.
 
-**From the `quotation-auto-expiry` slice (2026-08-31).** One item, open.
+**From the `quotation-auto-expiry` slice (2026-08-31).** Three items (47–49), all open.
+Item 47 is the one with a real trigger: it is the thing to fix *before* the first large
+tenant, not after, for the reason its own entry gives.
 
 47. **`QuotationExpirySweep.run` issues one `findById` per expiry candidate** to read that
     candidate's `QuotationVersion` (for `validUntil`, to attach to `QuotationExpiredEvent`), rather
