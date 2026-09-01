@@ -51,8 +51,8 @@ class MemberControllerTest extends IntegrationTest {
     private UUID addUser(UUID tenantId, String email, Role role, UserStatus status) {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         try {
-            return tx.execute(s -> users.save(new User(email, null, "hash", role, status))
-                    .getId());
+            return tx.execute(
+                    s -> users.save(new User(email, null, "hash", role, status)).getId());
         } finally {
             TenantContext.clear();
         }
@@ -123,13 +123,11 @@ class MemberControllerTest extends IntegrationTest {
         addUser(owner.tenantId(), "keeper@x.test", Role.OWNER, UserStatus.ACTIVE);
         UUID member = addUser(owner.tenantId(), "a@x.test", Role.SALES_EXEC, UserStatus.ACTIVE);
 
-        mvc.perform(post("/api/v1/members/" + member + "/disable")
-                        .header("Authorization", "Bearer " + owner.token()))
+        mvc.perform(post("/api/v1/members/" + member + "/disable").header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DISABLED"));
 
-        mvc.perform(post("/api/v1/members/" + member + "/enable")
-                        .header("Authorization", "Bearer " + owner.token()))
+        mvc.perform(post("/api/v1/members/" + member + "/enable").header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
     }
@@ -161,8 +159,7 @@ class MemberControllerTest extends IntegrationTest {
             TenantContext.clear();
         }
 
-        mvc.perform(post("/api/v1/members/" + member + "/disable")
-                        .header("Authorization", "Bearer " + owner.token()))
+        mvc.perform(post("/api/v1/members/" + member + "/disable").header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("CONFLICT"))
                 .andExpect(jsonPath("$.error.fields.customers").value(1));

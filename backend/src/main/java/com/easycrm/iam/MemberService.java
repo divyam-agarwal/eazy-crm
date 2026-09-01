@@ -94,10 +94,7 @@ public class MemberService {
         users.save(member);
         int revoked = refreshTokens.revokeAllForUser(member.getId(), TenantContext.tenantId());
 
-        audit.record(
-                "MEMBER_DISABLED",
-                actorUserId(),
-                Map.of("email", member.getEmail(), "sessionsRevoked", revoked));
+        audit.record("MEMBER_DISABLED", actorUserId(), Map.of("email", member.getEmail(), "sessionsRevoked", revoked));
         return toResponse(member);
     }
 

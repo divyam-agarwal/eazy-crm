@@ -50,8 +50,8 @@ class MemberDisableTest extends IntegrationTest {
         TenantContext.TenantPrincipal caller = TenantContext.get().orElse(null);
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         try {
-            return tx.execute(s -> users.save(new User(email, null, "hash", role, status))
-                    .getId());
+            return tx.execute(
+                    s -> users.save(new User(email, null, "hash", role, status)).getId());
         } finally {
             if (caller != null) TenantContext.set(caller);
             else TenantContext.clear();
@@ -80,8 +80,8 @@ class MemberDisableTest extends IntegrationTest {
         UUID exec = addUser(tenantId, "exec@x.test", Role.SALES_EXEC, UserStatus.ACTIVE);
 
         TenantContext.TenantPrincipal caller = TenantContext.get().orElseThrow();
-        tx.executeWithoutResult(s -> customers.save(
-                new Customer("Shop A", null, "27", null, null, 0, exec, null, CustomerSource.MANUAL)));
+        tx.executeWithoutResult(s ->
+                customers.save(new Customer("Shop A", null, "27", null, null, 0, exec, null, CustomerSource.MANUAL)));
         TenantContext.set(caller);
 
         ConflictException ex = assertThrows(ConflictException.class, () -> members.disable(exec));
