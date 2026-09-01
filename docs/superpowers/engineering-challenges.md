@@ -3785,3 +3785,174 @@ does not follow from it and should have been checked, not assumed, before writin
 eliminate it" into a comment. `VersionCatalogsExtension` is the general escape hatch any Gradle
 plugin can use to read a registered catalog without generated accessors; reach for it before
 concluding a catalog is unreachable from a given file.
+
+---
+
+## Challenge 62 — The last-owner invariant is write skew, not a lost update
+
+**Phase:** Implementation (members-management slice, Task 6/8)
+
+### The problem
+
+Two owners of the same tenant demote each other in the same instant: T1 (Asha demotes Bilal)
+and T2 (Bilal demotes Asha) each run `count(active OWNERs) > 1` before writing, both see
+**2**, both pass, and both commit — leaving the tenant at **zero** active owners. Every
+defence this codebase already owns for exactly this shape of problem misses it. `@Version`
+optimistic locking guards a single row against a second writer of the *same* row; these are
+two different rows (Asha's and Bilal's), and each transaction only ever writes the *other*
+party's row, never its own. A unique index expresses "at most one" of something; there is no
+declarative form of "at least one" to lean on instead. And Postgres `REPEATABLE READ` is
+snapshot isolation, which aborts a write-write conflict on the same row — it does nothing for
+two transactions that each read an overlapping set and then write disjoint rows within it.
+That is write skew, the textbook on-call-doctors anomaly, and only `SERIALIZABLE` detects it.
+
+The damage is also unrecoverable **in-product**: every member-admin route — including the
+one that would fix a stranded tenant — calls `RoleGuard.requireOwner`, and this product has
+no support or admin surface. A tenant stranded at zero owners can never again invite,
+promote, or re-enable anyone; recovery would be a manual production `UPDATE`.
+
+`MemberOwnerRaceTest` was built to prove the anomaly is real, not assumed: run with
+`lockTenant()` emptied (the fix removed), it fails exactly as predicted —
+`expected: <1> but was: <2>`, both concurrent demotions having committed — and Hibernate's
+SQL log for that run confirms the connection was running at `READ_COMMITTED`, which is the
+isolation level that makes the post-lock re-count the thing actually closing the gap, not an
+incidental effect of some stricter default already in force.
+
+### The solution
+
+Materialise the conflict onto a row both transactions must touch, rather than escalating
+isolation and taking on retry handling everywhere a member-admin write happens: every
+member-admin write takes a `PESSIMISTIC_WRITE` lock on the **tenant row** before it
+re-counts. `TenantRepository.findForUpdate` — `@Lock(LockModeType.PESSIMISTIC_WRITE)`,
+`SELECT ... FOR UPDATE` — serialises T2 behind T1: T2 blocks until T1 commits, re-counts
+under the lock, sees 1 active owner, and returns the 409 it should have returned all along.
+`tenant` is a global table with no RLS policy to fight, member-admin writes are rare, and the
+lock is scoped to one tenant's row, so nothing outside that tenant's admin operations is
+serialised by it.
+
+**Cross-reference challenge #16**, which is this codebase's existing precedent for the
+`@Lock(PESSIMISTIC_WRITE)` idiom (`DocumentCounterRepository.findForUpdate`, for gapless
+document numbering) — and state plainly what makes this case different. #16 locks the row it
+is **about to write**: the counter row is both the thing contended for and the thing
+mutated. Here the lock is taken on a row **neither transaction would otherwise touch** —
+nobody is writing to `tenant` — purely to serialise a decision about other, disjoint rows
+(`app_user.role`/`status`). The lock's job is not to protect its own row's data; it is to
+manufacture the single point of contention the invariant needs and would not otherwise have.
+
+(An earlier report circulated during this slice mis-cited this decision as challenge #8. #8
+is the unrelated derived-repository-query-under-RLS finding from the auth slice; the correct
+cross-reference is #16.)
+
+### Lesson
+
+When a check reads a *set* (`count(...) > 1`) and a write lands on a row disjoint from every
+other writer's row, row-level optimistic locking is structurally unable to see the conflict —
+it was built to catch two writers of the same row, not two writers who each read the same set
+and then write different rows within it. The fix is not "lock what you're about to write"
+(that only works when contention and mutation share a row); it's "find or invent a row every
+contending transaction must touch," even one that itself is written to by neither.
+
+---
+
+## Challenge 63 — An invariant check and a user-facing read want opposite things from visibility filtering
+
+**Phase:** Implementation (members-management slice, Task 3)
+
+### The problem
+
+The reassign-first gate (member disable refused while the member holds open work) needs a
+tenant-wide, unfiltered count of open `Customer`, `Enquiry` and `FollowUp` rows assigned to
+the target user. `VisibilityScopingArchTest` allows only classes inside
+`com.easycrm.platform.visibility..` to call a read method on those three repositories
+directly; everyone else must go through `VisibleFinder` or be named on its `ALLOWED_METHODS`
+allowlist. Separately, `iam` must not depend on `crm` or `sales` — no existing edge runs that
+direction, and a `MemberService` calling those three repositories directly would create the
+codebase's first `iam`↔`sales`/`crm` cycle.
+
+The tempting shortcut is `VisibleFinder`: it already exists, it already returns a filtered
+count keyed on the caller's visibility, and — because every caller of the member-admin routes
+is an `OWNER` and `VisibilityPolicy.unrestricted()` is true for every role but `SALES_EXEC` —
+it returns the *right number today*. That is precisely what makes it dangerous rather than
+safe: it is correct by accident of who currently calls it, not by construction. The day a
+non-owner reaches this path, `VisibleFinder` would start silently filtering rows out of a
+count that must never be filtered, and a gate built on an under-count lets a disable through
+while real, unreassigned work is still sitting on the disabled account.
+
+### The solution
+
+Declare the port on the `iam` side of the relationship instead of building the query on the
+`crm`/`sales` side: `iam` owns `AssignedWorkload` (`label()`, `countOpenFor(UUID)`), a
+signature that mentions nothing from `crm` or `sales`, and `crm.CustomerWorkload`,
+`sales.EnquiryWorkload`, `sales.FollowUpWorkload` implement it. `MemberService` injects
+`List<AssignedWorkload>` and aggregates over whatever is registered. The dependency arrow
+this creates is `crm`/`sales` → `iam`, which already exists (both packages already import
+`iam.AssignableUsers`), so `iam` gains zero new imports and the package graph stays acyclic —
+no cycle, and no new machinery is needed to avoid one. The three new count methods go on
+`VisibilityScopingArchTest.ALLOWED_METHODS`, carrying the same justification already recorded
+there for methods like `findByGstin`: *must see the whole tenant or the invariant breaks*.
+That makes "this read is never filtered" a structural property of where the query lives (an
+`iam`-owned aggregation over unfiltered repository calls, allowlisted and reviewed as such)
+rather than an incidental fact about who happens to call it today.
+
+### Lesson
+
+An invariant check and a user-facing list have opposite requirements of the same
+visibility-filtering mechanism — one must see everything or it is wrong, the other must see
+only what the caller is allowed to or it leaks. Routing both through one filter
+(`VisibleFinder`) because it's already there and happens to return the right answer for
+today's one caller is a latent correctness bug, not a DRY win: it only stays right for as
+long as nobody calls the invariant path with a restricted role. When a read must be
+structurally guaranteed unfiltered, give it its own path — and if that requires inverting a
+dependency to keep the package graph acyclic, prefer inversion (a port on the dependent side)
+over a direct call that creates a cycle or a shared mechanism that quietly serves two
+masters.
+
+---
+
+## Challenge 64 — A slice that runs targeted tests between full-gate runs accumulates invisible violations
+
+**Phase:** Implementation (members-management slice)
+
+### The problem
+
+Two tasks in this slice ran a filtered test command (`./gradlew :test --tests '...'`) rather
+than the full `./gradlew clean check` after touching `src/main`. That's a reasonable-looking
+shortcut on its own — a targeted run is faster feedback while a single service is being built
+out — but between two full-gate runs it silently accumulated two unrelated classes of failure
+at once: Spotless format violations across the new sources, and a new SpotBugs
+`EI_EXPOSE_REP2` finding (`MemberService` storing a Spring-injected `List<AssignedWorkload>`
+field without a defensive copy — the same finding family challenge #58's SpotBugs baseline
+already tracks 17 pre-existing instances of, just in new code this time). Both were only
+caught when a later task in the same slice finally ran the full gate.
+
+Why it is hard to catch earlier: **neither failure is visible in a code review of the diff.**
+A whitespace/import-order reformat does not read as a defect in a unified diff — it reads as
+noise a reviewer skims past, and here there wasn't even a diff to skim, since Spotless never
+ran to produce one. A static-analysis finding does not appear in the diff at all:
+`EI_EXPOSE_REP2` is a property of what a constructor does with a reference it's handed, not a
+syntactic pattern a human reading the added lines would flag on sight, and SpotBugs never ran
+to report it either. So a reviewer approving each of those two tasks on its diff alone had no
+way to see either problem — the gate that would have shown them simply didn't run.
+
+### The solution
+
+Run the full `./gradlew clean check` at the end of every task that changes `src/main`, not
+only at slice-milestone tasks — a filtered test run is a fine fast inner loop *during* a
+task, but it is not a substitute for the gate at the point a task is declared done. And when
+a new SpotBugs finding does show up in new code, fix it there rather than folding it into the
+baseline: the defensive copy went in (`List.copyOf(...)` on the constructor parameter)
+instead of adding an 18th `EI_EXPOSE_REP2` entry to `config/spotbugs/baseline.xml`. A
+baseline is meant to grandfather findings that predate the gate; a baseline that also absorbs
+findings introduced *after* the gate exists stops meaning "known, pre-existing debt" and
+starts meaning "whatever SpotBugs found most recently," which is a baseline that no longer
+does its job.
+
+### Lesson
+
+A quality gate that runs on a schedule other than "every commit that could break it" —
+end-of-slice instead of end-of-task, milestone instead of continuous — reports problems to
+the wrong person at the wrong time: the developer who introduced them has moved on, and the
+one who finally runs the gate inherits a diff too large to attribute cleanly. This sits
+beside challenges #58–#61 as a build-process lesson from the same run of slices: a gate is
+only as protective as the discipline of running it at the granularity it was designed to
+catch problems at.

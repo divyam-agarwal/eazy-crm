@@ -1,18 +1,49 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-01 — **Build hygiene is built and merged to `main` as `83e6880`.
-Nothing is in flight; `main` is the baseline for new work.** This repo now has automated quality
-gates for the first time: one `./gradlew clean check` runs the tests **plus** Spotless
-(palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage verification
-across both Gradle projects, and **GitHub Actions runs that same command on every push to `main`**
-— the repo also has a remote for the first time, `git@github.com:divyam-agarwal/eazy-crm.git`
-(public). Zero application-code changes: the only production-source diff is one mechanical
-whole-tree reformat of 311 files, proven byte-identical to `spotlessApply` output. **Read §0's
-"What CI does and does not do" before assuming the gate blocks anything** — it is a post-merge
-smoke alarm, not a pre-merge gate, and that is a consequence of this repo's no-PR merge habit
-rather than an oversight. See §3's top bullet for the gate detail (baseline count, coverage
-floors, resolved plugin versions). Before it, user invitations were merged to `main` as
-`f265cfe`. A tenant can finally have more than one user. An owner invites an email and a role, the invitee
+**Last updated:** 2026-09-02 — **Members management is built, on branch
+`worktree-members-management`, off `main` at `e9d694e`, not yet merged.** Eight task commits
+(`0d80e9b`..`f0ce72c`, one per task) plus two intermediate fix-ups folded in along the way
+(`2a11fa7` a Spotless reformat, `1577d50` a defensive copy for a new SpotBugs finding —
+challenge #64 is about how those two came to be needed), every task reviewed clean. A tenant's
+owner can now do the four things invitations deliberately stopped short of: **list** every
+member, **change** a role, **disable** a member without deleting their history, and **enable**
+one again. Two decisions carry the slice. The reassign-first gate on disable needs an
+unfiltered, tenant-wide count of open work from `crm`/`sales` repositories that `iam` must not
+depend on, so `iam` declares an `AssignedWorkload` port and `crm`/`sales` implement it —
+reusing the dependency edge those packages already have on `iam`, so the graph stays acyclic
+(challenge #63). And two owners demoting each other at once is **write skew**, not a lost
+update — nothing already in the codebase (`@Version`, a unique index, `REPEATABLE READ`) catches
+it, so every member-admin write now takes a `PESSIMISTIC_WRITE` lock on the tenant row first
+(challenge #62). See §3 for the full inventory: the four routes, the port, the lock, the
+`AuthService.refresh` fix that makes `disable` actually revoke access rather than just look like
+it, the `ConflictException` structured-fields addition, and migration `V33`. **561 tests, 0
+failures, 0 errors**, up from the 519-test baseline, via `./gradlew clean check` from a clean
+state.
+
+**Correction, not new news: `main` was never the clean, nothing-in-flight baseline the previous
+version of this line claimed.** It read "Nothing is in flight; `main` is the baseline for new
+work" — false already on the day this slice started, because an `openapi-contract` slice
+(springdoc 3.1.0, a typed error envelope, controller annotations) was mid-execution on its own
+branch at that time, roughly 2 of its planned 7 tasks committed. That slice is not this one's to
+finish or narrate further — its own SDD ledger has the detail — but a handoff that asserts
+nothing is in flight when something plainly is stops being useful the moment it's read
+literally, so this stands as the correction rather than a repeat of the error. Two branches are
+live off `main` at once as of this writing: `worktree-members-management` (this slice) and
+`openapi-contract`.
+
+**Before it, build hygiene was built and merged to `main` as `83e6880`.** This repo now has
+automated quality gates for the first time: one `./gradlew clean check` runs the tests **plus**
+Spotless (palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage
+verification across both Gradle projects, and **GitHub Actions runs that same command on every
+push to `main`** — the repo also has a remote for the first time,
+`git@github.com:divyam-agarwal/eazy-crm.git` (public). Zero application-code changes in that
+slice: the only production-source diff was one mechanical whole-tree reformat of 311 files,
+proven byte-identical to `spotlessApply` output. **Read §0's "What CI does and does not do"
+before assuming the gate blocks anything** — it is a post-merge smoke alarm, not a pre-merge
+gate, and that is a consequence of this repo's no-PR merge habit rather than an oversight. See
+§3 for the gate detail (baseline count, coverage floors, resolved plugin versions). Before that,
+user invitations were merged to `main` as `f265cfe`. A tenant can finally have more than one
+user. An owner invites an email and a role, the invitee
 follows a link, sets a password, and becomes an `ACTIVE` user of that tenant — which is what makes
 `assigned_to`, the record-visibility slice and the `SALES_EXEC` role stop being notional. The
 `invitation` table is the codebase's **third global, RLS-exempt table** after `refresh_token` and
@@ -24,11 +55,11 @@ every failed accept or preview returns a byte-identical 404 so a `permitAll` rou
 as a token-enumeration oracle (challenge #55) — including when the invitation is fine but its
 **tenant is SUSPENDED**, which both public routes refuse exactly as `AuthService.login` does. Challenge #56 records why this token is hashed at
 rest when `share_link`'s is deliberately plaintext. Backlog item #3 (P0-auth follow-up) is now
-**DONE in full** — see §8. The previous slice (scheduled quotation auto-expiry) is **merged to
-`main` as `2fb2b85`**; see §3's "Previous code work" for its detail.
+**DONE in full** — see §8. Before that, the quotation auto-expiry slice was **merged to
+`main` as `2fb2b85`**; see §3 for its detail.
 
-**One caveat travels with this slice, and it qualifies the "usable on day one" claim:** the
-`acceptUrl` handed back by `POST /api/v1/invitations` is
+**One caveat travels with the invitations slice, and it qualifies the "usable on day one" claim:**
+the `acceptUrl` handed back by `POST /api/v1/invitations` is
 `{easycrm.public-base-url}/invite/{token}` — a **frontend route that does not exist yet** (design
 spec D10). The *token* works and both public endpoints consume it directly, which is how the
 integration tests drive the whole flow; the *page* is not browsable. Wiring `/invite/{token}` is
@@ -40,12 +71,25 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### What's in flight right now
 
-**`main` is clean and is the baseline for new work.** The `build-hygiene` slice — seven tasks plus
-a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba` — was merged `--no-ff` as
-**`83e6880`** on 2026-09-01 and its local branch deleted; the merged result was verified green
-(519 tests, full `clean check`) before the branch went away. See
+**Two branches sit ahead of `main`, and neither has landed.** This handoff's own slice — members
+management, on `worktree-members-management`, off `main` at `e9d694e` — is code-complete and
+reviewed clean (eight task commits, `0d80e9b`..`f0ce72c`) but not yet merged; this file, the
+design spec, and challenges #62–#64 are the record of it until it does. Separately, an
+`openapi-contract` slice (springdoc 3.1.0, a typed error envelope, controller annotations) has
+been mid-execution on its own branch since before this slice started — roughly 2 of its 7 planned
+tasks committed as of this writing. **The previous version of this section claimed "Nothing is in
+flight; `main` is the baseline for new work," which was already false the day it was written** —
+this replaces that claim rather than repeating it. Whoever picks up next should check with the
+user which of the two branches lands first and in what order: the design spec's §4.4 already
+flags that both slices touch `ApiExceptionHandler.conflict(...)`, so merging one after the other
+is expected to produce one mechanical conflict there, not a surprise.
+
+**`main` itself is still clean at the last thing that actually landed on it — `build-hygiene`.**
+That slice — seven tasks plus a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba`
+— was merged `--no-ff` as **`83e6880`** on 2026-09-01 and its local branch deleted; the merged
+result was verified green (519 tests, full `clean check`) before the branch went away. See
 `docs/superpowers/specs/2026-09-01-build-hygiene-design.md` and
 `docs/superpowers/plans/2026-09-01-build-hygiene.md`. **Its SDD ledger is gone** — deleted with the
 workspace at merge, per the standing practice — so this file, the spec, and challenges #58–#61 are
@@ -339,7 +383,106 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: build hygiene** — **merged to `main` as `83e6880`** (branch deleted). 25
+- **Latest code work: members management** — built on branch `worktree-members-management`, off
+  `main` at `e9d694e`, **not yet merged** (see §0). Eight task commits (`0d80e9b`..`f0ce72c`) plus
+  two intermediate fix-up commits folded in along the way (`2a11fa7` a Spotless reformat,
+  `1577d50` a defensive copy for a new SpotBugs finding — challenge #64), every task reviewed
+  clean. Closes the gap `user-invitations` deliberately left open (below): a workspace with more
+  than one user is now *administrable*, not just creatable.
+
+  **Four owner-only routes on `com.easycrm.iam.web.MemberController`, at `/api/v1/members`**,
+  mirroring `InvitationController`'s shape (authenticated-only, no `SecurityConfig` change
+  needed): `GET /api/v1/members` (unpaged `List<MemberResponse>` — a tenant has a handful of
+  users, matching `listPending`'s precedent), `POST /{id}/role` (`ChangeRoleRequest`, `@Pattern`
+  validated the same way `InviteRequest.role` is, so an unknown role is a 400, not a 422 or a raw
+  Jackson failure), `POST /{id}/disable`, and `POST /{id}/enable`. `MemberResponse` never carries
+  `passwordHash`. `User` gained its first mutators — `changeRole(Role)`, `disable()`, `enable()` —
+  each with an already-in-that-state guard on the entity throwing `ConflictException`, matching
+  `Quotation.expire()`/`Invitation.revoke()`; `changeRole` has no guard, because re-assigning the
+  role a member already holds is a harmless, idempotent retry. Target resolution needs no
+  hand-written tenant filter: `app_user` is `@TenantId` + RLS, so another tenant's member 404s
+  structurally, in deliberate contrast to `InvitationService.revoke`'s hand-written filter
+  (challenge #54), which is load-bearing only because `invitation` is a global, RLS-exempt table.
+
+  **`AssignedWorkload` — a port declared in `iam`, implemented in `crm` and `sales` — is the
+  slice's central structural decision.** Disabling a member who still holds open work strands
+  that work, since a disabled member cannot log in to hand it off, so disable is refused (409)
+  while the member holds an open `Customer`, `Enquiry`, or `FollowUp` assigned to them. Counting
+  that requires a tenant-wide, *unfiltered* read across three repositories that
+  `VisibilityScopingArchTest` normally restricts to `platform.visibility`, from a package (`iam`)
+  that must not depend on `crm`/`sales` — the reverse of the one dependency edge that already
+  exists (`crm`/`sales` → `iam`, via `AssignableUsers`). Rather than route the count through
+  `VisibleFinder` (correct today only because an owner's visibility policy happens to be
+  unrestricted, and silently wrong the day a non-owner reaches the path), `iam` declares
+  `AssignedWorkload` (`label()`, `countOpenFor(UUID)`) and `crm.CustomerWorkload`,
+  `sales.EnquiryWorkload`, `sales.FollowUpWorkload` implement it; `MemberService` injects
+  `List<AssignedWorkload>` and aggregates. The dependency arrow this creates
+  (`crm`/`sales` → `iam`) already existed, so `iam` gains zero new imports and the package graph
+  stays acyclic. Three new entries on `VisibilityScopingArchTest.ALLOWED_METHODS` are the accepted
+  cost — the same allowlist that already carries `findByGstin`/`findByNormalizedPhone` for the
+  identical reason: *must see the whole tenant or the invariant breaks*. Challenge #63 is the
+  write-up; `V33__assigned_to_indexes.sql` adds the two `(tenant_id, assigned_to)` indexes this
+  slice's three new count queries actually run against, on `customer` and `enquiry` (`follow_up`
+  already had its equivalent).
+
+  **The last-active-owner invariant, and the tenant-row lock that actually closes it.** A
+  workspace must never reach zero `ACTIVE` `OWNER`s — every member-admin route (and invite/revoke)
+  calls `RoleGuard.requireOwner`, and this product has no support surface, so a stranded tenant
+  needs a manual production `UPDATE` to recover. A plain `count(active OWNERs) > 1` check is
+  check-then-act and misses the case where two owners demote each other at the same instant: both
+  read 2, both pass, both commit, and the tenant reaches zero. That is write skew (two
+  transactions read an overlapping set, then write disjoint rows), not a lost update — `@Version`
+  guards one row and these are two, a unique index only expresses "at most one," and Postgres
+  `REPEATABLE READ` catches write-write conflicts on the same row, not this. The fix: every
+  member-admin write (role change, disable, enable — uniformly, not just the two paths that can
+  reduce the count) takes a `PESSIMISTIC_WRITE` lock on the **tenant row** first
+  (`TenantRepository.findForUpdate`), serialising the second writer behind the first so its
+  re-count under the lock sees the truth. `MemberOwnerRaceTest` proves the anomaly is real by
+  failing when the lock is removed (`expected: <1> but was: <2>`) before proving the fix closes
+  it. Challenge #62 is the write-up, including why this is a different use of the
+  `@Lock(PESSIMISTIC_WRITE)` idiom than challenge #16's gapless-numbering precedent: #16 locks the
+  row it is about to write; this locks a row **neither** transaction would otherwise touch, purely
+  to manufacture the contention point the invariant needs.
+
+  **What makes `disable` actually bite, not just look like it.** Two of four layers were new:
+  `RefreshTokenService.revokeAllForUser` ends every one of the member's sessions the moment
+  they're disabled, and — the load-bearing fix — `AuthService.refresh` now refuses a non-`ACTIVE`
+  user. Before this slice, `refresh` rotated the token and minted a new access token with **no
+  status check at all**, so a disabled member's refresh token kept working indefinitely; the
+  rejection reuses the existing generic `UnauthorizedException("invalid refresh token")`, so the
+  endpoint gains no enumeration signal. `AssignableUsers.require` and `AuthService.login` already
+  refused a non-`ACTIVE` user and needed no change.
+
+  **`ConflictException` gained an optional `Map<String, Object> fields`**, so the reassign-first
+  409 can carry structured counts (keyed by `AssignedWorkload.label()`) for a frontend to route
+  on, instead of parsed prose. The single-argument constructor is unchanged and still yields no
+  `fields` key, so **every pre-existing 409 in the codebase stays byte-identical**.
+  `ApiExceptionHandler.conflict(...)` passes the map through — expect a mechanical merge conflict
+  here against `openapi-contract` (§0), which touches the same method concurrently for an
+  unrelated reason.
+
+  **Two caveats carried forward, neither fixed here, both accepted deliberately (design spec
+  §6.1/§10):**
+  - **The ≤15-minute access-token window.** `JwtAuthenticationFilter` does no database read, so a
+    disabled or just-demoted member's already-minted access token keeps working until it expires
+    (`easycrm.jwt.access-ttl-seconds` = 900). Closing it properly means a per-request user lookup
+    in a filter that runs before any transaction or tenant binding exists — not worth it for a
+    15-minute window on a rare operation with no hostile-insider threat model yet. If this is ever
+    revisited, shorten the access TTL; don't add the read.
+  - **The suspended-tenant hole in `AuthService.refresh` is still open.** `refresh` does not check
+    `TenantStatus` either, so a suspended tenant's users keep refreshing — out of scope here (it's
+    a *tenant* lifecycle concern, not a *member* one), but worth naming because this slice
+    modified the very same method for a different reason, and the fix is one condition away.
+
+  **561 tests, 0 failures, 0 errors**, up from the 519-test baseline — `./gradlew clean check`
+  green from a clean state, Spotless clean, SpotBugs 0 findings. New challenges **#62–#64** (#62
+  the last-owner write-skew and the tenant-row lock, #63 the invariant-check-must-not-filter
+  tension that produced `AssignedWorkload`, #64 the build-process lesson about running the full
+  gate only at milestones instead of every task); the annotations reference needed one addition —
+  a second use site on the existing `@Lock`/`LockModeType` row for
+  `TenantRepository.findForUpdate`.
+
+- **Previous code work: build hygiene** — **merged to `main` as `83e6880`** (branch deleted). 25
   commits off `main` at `2dc50ba`: seven tasks, every one reviewed clean on its first pass with no
   fix round anywhere, plus a whole-branch-review fix wave of five commits (`82e0f4e`..`ee4641c`)
   that closed six Minors and two nits. Zero application-code
@@ -1013,9 +1156,10 @@ the workflow from §0 step 4.
      tier**, exactly as the record-visibility slice left it. The parent spec §6's three-tier rule
      remains **unbuilt**, and inviting a `SALES_MANAGER` must not be read as evidence otherwise —
      narrowing that tier is still a schema-plus-admin-surface slice of its own.
-   - **Members management is out of scope and unbuilt:** there is no way to list existing users,
-     change a member's role, or disable one. Invite + accept + revoke + pending list is the whole
-     surface.
+   - **Members management landed in its own slice** — see §3's top entry and the "Suggested
+     ranking" list below for what it does and deliberately does not do. This qualification, as
+     written for the invitations slice, is now historical: at the time invite + accept + revoke +
+     pending list really was the whole surface.
 4. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
    `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
 
@@ -1058,13 +1202,16 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested ranking — read this before proposing anything. Updated 2026-09-01, after `build-hygiene`.**
+**Suggested ranking — read this before proposing anything. Written 2026-09-01, after
+`build-hygiene`; not re-derived for members management (§3), which lands after it in the queue
+rather than changing the ranking's logic.**
 
-The numbered list above is down to one open item (#4), the correctness backlog is empty, and eight
+The numbered list above is down to one open item (#4), the correctness backlog is empty, and nine
 slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level
-visibility, activity/follow-up, scheduled auto-expiry, user invitations, then build hygiene). **The
-strongest remaining candidates are not on the numbered list**, so the real option set is the six
-below. Present them; do not default into #4 because it is the last number standing.
+visibility, activity/follow-up, scheduled auto-expiry, user invitations, build hygiene, then
+members management). **The strongest remaining candidates are not on the numbered list**, so the
+real option set is the six below, one of which (members management) is now done. Present the
+rest; do not default into #4 because it is the last number standing.
 
 - **Wave 3, OpenAPI — the strongest claim, and it is coupled to the frontend.** There are 18
   controllers and no API document of any kind. Nothing has ever been built against this API, which
@@ -1084,9 +1231,18 @@ below. Present them; do not default into #4 because it is the last number standi
   higher security value than anything else on this list, on a repo that is now **public** and ships
   JWT auth, bcrypt and GST data. The one cost to plan for: Dependency-Check needs an NVD cache that
   makes CI meaningfully slower.
-- **Members management — the natural sequel to invitations.** List existing users, change a role,
-  disable one. Today invite + accept + revoke + pending-list is the whole surface, so a multi-user
-  tenant is creatable but not administrable. Unscoped; starts at brainstorming.
+- ~~**Members management**~~ — **DONE** (§3, not yet merged — see §0). List, change-role, disable,
+  enable, all owner-only. **What it deliberately does not do**, and why: no delete — disable only,
+  so `audit_log.actor_user_id`, `invitation.invited_by`, and the `assigned_to` references on
+  `customer`/`enquiry`/`follow_up` stay intact rather than orphaned; no bulk reassignment — the
+  gate refuses a disable and reports what blocks it, and moving the work happens through the
+  existing per-record endpoints, with a reassign-in-one-call endpoint left as a reasonable
+  follow-up once the frontend knows what it wants; no self-service profile editing (a member
+  changing their own email/phone/password) — adjacent and token-shaped, but it shares a surface
+  with password reset, which has its own decisions and is unbuilt; and `SALES_MANAGER` is still
+  collapsed into the unrestricted visibility tier exactly as `record-visibility` left it — being
+  assignable by an owner is not evidence the parent spec §6 three-tier rule is built, because it
+  is not.
 - **Wave 2, observability — real value, but sequence it deliberately.** Structured JSON logging, an
   MDC correlation filter (`requestId`/`tenantId`/`userId`), GSTIN/phone/email redaction, Micrometer
   with `/actuator/prometheus`, and tracing over OTLP. Two things make it more than housekeeping: the
