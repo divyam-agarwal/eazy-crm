@@ -307,6 +307,41 @@ the access TTL rather than adding the read.**
 Role changes otherwise propagate for free: `AuthService.refresh` already re-reads
 `user.getRole()` when minting, so the next refresh carries the new role with no extra work.
 
+### 6.2 The reassign-first gate has the same shape, and is left open on purpose
+
+`requireNoOpenWork` (§4.1) is check-then-act, exactly like the last-active-owner invariant
+§5.1 defends against — but the tenant lock only serialises **member-admin** writes. The work
+that gets assigned lives on the other side of the package boundary §4.3 just inverted, and
+nothing there takes that lock:
+
+| | T1 (disable M) | T2 (create customer, assigned to M) |
+|---|---|---|
+| t1 | lock tenant row | |
+| t2 | count open work for M → **0** → passes | |
+| t3 | | `AssignableUsers.require(M)` — plain `findById`, reads `ACTIVE` |
+| t4 | `M.status = DISABLED`; `COMMIT` | |
+| t5 | | save customer assigned to M; `COMMIT` |
+
+Two transactions read an overlapping set (M's status and open-work count) and write disjoint
+rows — the same anomaly class as §5.1, materialised through `POST /api/v1/customers` instead
+of a second member-admin call. The result is an active customer assigned to a member who
+cannot log in: exactly the stranded work §4.1 exists to prevent.
+
+**This is deliberately not fixed.** Closing it the way §5.2 closes the owner race would mean
+taking the tenant lock on every path that assigns work — `AssignableUsers.require`, reached
+from `CustomerService`, `EnquiryService`, `FollowUpService`, and whatever calls it next —
+which serialises ordinary CRM traffic (every customer, enquiry, and follow-up write, from
+every caller, all day) to protect an admin operation that one owner runs rarely against one
+member at a time. That trade is not close.
+
+It is also not the same *kind* of gap as §5.1's. A workspace with zero active owners is
+**unrecoverable in-product** (§5, D6) — nobody left who can fix it without a manual `UPDATE`.
+This is not: the owner opens the members list, sees M still listed (disabled members are
+listed on purpose, §2), and either re-enables them or reassigns the stray customer — no
+database intervention, no support ticket. That asymmetry, not an oversight, is why one race
+gets a `PESSIMISTIC_WRITE` lock and the other gets a paragraph. A future reader should not
+"fix" the inconsistency by adding a lock nobody wants.
+
 ---
 
 ## 7. Error contract
@@ -422,6 +457,10 @@ Baseline is 519 tests on `e9d694e`; run `./gradlew clean check`, not `clean test
 
 - **The ≤15-minute access-token window** (§6.1) — accepted, with the cheaper remedy named
   (shorten the TTL) rather than the expensive one (per-request lookup).
+- **The reassign-first gate shares §5.1's write-skew shape** (§6.2) — a concurrent assignment
+  can strand work on a member being disabled in the same window the tenant lock closes for
+  the owner count. Accepted because closing it would serialise ordinary CRM traffic to guard
+  a rare admin operation, and unlike the owner invariant it is fully recoverable in-product.
 - **Runtime-discovered blocker set** (§4.3) — a new assigned-to aggregate joins the gate
   only if someone writes an `AssignedWorkload` for it. Silent if forgotten. Mitigation is
   this spec plus the handoff entry; an ArchUnit rule tying "has an `assigned_to` column" to

@@ -2,10 +2,12 @@ package com.easycrm.iam;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -73,8 +75,13 @@ class MemberOwnerRaceTest extends IntegrationTest {
         pool.shutdown();
         assertTrue(pool.awaitTermination(30, TimeUnit.SECONDS), "both attempts finished");
 
-        long succeeded = results.stream().filter(f -> outcome(f) == null).count();
-        assertEquals(1, succeeded, "exactly one demotion may win");
+        List<Throwable> losses =
+                results.stream().map(this::outcome).filter(Objects::nonNull).toList();
+        assertEquals(1, results.size() - losses.size(), "exactly one demotion may win");
+        assertInstanceOf(
+                ConflictException.class,
+                losses.get(0),
+                "the loser must be refused by the last-owner invariant, not by an unrelated failure");
 
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         long remaining = tx.execute(s -> users.countByRoleAndStatus(Role.OWNER, UserStatus.ACTIVE));

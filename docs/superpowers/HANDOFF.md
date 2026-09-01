@@ -1412,12 +1412,13 @@ rather than in build hygiene:
 ### Smaller deferred-Minor backlog
 
 Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
-ledgers of **seven** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
+ledgers of **eight** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
 items 23–24 from the `platform-primitives` slice (eight tasks), items 25–32 from
 `public-rate-limiting` (seven tasks), items 33–41 from `record-visibility` (nine tasks plus a
 whole-branch fix wave), items 42–46 from `activity-follow-up` (fourteen tasks), items 47–49 from
-`quotation-auto-expiry` (seven tasks plus a whole-branch fix wave), and items 50–51 from
-`user-invitations` (eight tasks plus a whole-branch fix wave) — each cross-checked
+`quotation-auto-expiry` (seven tasks plus a whole-branch fix wave), items 50–51 from
+`user-invitations` (eight tasks plus a whole-branch fix wave), and items 52–58 from
+`members-management` (nine tasks plus a whole-branch fix wave) — each cross-checked
 line-by-line against its ledger before that workspace was deleted at merge. Every one of those
 workspaces is now gone, so this list is the durable copy. So it really is **self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
@@ -1746,3 +1747,26 @@ tenant, not after, for the reason its own entry gives.
     flush the change anyway. It is harmless. It is listed only because the redundancy is
     **identical in both places**: removing it from one alone would make two structurally identical
     paths look deliberately different, which is worse than leaving both. Remove both or neither.
+52. **`VisibilityScopingArchTest.ALLOWED_METHODS` is keyed on a bare method name**, not on
+    `owner#method`, so an allowlisted name is exempt on *all five* guarded repositories at once.
+    `countByAssignedToAndStatus` is generic enough that adding a same-named finder to, say,
+    `OrderRepository` later would inherit the exemption silently. Pre-existing property of the
+    allowlist (`save`, `findByGstin` share it), not introduced by this slice. Fix by keying the
+    set on `owner#method`.
+53. **An already-`DISABLED` member who holds open work gets a misleading 409.** `requireNoOpenWork`
+    runs before `member.disable()`, so the response says "still holds open work" rather than
+    "already disabled". Narrow, but actively misleading when it happens.
+54. **`MemberService.changeRole` calls `Role.valueOf(role)`**, which throws
+    `IllegalArgumentException` → 500 if a future caller reaches the service without
+    `ChangeRoleRequest`'s `@Pattern`. A catch mapping to `ValidationException` would make the
+    service safe standalone.
+55. **`users.findAll(Sort.by("email"))` sorts by database collation**, so casing affects the
+    members list's order. Cosmetic but user-facing.
+56. **A malformed non-UUID `{id}` returns Spring's default 400**, not the house `{error:{code}}`
+    envelope — `ApiExceptionHandler` has no `MethodArgumentTypeMismatchException` handler.
+    House-wide and pre-existing on every controller with a UUID path variable.
+57. **`RefreshTokenService.revokeAllForUser` calls `saveAll` on already-managed entities** —
+    redundant under dirty checking, but mirrors the adjacent `revoke()` method. Fix both together
+    or neither.
+58. **The 409's prose pluralizes bluntly ("1 customers").** The machine-readable `fields` map is
+    the actual contract for the frontend; the prose is a fallback.
