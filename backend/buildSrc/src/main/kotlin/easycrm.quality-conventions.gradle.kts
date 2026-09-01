@@ -44,7 +44,16 @@ spotless {
         endWithNewline()
     }
     kotlinGradle {
-        target("*.gradle.kts")
+        if (project == rootProject) {
+            // Only the root project's application of this convention plugin reaches
+            // buildSrc: it is a sibling build rooted at the same directory as the root
+            // project, has no Spotless of its own, and would otherwise sit outside every
+            // gate this slice adds -- including the three files this slice is *about*
+            // (this file, buildSrc/build.gradle.kts, buildSrc/settings.gradle.kts).
+            target("*.gradle.kts", "buildSrc/*.gradle.kts", "buildSrc/src/main/kotlin/*.gradle.kts")
+        } else {
+            target("*.gradle.kts")
+        }
         trimTrailingWhitespace()
         endWithNewline()
     }
