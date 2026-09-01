@@ -1,7 +1,8 @@
 # User invitations — design
 
 **Date:** 2026-09-01
-**Status:** Approved, not yet implemented
+**Status:** Implemented on branch `user-invitations`; amended after the whole-branch review
+(§4.1 `V32`, §7's re-invite consequence, §8's suspended-tenant state and its `400` correction)
 **Backlog item:** §8 #3 in `docs/superpowers/HANDOFF.md` — the sole surviving piece of the
 P0-auth follow-up
 **Baseline:** `main` at `830f4bd` (464 tests, 0 failures, 0 errors)
@@ -132,6 +133,13 @@ table):
 `lower(email)` in index 2 and a `lower()`-normalising write path together: a second invite to
 `Ravi@shop.in` when `ravi@shop.in` is pending must collide. Store the address as entered
 (it is shown back to the owner) but index and compare it folded.
+
+**That rule has to reach `app_user` too, and originally did not.** `uq_user_tenant_email` (V6) is
+on the raw column, so it read `ravi@shop.in` and `Ravi@shop.in` as two different users and a case
+variant could be invited over an existing member and accepted, giving one tenant two `ACTIVE`
+users — possibly with different roles — for one human. `V32__app_user_case_insensitive_email.sql`
+adds a unique index on `app_user (tenant_id, lower(email))` **alongside** the V6 constraint, and
+the membership pre-check uses `findByEmailIgnoreCase`. Challenge #57 has the full story.
 
 ### 4.2 Registering a third global table
 
@@ -334,6 +342,15 @@ a second cron, a second sweep, and a second set of failure modes.
 Record this as a decision, not an oversight, if it is ever asked why quotations have an expiry
 job and invitations do not.
 
+**Laziness charges one price, on the invite path.** An expired invitation stays `PENDING`
+forever, and the partial unique index in §4.1 is `PENDING`-scoped rather than expiry-aware — so
+without care, an unopened link would block its own address from ever being re-invited, while the
+owner's list cheerfully reported `expired: true` about the row doing the blocking. `invite`
+therefore revokes a colliding *expired* row and continues, which frees the partial index in the
+same transaction. It uses `saveAndFlush`, not `save`: Hibernate's action queue runs every insert
+before any update, so a plain `save` lets the new `PENDING` row hit the index while the old one is
+still `PENDING` on disk. A live pending invitation still yields the `409`.
+
 ---
 
 ## 8. Error handling
@@ -350,11 +367,30 @@ descriptiveness is the leak.
 The `GET` preview behaves identically — the same `404` for all four states — so it cannot be
 used as an oracle against the `POST`.
 
+**A fifth state joined the four after the whole-branch review:** an invitation that is itself
+perfectly live, but whose **tenant is `SUSPENDED`**. `AuthService.login` refuses a suspended
+tenant explicitly, and `accept` is the only other entry point in the app that resolves a tenant
+from something other than an existing JWT — so a tenant suspended for non-payment could otherwise
+keep onboarding staff on links issued before suspension. Both public routes refuse it, through
+the *same* `NotFoundException` as every other rejection, for the reason above. The whole chain
+(`findByTokenHash` → `PENDING` → not expired → tenant not suspended → one `orElseThrow`) lives in
+a single `InvitationService.requireLive(rawToken)` that both public methods call, so the property
+is enforced structurally rather than by keeping two copies in step.
+
+(Scope note: `AuthService.refresh` has the same suspended-tenant gap. It predates this slice and
+is deliberately out of its scope.)
+
 Everything else is the existing contract: `403` from `RoleGuard`, `409` on duplicate email or
-duplicate pending invite, `422` from bean validation on a malformed email or a password shorter
+duplicate pending invite, `400` from bean validation on a malformed email or a password shorter
 than 8 characters — the accept request reuses `SignupRequest`'s exact constraints
 (`@NotBlank @Size(min = 8)`), so an invited user's password rules cannot drift from a
 self-serve owner's.
+
+`400`, not `422`: `ApiExceptionHandler` maps `MethodArgumentNotValidException` to `400` and
+has done since before this slice, so that is the codebase's established contract for a body
+that fails bean validation. (`422` is what a hand-thrown `ValidationException` returns —
+a semantic rejection after the body parsed, such as a GSTIN whose checksum is wrong. This
+paragraph originally said `422` and was simply wrong about the code.)
 
 ---
 

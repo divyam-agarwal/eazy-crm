@@ -3336,6 +3336,18 @@ the same empty `Optional`, unknown / revoked / accepted / expired all reach the 
 message, no per-state status — a helpful "this invitation has expired" would undo the
 whole thing.
 
+**Two things the branch review corrected here, both worth carrying.** First, that chain
+existed *twice* — once in `accept`, once in `preview` — which made the codebase's most
+leak-sensitive property a remember-to-update-both convention. It is now a single
+`requireLive(rawToken)` both public methods call. Second, a **fifth** state joined the four:
+a valid invitation whose *tenant* is `SUSPENDED`. `AuthService.login` refuses a suspended
+tenant explicitly, and `accept` is the only other entry point that resolves a tenant from
+something other than an existing JWT, so it has to refuse one too — but through the same
+`throw`, because a distinct status there would reopen the oracle from a new direction.
+`preview` refuses it as well: a preview that succeeded where the accept fails would name
+the workspace and confirm the token, which is exactly the asymmetry the shared endpoint
+contract exists to prevent.
+
 `Invitation.accept()`'s `ConflictException` still exists, but be precise about what it is
 now for: it is a defensive entity precondition, **not** the mechanism that stops a double
 accept. Under Postgres READ COMMITTED the loser of a race on one live token normally
@@ -3344,17 +3356,29 @@ re-reads a snapshot in which the row is still `PENDING` — the winner has not c
 **`@Version` optimistic locking at commit**, inherited from `BaseEntity` on the claim the
 transaction writes back: the loser's update matches no row at its expected version, and
 the resulting `OptimisticLockingFailureException` becomes a 409 through the global handler.
-Behind that sits **`UNIQUE (tenant_id, email)` on `app_user`** (`uq_user_tenant_email`),
-which is the layer that catches the case optimistic locking cannot see — two *different*
-invitations to one address racing to accept, where each transaction claims its own row and
-neither conflicts with the other. `InvitationService.accept`'s inline comment states this
+Behind that sits the **uniqueness of `(tenant_id, email)` on `app_user`**, which is the
+layer that catches the case optimistic locking cannot see — two *different* invitations to
+one address racing to accept, where each transaction claims its own row and neither
+conflicts with the other. Two indexes now enforce it: `uq_user_tenant_email` on the raw
+column (V6) and `uq_user_tenant_email_lower` on `(tenant_id, lower(email))` (V32). The
+second is not redundant — the raw constraint reads `ravi@shop.in` and `Ravi@shop.in` as
+different strings, so without it the same race spelled two ways produced two `ACTIVE` users
+for one human, possibly with different roles. `InvitationService.accept`'s inline comment states this
 correctly; the entity guard's job is to stop a future caller that bypasses the service from
 writing a nonsense state, not to win the race. Either way the loser is someone who already
 holds a valid token, so a distinguishable 409 on that path leaks nothing.
 
-The property is asserted rather than described: one test accepts a token, replays it, and
-compares the replay's response body byte-for-byte against the response for a token that
-never existed. A future "helpful" message fails that test rather than shipping quietly.
+The property is asserted rather than described: each rejection state gets a test that
+compares its response body byte-for-byte against the response for a token that never
+existed, on **both** public endpoints. A future "helpful" message fails that test rather
+than shipping quietly.
+
+That last sentence is also where this entry originally over-claimed. Only the *consumed*
+state was compared as bytes; revoked and expired asserted `isNotFound()` and stopped there,
+which is precisely the assertion a per-state message survives. Writing "assert it as bytes"
+in a lesson does not assert it — the branch review is what caught the gap. If a property is
+worth a challenge entry, check that the tests pin every case the entry claims, not the one
+that was convenient to write first.
 
 ### Lesson
 
@@ -3438,3 +3462,85 @@ to a case it was never about. Write the *criterion* down next to the decision, n
 decision — the next token-shaped feature (password reset is the obvious one, and is named
 out of scope in this slice's spec §10) will face this exact fork, and the criterion is the
 only part that transfers.
+
+## Challenge 57 — Two tables disagreed about what an email address *is*
+
+**Phase:** Implementation (user-invitations slice, whole-branch review fix wave)
+
+### The problem
+
+Two uniqueness rules, written a year apart, quietly disagreed about identity.
+
+`app_user` has carried `uq_user_tenant_email UNIQUE (tenant_id, email)` since V6 — a
+constraint on the **raw** column, so `ravi@shop.in` and `Ravi@shop.in` are two different
+users. `invitation` (V31) folds case: its partial unique index is on
+`(tenant_id, lower(email))`, and the service's duplicate pre-check folded too, because an
+invitation to a case variant of a live invitation is obviously the same invitation.
+
+Both decisions are defensible in isolation. Together they open a hole that neither table
+can see, because it only exists on the path *between* them:
+
+1. `ravi@shop.in` is already an `ACTIVE` member.
+2. The owner invites `Ravi@shop.in`. The membership check was `findByEmail` — exact —
+   so it misses. The pending pre-check folds case but finds no pending row. The partial
+   index sees no clash. **201.**
+3. The invitee accepts. `accept` inserts `User("Ravi@shop.in", ...)`, and
+   `uq_user_tenant_email` compares raw strings, sees something new, and allows it.
+
+The tenant now has two `ACTIVE` users for one human — plausibly with *different roles*,
+since the invitation names the role — and `AuthService.login`'s exact-match lookup returns
+whichever spelling you happen to type. Nothing throws. Nothing is logged. The only symptom
+is a permissions bug that appears to depend on how someone capitalised their own email.
+
+What makes this hard to catch is that no single component is wrong. Each table's rule is
+internally consistent; the bug lives in the *seam*, and a test of either table alone
+passes.
+
+### The solution
+
+Fix both layers, because they fail differently.
+
+**The service check** becomes `users.findByEmailIgnoreCase(...)`. That is what produces the
+readable 409 for the ordinary case, and it is also a check-then-act window — it cannot
+help the case where two *different* invitations, spelled differently, are accepted
+concurrently. Neither accept is an invite, so no pre-check runs at all.
+
+**The database** closes that window: `V32` adds
+`CREATE UNIQUE INDEX uq_user_tenant_email_lower ON app_user (tenant_id, lower(email))`,
+deliberately **in addition to** `uq_user_tenant_email` rather than replacing it. A
+functional unique index is the only artifact that can enforce "one address, one member"
+against writers that never see each other.
+
+One implementation trap surfaced while fixing the sibling finding in the same block, and it
+is worth its own paragraph because the symptom impersonates the bug. Expiry is lazy by
+design, so an expired invitation stays `PENDING` forever and blocks its own address from
+being re-invited; the fix is for `invite` to revoke the dead row and carry on, freeing the
+partial index inside the same transaction. Written the obvious way — `existing.revoke()`,
+`save`, then `save` the new invitation — it fails with a unique-violation on the index it
+was supposed to have freed. **Hibernate's `ActionQueue` executes every `EntityInsertAction`
+before any `EntityUpdateAction`**, regardless of the order the code called `save` in, so
+the new `PENDING` row reaches the database while the old one is still `PENDING` on disk.
+The index is a plain `CREATE UNIQUE INDEX`, not a constraint, so it is not deferrable and
+there is nothing to postpone the check to commit. `saveAndFlush` on the revoke forces the
+`UPDATE` out first. The failing form was confirmed by reverting the flush and watching the
+test go red, not by reasoning alone.
+
+### Lesson
+
+Uniqueness is a statement about **identity**, and identity has to be defined once for the
+whole system, not per table. When two tables key on the same real-world thing — an email
+address, a phone number, a GSTIN — and normalise it differently, the gap between them is
+reachable by any flow that reads one and writes the other, and it is invisible to tests
+that exercise either table alone. The tell is a `lower()`, `trim()` or `ignoreCase` that
+appears on one side of a boundary and not the other.
+
+And when the fix is "compare it case-insensitively", a service-level check is only the
+error-message half. Anything that must hold across concurrent writers belongs in a
+constraint or index; Postgres will index an expression, so a functional unique index costs
+one line and turns a convention into a fact. Keep the older raw constraint alongside it —
+it is subsumed, not contradicted, and dropping it widens what a future migration may
+silently do to the column.
+
+Finally: Hibernate's flush order is not your call order. Any transaction that frees a
+unique index by an `UPDATE` and then re-fills it with an `INSERT` needs an explicit flush
+between the two, or it will fail with the exact error the change was meant to prevent.

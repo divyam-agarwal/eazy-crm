@@ -1,7 +1,8 @@
 # EasyCRM — Handoff
 
 **Last updated:** 2026-09-01 — **User invitations are built on branch `user-invitations`, all eight
-tasks complete and green, pending the whole-branch review and merge (not yet on `main`).**
+tasks plus the whole-branch review's fix wave complete and green, pending merge (not yet on
+`main`).**
 A tenant can finally have more than one user. An owner invites an email and a role, the invitee
 follows a link, sets a password, and becomes an `ACTIVE` user of that tenant — which is what makes
 `assigned_to`, the record-visibility slice and the `SALES_EXEC` role stop being notional. The
@@ -11,7 +12,8 @@ any context exists. Two consequences are worth knowing before touching this area
 hand-written `tenant_id` comparison in the entire codebase lives in `InvitationService.revoke`
 (challenge #54 says why the structural rule cannot apply and why the miss must 404, not 403), and
 every failed accept or preview returns a byte-identical 404 so a `permitAll` route cannot be used
-as a token-enumeration oracle (challenge #55). Challenge #56 records why this token is hashed at
+as a token-enumeration oracle (challenge #55) — including when the invitation is fine but its
+**tenant is SUSPENDED**, which both public routes refuse exactly as `AuthService.login` does. Challenge #56 records why this token is hashed at
 rest when `share_link`'s is deliberately plaintext. Backlog item #3 (P0-auth follow-up) is now
 **DONE in full** — see §8. The previous slice (scheduled quotation auto-expiry) is **merged to
 `main` as `2fb2b85`**; see §3's "Previous code work" for its detail.
@@ -36,8 +38,21 @@ the first thing to do when the frontend lands.
 endpoint, the pending-list + revoke endpoints, the pre-auth accept endpoint, the pre-auth preview
 endpoint, the expiry and concurrency tests, and this docs wrap-up) are done on branch
 `user-invitations`, off `main` at `830f4bd` — three design/plan commits (`639bb23` the spec,
-`532e38a` two corrections to it, `3c5b91a` the plan), then the task commits from `42d20e2` to this
-docs wrap-up. Every task reviewed clean.
+`532e38a` two corrections to it, `3c5b91a` the plan), then the task commits from `42d20e2` to the
+docs wrap-up `d919242`. Every task reviewed clean.
+
+**The whole-branch review then found four Important issues and two Minor ones, all fixed in
+the four commits from `3903030` to the tip** (invite-path correctness, the pre-auth path,
+housekeeping, then this docs pass):
+a case variant of an existing member's address could become a second `ACTIVE` user for one human;
+`accept` minted a live session for a **SUSPENDED** tenant, which only `login` had been refusing;
+an expired invitation blocked its address from ever being re-invited; and the byte-identical-404
+property that challenge #55 and this file both claim for all four rejection states was only
+actually asserted for one of them. Two findings were deliberately **deferred, not missed** —
+splitting `InvitationService` by authentication posture (revisit when password reset gives the
+pre-auth half a second client), and the redundant `invitations.save(...)` on already-managed
+entities in `revoke` and `accept` (identical in both, so remove both or neither). `AuthService.refresh`
+has the same suspended-tenant hole; it predates this branch and was left alone on purpose.
 
 The suite is **513 tests, 0 failures, 0 errors** (490 root + 23 `platform-primitives`), up from the
 464-test `main` baseline (+49). **It has not been merged to `main`** — run
@@ -64,7 +79,7 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
    then `cd backend && ./gradlew clean test`. On `main` this is
    **464 tests, 0 failures, 0 errors** (441 root + 23 `platform-primitives`); on the unmerged
-   `user-invitations` branch it is **513** (490 root + 23 `platform-primitives`). Gradle prints no total for a
+   `user-invitations` branch it is **519** (496 root + 23 `platform-primitives`). Gradle prints no total for a
    multi-project build, so count it yourself:
 
    ```bash
@@ -144,7 +159,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (56 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (57 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -269,7 +284,11 @@ All under `docs/superpowers/`:
   (token_hash)`; a **partial** `UNIQUE (tenant_id, lower(email)) WHERE status = 'PENDING'`, which
   makes at-most-one-live-invitation-per-address a database fact rather than a check-then-act race
   while letting accepted/revoked rows accumulate as history; and `(tenant_id, status, expires_at)`
-  for the owner's pending list.
+  for the owner's pending list. **`V32__app_user_case_insensitive_email.sql` adds a fourth**, on
+  `app_user (tenant_id, lower(email))`, alongside — not instead of — `uq_user_tenant_email`: the
+  invitation table folds case and `app_user` did not, so the two layers disagreed about what
+  "already a member" means and a case variant could become a second user for one human.
+
 
   **Five endpoints, split across two controllers by authentication posture** (mirroring
   `AuthController` / `PublicShareController`, which is what keeps the `permitAll` matchers a
@@ -297,14 +316,22 @@ All under `docs/superpowers/`:
   mechanism to lean on, so the filter is load-bearing rather than belt-and-braces, and a miss falls
   through to 404 (never 403, which would leak that the id is valid *somewhere*): challenge #54.
   (2) Every failed accept **and** every failed preview — unknown, revoked, already accepted,
-  expired — returns a **byte-identical 404**, asserted as bytes, so a `permitAll` route cannot be
-  used as a token-enumeration oracle: challenge #55, which also spells out that the entity's own
-  `ConflictException` is a backstop and that `@Version` plus `UNIQUE (tenant_id, email)` on
-  `app_user` are what actually stop concurrent accepts. (3) `accept` is deliberately **not**
+  expired, **or belonging to a SUSPENDED tenant** — returns a **byte-identical 404**, asserted as
+  bytes for every one of those states on both routes, so a `permitAll` route cannot be used as a
+  token-enumeration oracle: challenge #55, which also spells out that the entity's own
+  `ConflictException` is a backstop and that `@Version` plus the two unique indexes on `app_user`
+  are what actually stop concurrent accepts. That contract now lives in **one** place —
+  `InvitationService.requireLive(rawToken)`, which both public methods call — rather than in two
+  identical copies. Adding a per-state message anywhere in it is the one change to never make. (3) `accept` is deliberately **not**
   `@Transactional`: it binds `TenantContext` *before* opening its own `TransactionTemplate`
   transaction, because a Hibernate session resolves its tenant when it opens and the `User` insert
   is `@TenantId` + RLS. Inverting those two lines does not throw — it silently writes an unbound
-  row. Third arrival at the trap challenges #9 and #52 already record.
+  row. Third arrival at the trap challenges #9 and #52 already record. (4) **An email address is
+  one identity however it is spelled.** The membership check is `findByEmailIgnoreCase`, the
+  invitation pre-check is `findByTenantIdAndStatusAndEmailIgnoreCase`, and `V32`'s
+  `(tenant_id, lower(email))` unique index on `app_user` is the structural backstop for the case
+  neither service check can see — two *different* invitations, spelled differently, racing to
+  accept. Do not "simplify" any of the three back to an exact match.
 
   **Expiry is lazy, and that is a decision, not an oversight (design spec §7).** `expires_at` is
   checked when a token is presented and the pending list *derives* `expired` for display; there is
@@ -312,11 +339,19 @@ All under `docs/superpowers/`:
   is who observes the state: a quotation's `EXPIRED` is business-visible (list views, pipeline
   totals, audit, the shared link a customer sees) so it must be materialised; an invitation's
   expiry is observable only by whoever presents the token, and the lazy check is authoritative at
-  exactly that moment.
+  exactly that moment. The one price laziness charges is paid on the **invite** path: an expired
+  row stays `PENDING` forever, and the partial unique index is `PENDING`-scoped rather than
+  expiry-aware, so re-inviting that address would be refused as a duplicate. `invite` therefore
+  revokes a colliding expired row and carries on — with `saveAndFlush`, because Hibernate's action
+  queue runs every insert before any update and a plain `save` would let the new row hit the index
+  while the old one is still `PENDING` on disk.
 
-  **513 tests, 0 failures, 0 errors** — 490 in the root project, 23 in `platform-primitives`, up
-  from the 464-test `main` baseline (+49). New challenges **#54–#56** (#56 is why this token is
-  hashed when `share_link`'s is plaintext, and the criterion that decides it); the annotations
+  **519 tests, 0 failures, 0 errors** — 496 in the root project, 23 in `platform-primitives`, up
+  from the 464-test `main` baseline (+55). The last six came from the whole-branch review's fix
+  wave (four commits, `3903030` onward), described in §0. New challenges **#54–#57** (#56 is why this token is
+  hashed when `share_link`'s is plaintext, and the criterion that decides it; #57 is the review
+  wave's, on two tables that normalised an email address differently and the seam that opened
+  between them); the annotations
   reference needed **no new rows** — every annotation this slice uses (`@Email`, `@Pattern`,
   `@Size`, `@NotBlank`, `@Enumerated`, `@GetMapping`, `@DeleteMapping`, `@PathVariable`,
   `@Component`, `@Value`, and the rest) was already documented by earlier slices.
@@ -897,21 +932,22 @@ workspaces is now gone, so this list is the durable copy. So it really is **self
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
 
-**The `user-invitations` slice's deferred minors are NOT yet in this list, and must be triaged into
-it before its workspace is deleted.** Its ledger
-(`.superpowers/sdd/2026-09-01-user-invitations/progress.md`) carries ten `minor (deferred)` lines,
-**two of them flagged to the final review** and therefore possibly fixed rather than carried: (a)
-the security-critical filter chain (`findByTokenHash` → filter `PENDING` → filter `!isExpired` →
-one `orElseThrow`) is duplicated verbatim between `InvitationService.accept` and `preview`, so
-editing one copy's state checks without the other silently reopens the token-existence oracle
-challenge #55 closed — a shared private helper would make that structural rather than
-conventional; and (b) the two-thread accept race test has no latch or barrier, so genuine overlap
-is likely but not guaranteed, and on accidental serialization it would pass through the pre-transaction
-`PENDING` filter or the entity precondition without ever exercising `@Version`. The other eight are
-cosmetic or scale-related (an in-memory scan of a tenant's `PENDING` rows in the duplicate-invite
-pre-check, a redundant `save()` after `revoke()` inside a transactional method, unused imports).
-Do this in the same pass as the merge, the way `quotation-auto-expiry`'s two findings were recorded
-in `d843550`; the workspace is the only copy until then.
+**The `user-invitations` slice's deferred minors were triaged by the whole-branch review, and
+most are now closed.** Its ledger (`.superpowers/sdd/2026-09-01-user-invitations/progress.md`)
+carried ten `minor (deferred)` lines; the review's fix wave (`3903030` onward, and its report
+at `.superpowers/sdd/2026-09-01-user-invitations/fix-wave-report.md`) closed the two that were
+flagged to it — the duplicated filter chain, now the single `InvitationService.requireLive`, and
+the barrier-less accept race, now a `CyclicBarrier(2)` — along with the in-memory scan of a
+tenant's `PENDING` rows (replaced by a derived query) and the unused imports.
+
+**Exactly two are deliberately still open, and both are deferrals rather than oversights:**
+(a) splitting `InvitationService` by authentication posture — the pre-auth half (`accept`,
+`preview`, `requireLive`) reads nothing like the owner-authenticated half, but it has only one
+client today; revisit when password reset gives it a second. (b) The redundant
+`invitations.save(...)` on an already-managed entity, which appears **identically** in both
+`revoke` and `accept` — removing one alone would make two identical paths look deliberately
+different, so remove both or neither. Carry these two into the list below at merge time; the
+workspace is the only copy until then.
 
 1. ~~**`QuotationService.list` has the dropped-filter bug**~~ — **DONE.** Closed by the quotation
    PDF/share slice's Task 9: `QuotationSpecifications.filter` mirrors `OrderSpecifications`,
