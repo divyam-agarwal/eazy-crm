@@ -43,7 +43,15 @@ class VisibilityScopingArchTest {
             "findByNormalizedPhone",
             // Reached only from an already-checked quotation; a quotation and its order derive
             // visibility from the SAME customer, so filtering it is a provable no-op (§6.1).
-            "findByQuotationId");
+            "findByQuotationId",
+            // Invariant checks, not user-facing reads: MemberService refuses to disable a
+            // member who still holds open work, and a count that hid rows would let the
+            // disable through while work remained assigned to them. Same "must see the whole
+            // tenant" reasoning as findByGstin above. See AssignedWorkload and spec
+            // 2026-09-01-members-management-design.md §4.
+            "countByAssignedToAndActiveTrue",
+            "countByAssignedToAndStageIn",
+            "countByAssignedToAndStatus");
 
     @Test
     void onlyTheVisibilityPackageMayReadAGuardedRepository() {

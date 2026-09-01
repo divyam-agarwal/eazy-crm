@@ -1,5 +1,6 @@
 package com.easycrm.sales;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,4 +13,8 @@ public interface EnquiryRepository extends JpaRepository<Enquiry, UUID>, JpaSpec
     // otherwise RLS returns zero rows (see engineering-challenges #8).
     @Transactional(readOnly = true)
     List<Enquiry> findByNormalizedPhone(String normalizedPhone);
+
+    /** Tenant-wide, deliberately unfiltered — see AssignedWorkload. */
+    @Transactional(readOnly = true)
+    long countByAssignedToAndStageIn(UUID assignedTo, Collection<EnquiryStage> stages);
 }
