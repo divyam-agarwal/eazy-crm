@@ -43,7 +43,10 @@ public class MemberService {
         this.roleGuard = roleGuard;
         this.audit = audit;
         this.refreshTokens = refreshTokens;
-        this.workloads = workloads;
+        // Spring injects a mutable List<AssignedWorkload>; copying it stops an external
+        // mutation from reaching the reassign-first gate, and satisfies SpotBugs
+        // EI_EXPOSE_REP2 (same reasoning as ConflictException's defensive copy of fields).
+        this.workloads = List.copyOf(workloads);
     }
 
     @Transactional(readOnly = true)
