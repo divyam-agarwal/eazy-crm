@@ -1,23 +1,24 @@
 package com.easycrm.platform.security;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.platform.error.ForbiddenException;
 import com.easycrm.platform.tenancy.TenantContext;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class RoleGuardTest {
 
     private final RoleGuard guard = new RoleGuard();
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private void bind(String role) {
-        TenantContext.set(new TenantContext.TenantPrincipal(
-            UUID.randomUUID(), UUID.randomUUID(), role));
+        TenantContext.set(new TenantContext.TenantPrincipal(UUID.randomUUID(), UUID.randomUUID(), role));
     }
 
     @Test
@@ -29,8 +30,7 @@ class RoleGuardTest {
     @Test
     void salesManagerIsRejected() {
         bind("SALES_MANAGER");
-        ForbiddenException ex =
-            assertThrows(ForbiddenException.class, () -> guard.requireOwner("nope"));
+        ForbiddenException ex = assertThrows(ForbiddenException.class, () -> guard.requireOwner("nope"));
         assertEquals("nope", ex.getMessage(), "the caller's message must reach the 403 body");
     }
 
@@ -51,8 +51,7 @@ class RoleGuardTest {
     // string, but nothing structurally prevents null) must not blow up the comparison.
     @Test
     void nullRoleIsRejected() {
-        TenantContext.set(new TenantContext.TenantPrincipal(
-            UUID.randomUUID(), UUID.randomUUID(), null));
+        TenantContext.set(new TenantContext.TenantPrincipal(UUID.randomUUID(), UUID.randomUUID(), null));
         assertThrows(ForbiddenException.class, () -> guard.requireOwner("nope"));
     }
 }

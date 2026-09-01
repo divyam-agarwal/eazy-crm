@@ -9,8 +9,8 @@ import jakarta.validation.constraints.Pattern;
  * unknown value must be a 400 from bean validation, not a Jackson deserialisation failure.
  */
 public record InviteRequest(
-    @NotBlank @Email String email,
-    @NotBlank @Pattern(regexp = "OWNER|SALES_MANAGER|SALES_EXEC",
-                       message = "role must be OWNER, SALES_MANAGER or SALES_EXEC")
-    String role
-) {}
+        @NotBlank @Email String email,
+
+        @NotBlank
+        @Pattern(regexp = "OWNER|SALES_MANAGER|SALES_EXEC", message = "role must be OWNER, SALES_MANAGER or SALES_EXEC")
+        String role) {}

@@ -1,14 +1,13 @@
 package com.easycrm.platform.error;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import java.util.UUID;
-
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class ApiExceptionHandlerTest {
 
@@ -18,7 +17,7 @@ class ApiExceptionHandlerTest {
     @SuppressWarnings("unchecked")
     void validationExceptionMapsTo422WithFields() {
         ResponseEntity<Map<String, Object>> resp =
-            handler.validation(new ValidationException("gstin", "GSTIN checksum is invalid"));
+                handler.validation(new ValidationException("gstin", "GSTIN checksum is invalid"));
 
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, resp.getStatusCode());
         Map<String, Object> error = (Map<String, Object>) resp.getBody().get("error");
@@ -31,7 +30,7 @@ class ApiExceptionHandlerTest {
     @SuppressWarnings("unchecked")
     void optimisticLockMapsTo409() {
         ResponseEntity<Map<String, Object>> resp =
-            handler.optimisticLock(new ObjectOptimisticLockingFailureException(Object.class, UUID.randomUUID()));
+                handler.optimisticLock(new ObjectOptimisticLockingFailureException(Object.class, UUID.randomUUID()));
 
         assertEquals(HttpStatus.CONFLICT, resp.getStatusCode());
         Map<String, Object> error = (Map<String, Object>) resp.getBody().get("error");

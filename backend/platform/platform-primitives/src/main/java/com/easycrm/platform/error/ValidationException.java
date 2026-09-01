@@ -16,5 +16,7 @@ public class ValidationException extends RuntimeException {
         this(Map.of(field, message));
     }
 
-    public Map<String, String> getFields() { return fields; }
+    public Map<String, String> getFields() {
+        return fields;
+    }
 }

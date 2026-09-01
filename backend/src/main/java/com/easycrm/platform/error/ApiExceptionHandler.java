@@ -1,5 +1,7 @@
 package com.easycrm.platform.error;
 
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -7,9 +9,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
-import java.util.HashMap;
-import java.util.Map;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -47,8 +46,11 @@ public class ApiExceptionHandler {
         // wins); the loser gets 409 instead of a raw 500. Sibling of the DataIntegrityViolation
         // backstop above — ObjectOptimisticLockingFailureException does NOT extend
         // DataIntegrityViolationException, so it needs its own handler.
-        return body(HttpStatus.CONFLICT, "CONFLICT",
-            "the request could not be completed due to a concurrent update; please retry", null);
+        return body(
+                HttpStatus.CONFLICT,
+                "CONFLICT",
+                "the request could not be completed due to a concurrent update; please retry",
+                null);
     }
 
     @ExceptionHandler(ValidationException.class)
@@ -60,13 +62,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> invalid(MethodArgumentNotValidException ex) {
         Map<String, Object> fields = new HashMap<>();
-        ex.getBindingResult().getFieldErrors()
-            .forEach(fe -> fields.put(fe.getField(), fe.getDefaultMessage()));
+        ex.getBindingResult().getFieldErrors().forEach(fe -> fields.put(fe.getField(), fe.getDefaultMessage()));
         return body(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "request is invalid", fields);
     }
 
-    private ResponseEntity<Map<String, Object>> body(HttpStatus status, String code,
-                                                     String message, Map<String, Object> fields) {
+    private ResponseEntity<Map<String, Object>> body(
+            HttpStatus status, String code, String message, Map<String, Object> fields) {
         Map<String, Object> error = new HashMap<>();
         error.put("code", code);
         error.put("message", message);

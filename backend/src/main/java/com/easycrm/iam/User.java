@@ -9,9 +9,12 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 @Entity
-@Table(name = "app_user", // "user" is a reserved word in PostgreSQL
-       uniqueConstraints = @UniqueConstraint(name = "uq_user_tenant_email",
-                                             columnNames = {"tenant_id", "email"}))
+@Table(
+        name = "app_user", // "user" is a reserved word in PostgreSQL
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_user_tenant_email",
+                        columnNames = {"tenant_id", "email"}))
 public class User extends TenantScopedEntity {
 
     @Column(nullable = false)
@@ -41,9 +44,23 @@ public class User extends TenantScopedEntity {
         this.status = status;
     }
 
-    public String getEmail() { return email; }
-    public String getPhone() { return phone; }
-    public String getPasswordHash() { return passwordHash; }
-    public Role getRole() { return role; }
-    public UserStatus getStatus() { return status; }
+    public String getEmail() {
+        return email;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public UserStatus getStatus() {
+        return status;
+    }
 }

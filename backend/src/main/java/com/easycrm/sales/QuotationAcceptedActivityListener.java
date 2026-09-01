@@ -26,9 +26,12 @@ public class QuotationAcceptedActivityListener {
 
     @EventListener
     public void on(QuotationAcceptedEvent e) {
-        activities.logSystem(SubjectType.QUOTATION, e.quotationId(), ActivityType.NOTE,
-            "Quotation accepted — order " + e.orderNo() + " created for Rs. "
-                + e.grandTotal().toPlainString(),
-            e.actorUserId());
+        activities.logSystem(
+                SubjectType.QUOTATION,
+                e.quotationId(),
+                ActivityType.NOTE,
+                "Quotation accepted — order " + e.orderNo() + " created for Rs. "
+                        + e.grandTotal().toPlainString(),
+                e.actorUserId());
     }
 }

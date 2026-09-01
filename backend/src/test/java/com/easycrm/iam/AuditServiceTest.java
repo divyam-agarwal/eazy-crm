@@ -1,21 +1,26 @@
 package com.easycrm.iam;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.util.Map;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class AuditServiceTest extends IntegrationTest {
-    @Autowired AuditService audit;
-    @Autowired AuditLogRepository logs;
+    @Autowired
+    AuditService audit;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    AuditLogRepository logs;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void recordsUnderTenantContext() {

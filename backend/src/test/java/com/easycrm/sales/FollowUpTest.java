@@ -1,14 +1,13 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.error.ValidationException;
-import com.easycrm.platform.visibility.SubjectType;
-import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.easycrm.platform.error.ValidationException;
+import com.easycrm.platform.visibility.SubjectType;
+import java.time.Instant;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 /** Pure aggregate invariants. See spec 2026-08-30-activity-follow-up-design.md §7.2. */
 class FollowUpTest {
@@ -32,8 +31,7 @@ class FollowUpTest {
     void aPastDueDateIsAllowedOnCreate() {
         // "I should have called them yesterday" is real and useful to record. It lands in
         // scope=OVERDUE, which is exactly where it belongs (spec §7.2).
-        FollowUp f = new FollowUp(SubjectType.ENQUIRY, SUBJECT,
-            NOW.minusSeconds(86_400), ME, "overdue already", ME);
+        FollowUp f = new FollowUp(SubjectType.ENQUIRY, SUBJECT, NOW.minusSeconds(86_400), ME, "overdue already", ME);
 
         assertThat(f.getStatus()).isEqualTo(FollowUpStatus.PENDING);
     }
@@ -63,9 +61,9 @@ class FollowUpTest {
         FollowUp f = pending();
 
         assertThatThrownBy(() -> f.cancel("  ", NOW))
-            .isInstanceOf(ValidationException.class)
-            .satisfies(e -> assertThat(((ValidationException) e).getFields())
-                .containsKey("reason"));
+                .isInstanceOf(ValidationException.class)
+                .satisfies(
+                        e -> assertThat(((ValidationException) e).getFields()).containsKey("reason"));
 
         assertThat(f.getStatus()).isEqualTo(FollowUpStatus.PENDING);
         assertThat(f.getCompletedAt()).isNull();
@@ -79,9 +77,9 @@ class FollowUpTest {
         Instant later = NOW.plusSeconds(3600);
 
         assertThatThrownBy(() -> f.complete("again", later))
-            .isInstanceOf(ValidationException.class)
-            .satisfies(e -> assertThat(((ValidationException) e).getFields().get("status"))
-                .contains("done"));
+                .isInstanceOf(ValidationException.class)
+                .satisfies(e -> assertThat(((ValidationException) e).getFields().get("status"))
+                        .contains("done"));
 
         assertThat(f.getCompletedAt()).isEqualTo(NOW);
         assertThat(f.getCompletionNote()).isEqualTo("done");
@@ -93,7 +91,7 @@ class FollowUpTest {
         f.complete("done", NOW);
 
         assertThatThrownBy(() -> f.cancel("changed my mind", NOW.plusSeconds(60)))
-            .isInstanceOf(ValidationException.class);
+                .isInstanceOf(ValidationException.class);
 
         assertThat(f.getStatus()).isEqualTo(FollowUpStatus.DONE);
         assertThat(f.getCompletionNote()).isEqualTo("done");
@@ -118,7 +116,7 @@ class FollowUpTest {
         f.cancel("not interested", NOW);
 
         assertThatThrownBy(() -> f.reschedule(DUE.plusSeconds(86_400), ME, "revived"))
-            .isInstanceOf(ValidationException.class);
+                .isInstanceOf(ValidationException.class);
 
         assertThat(f.getDueAt()).isEqualTo(DUE);
         assertThat(f.getNote()).isEqualTo("ring back about the rate");
@@ -126,15 +124,13 @@ class FollowUpTest {
 
     @Test
     void anAssigneeIsRequired() {
-        assertThatThrownBy(() -> new FollowUp(SubjectType.ENQUIRY, SUBJECT, DUE, null,
-            "nobody owns this", ME))
-            .isInstanceOf(ValidationException.class)
-            .satisfies(e -> assertThat(((ValidationException) e).getFields())
-                .containsKey("assignedTo"));
+        assertThatThrownBy(() -> new FollowUp(SubjectType.ENQUIRY, SUBJECT, DUE, null, "nobody owns this", ME))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(
+                        e -> assertThat(((ValidationException) e).getFields()).containsKey("assignedTo"));
     }
 
     private static FollowUp pending() {
-        return new FollowUp(SubjectType.ENQUIRY, SUBJECT, DUE, ME,
-            "ring back about the rate", ME);
+        return new FollowUp(SubjectType.ENQUIRY, SUBJECT, DUE, ME, "ring back about the rate", ME);
     }
 }

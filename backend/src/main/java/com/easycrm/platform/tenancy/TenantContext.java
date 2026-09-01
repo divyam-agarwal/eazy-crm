@@ -11,16 +11,22 @@ public final class TenantContext {
 
     private TenantContext() {}
 
-    public static void set(TenantPrincipal principal) { HOLDER.set(principal); }
+    public static void set(TenantPrincipal principal) {
+        HOLDER.set(principal);
+    }
 
-    public static Optional<TenantPrincipal> get() { return Optional.ofNullable(HOLDER.get()); }
+    public static Optional<TenantPrincipal> get() {
+        return Optional.ofNullable(HOLDER.get());
+    }
 
     public static UUID tenantId() {
         TenantPrincipal p = HOLDER.get();
         return p == null ? null : p.tenantId();
     }
 
-    public static void clear() { HOLDER.remove(); }
+    public static void clear() {
+        HOLDER.remove();
+    }
 
     public static void runAs(TenantPrincipal principal, Runnable body) {
         TenantPrincipal previous = HOLDER.get();
@@ -28,7 +34,8 @@ public final class TenantContext {
         try {
             body.run();
         } finally {
-            if (previous == null) HOLDER.remove(); else HOLDER.set(previous);
+            if (previous == null) HOLDER.remove();
+            else HOLDER.set(previous);
         }
     }
 
@@ -44,7 +51,8 @@ public final class TenantContext {
         try {
             return body.get();
         } finally {
-            if (previous == null) HOLDER.remove(); else HOLDER.set(previous);
+            if (previous == null) HOLDER.remove();
+            else HOLDER.set(previous);
         }
     }
 }

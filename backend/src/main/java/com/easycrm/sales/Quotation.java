@@ -8,17 +8,19 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
 import java.util.UUID;
 
 @Entity
-@Table(name = "quotation",
-       uniqueConstraints = {
-           @UniqueConstraint(name = "uq_quotation_tenant_no",
-                             columnNames = {"tenant_id", "quote_no"}),
-           @UniqueConstraint(name = "uq_quotation_tenant_enquiry",
-                             columnNames = {"tenant_id", "enquiry_id"})
-       })
+@Table(
+        name = "quotation",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uq_quotation_tenant_no",
+                    columnNames = {"tenant_id", "quote_no"}),
+            @UniqueConstraint(
+                    name = "uq_quotation_tenant_enquiry",
+                    columnNames = {"tenant_id", "enquiry_id"})
+        })
 public class Quotation extends TenantScopedEntity {
 
     @Column(name = "quote_no", length = 32)
@@ -45,12 +47,29 @@ public class Quotation extends TenantScopedEntity {
         this.status = QuotationStatus.DRAFT;
     }
 
-    public void setCurrentVersionId(UUID id) { this.currentVersionId = id; }
-    public void assignQuoteNo(String no) { this.quoteNo = no; }
-    public void markSent() { this.status = QuotationStatus.SENT; }
-    public void markAccepted() { this.status = QuotationStatus.ACCEPTED; }
-    public void reviseToDraft() { this.status = QuotationStatus.DRAFT; }
-    public void reject() { this.status = QuotationStatus.REJECTED; }
+    public void setCurrentVersionId(UUID id) {
+        this.currentVersionId = id;
+    }
+
+    public void assignQuoteNo(String no) {
+        this.quoteNo = no;
+    }
+
+    public void markSent() {
+        this.status = QuotationStatus.SENT;
+    }
+
+    public void markAccepted() {
+        this.status = QuotationStatus.ACCEPTED;
+    }
+
+    public void reviseToDraft() {
+        this.status = QuotationStatus.DRAFT;
+    }
+
+    public void reject() {
+        this.status = QuotationStatus.REJECTED;
+    }
 
     /**
      * SENT -> EXPIRED. The check runs before any assignment, so a rejected expire leaves
@@ -65,9 +84,23 @@ public class Quotation extends TenantScopedEntity {
         this.status = QuotationStatus.EXPIRED;
     }
 
-    public String getQuoteNo() { return quoteNo; }
-    public UUID getCustomerId() { return customerId; }
-    public UUID getEnquiryId() { return enquiryId; }
-    public UUID getCurrentVersionId() { return currentVersionId; }
-    public QuotationStatus getStatus() { return status; }
+    public String getQuoteNo() {
+        return quoteNo;
+    }
+
+    public UUID getCustomerId() {
+        return customerId;
+    }
+
+    public UUID getEnquiryId() {
+        return enquiryId;
+    }
+
+    public UUID getCurrentVersionId() {
+        return currentVersionId;
+    }
+
+    public QuotationStatus getStatus() {
+        return status;
+    }
 }

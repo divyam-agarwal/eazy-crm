@@ -1,10 +1,10 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.error.ValidationException;
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.easycrm.platform.error.ValidationException;
+import org.junit.jupiter.api.Test;
 
 class PhoneNormalizerTest {
 
@@ -19,13 +19,10 @@ class PhoneNormalizerTest {
 
     @Test
     void rejectsWrongLength() {
-        assertThatThrownBy(() -> PhoneNormalizer.normalize("98765"))
-            .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> PhoneNormalizer.normalize("98765")).isInstanceOf(ValidationException.class);
         assertThatThrownBy(() -> PhoneNormalizer.normalize("12345678901")) // 11 digits, no leading 0
-            .isInstanceOf(ValidationException.class);
-        assertThatThrownBy(() -> PhoneNormalizer.normalize(null))
-            .isInstanceOf(ValidationException.class);
-        assertThatThrownBy(() -> PhoneNormalizer.normalize("   "))
-            .isInstanceOf(ValidationException.class);
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> PhoneNormalizer.normalize(null)).isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> PhoneNormalizer.normalize("   ")).isInstanceOf(ValidationException.class);
     }
 }

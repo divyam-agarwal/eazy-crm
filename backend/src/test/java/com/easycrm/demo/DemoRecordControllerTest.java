@@ -1,8 +1,12 @@
 package com.easycrm.demo;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,19 +14,22 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.UUID;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 class DemoRecordControllerTest extends IntegrationTest {
-    @Autowired MockMvc mvc;
-    @Autowired DemoRecordRepository records;
-    @Autowired TestTokens tokens;
+    @Autowired
+    MockMvc mvc;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    DemoRecordRepository records;
+
+    @Autowired
+    TestTokens tokens;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void ownerCanReadOwnRecord() throws Exception {
@@ -32,8 +39,8 @@ class DemoRecordControllerTest extends IntegrationTest {
         TenantContext.clear();
 
         mvc.perform(get("/api/v1/demo-records/" + saved.getId())
-                .header("Authorization", "Bearer " + tokens.owner(tenant)))
-           .andExpect(status().isOk())
-           .andExpect(jsonPath("$.label").value("mine"));
+                        .header("Authorization", "Bearer " + tokens.owner(tenant)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.label").value("mine"));
     }
 }

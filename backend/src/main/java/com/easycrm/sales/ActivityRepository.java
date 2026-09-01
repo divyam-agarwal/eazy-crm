@@ -1,12 +1,11 @@
 package com.easycrm.sales;
 
 import com.easycrm.platform.visibility.SubjectType;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.repository.Repository;
-
-import java.util.Optional;
-import java.util.UUID;
 
 /**
  * EXTENDS THE BARE {@code Repository} MARKER ON PURPOSE — do not "fix" this to
@@ -26,8 +25,7 @@ public interface ActivityRepository extends Repository<Activity, UUID> {
     Activity save(Activity activity);
 
     Page<Activity> findBySubjectTypeAndSubjectIdOrderByOccurredAtDesc(
-        SubjectType subjectType, UUID subjectId, Pageable pageable);
+            SubjectType subjectType, UUID subjectId, Pageable pageable);
 
-    Optional<Activity> findByIdAndSubjectTypeAndSubjectId(
-        UUID id, SubjectType subjectType, UUID subjectId);
+    Optional<Activity> findByIdAndSubjectTypeAndSubjectId(UUID id, SubjectType subjectType, UUID subjectId);
 }

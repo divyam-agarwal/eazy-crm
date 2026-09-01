@@ -3544,3 +3544,244 @@ silently do to the column.
 Finally: Hibernate's flush order is not your call order. Any transaction that frees a
 unique index by an `UPDATE` and then re-fills it with an `INSERT` needs an explicit flush
 between the two, or it will fail with the exact error the change was meant to prevent.
+
+---
+
+## Challenge 58 — SpotBugs's `baselineFile` had to be decompiled to trust, and a `--` in an XML comment silently broke it
+
+**Phase:** Implementation
+
+### The problem
+
+Task 4 (build-hygiene slice) wires SpotBugs + find-sec-bugs into both Gradle projects,
+gated so only *new* findings fail the build; the first-ever run produces 32 pre-existing
+findings (29 root, 3 `platform-primitives`) that must be baselined rather than fixed. The
+plan deliberately left the baseline *mechanism* open, because it depends on what the
+resolved plugin version actually supports: "if the task exposes a `baselineFile`
+property, use it; if not, fall back to a generated exclude filter."
+
+`SpotBugsExtension`/`SpotBugsTask` in spotbugs-gradle-plugin 6.5.11 do declare a
+`baselineFile: RegularFileProperty`. That alone is not evidence it does anything — a
+declared-but-dead property is exactly challenge #33's ArchUnit rule shape (a check that
+looks wired and passes vacuously). Trusting it on the strength of autocomplete would have
+been the same mistake in a different tool.
+
+Verifying by *reading the docs* wasn't an option either: the brief already flagged that
+`plugins.gradle.org/api/gradle/1.0/search` is dead, and the plugin's own site documentation
+for `baselineFile` is thin-to-absent for 6.x. The only authoritative source was the
+plugin's own bytecode.
+
+Once wired, a second failure showed up that looked unrelated: with `ignoreFailures =
+false` and a hand-assembled `baseline.xml` (see Solution), the gate still failed on every
+pre-existing finding — as if the baseline were being ignored entirely, with no diagnostic
+in the default log output explaining why.
+
+### The solution
+
+Decompiled the plugin jar (`javap -p -c` on the extracted classes) rather than guessing
+from the property's existence. `SpotBugsRunner`'s bytecode shows `getBaselineFile()`
+read exactly like `getIncludeFilter()`/`getExcludeFilter()` and pushed onto the SpotBugs
+CLI args behind the literal string `-excludeBugs` (confirmed by the constant pool entries
+next to it: `-exclude`, `-excludeBugs`, `-onlyAnalyze`). `-excludeBugs` is a real,
+long-standing SpotBugs core flag: it reads a prior bug-collection XML and suppresses any
+finding whose `instanceHash` matches an entry in it. So `baselineFile` is not a Gradle-
+plugin invention — it is a thin pass-through to a mechanism SpotBugs itself has always
+had, and it works per the plan's preferred branch.
+
+Because one `baselineFile` value is shared by both projects via the convention plugin, the
+baseline had to cover both: root's and `platform-primitives`'s `build/reports/spotbugs/
+main.xml` were merged (concatenating their `<BugInstance>` elements into one
+`<BugCollection>`, via a small Python script rather than hand-editing) into
+`config/spotbugs/baseline.xml`. This works because matching is by hash, not by project —
+a hash that belongs to the other project's classes simply never matches, so a merged file
+is safe for both.
+
+The second failure — gate still red with the baseline in place — turned out to be
+unrelated to Gradle or the merge logic entirely. Running with `--info` surfaced the real
+executor's stderr, buried under the Worker API's own summary: `org.dom4j.
+DocumentException: Failing reading .../baseline.xml`. SpotBugs's baseline reader
+(`dom4j`) was silently failing to parse the file and — critically — not treating that as
+a load-bearing error worth surfacing at the default log level, so `-excludeBugs` matched
+nothing and every original finding still failed the build, with no explanation of *why*
+the baseline had no effect. The cause was banal: the hand-written provenance comment at
+the top of the generated `baseline.xml` used `--` as a prose dash ("32 findings -- see
+...", "make the gate pass -- new findings must be..."). `--` is illegal *anywhere* inside
+an XML comment body, not just as a delimiter — `python3 -c "import
+xml.etree.ElementTree as ET; ET.parse(...)"` caught it in one line where staring at the
+file did not. Swapping the dashes for semicolons fixed it immediately.
+
+### Lesson
+
+A build-tool property existing on an extension is not evidence it is consumed —
+decompile (or otherwise trace) the call site before committing a whole task's design
+branch to it, the same discipline #33 established for assertions. Here it happened to be
+real and well-behaved, which is worth stating plainly since the alternative (silently
+inert) was equally plausible going in.
+
+Separately: a tool that reads a config file with a lenient XML library and then treats a
+parse failure as "zero entries" rather than "abort" produces a gate that fails *open* —
+here in the safe direction (every finding still blocks), but the class of bug generalizes
+to filters that fail open the *unsafe* way. When a generated exclude/baseline/allowlist
+file silently has no effect, check whether the file parsed at all before re-deriving the
+content; `xml.etree.ElementTree.parse()` (or equivalent) is a one-line well-formedness
+oracle that is cheaper than re-reasoning about hashes. And never hand-write `--` into an
+XML comment — it is invisible in most editors' comment styling and invalid regardless of
+position within the comment body, not just adjacent to `<!--`/`-->`.
+
+---
+
+## Challenge 59 — A first-ever CI workflow is untestable pre-merge under its own trigger rules
+
+**Phase:** Implementation
+
+### The problem
+
+Task 6 (build-hygiene slice) adds the repo's first-ever `.github/workflows/ci.yml`,
+triggered on `push: branches: [main]` and `pull_request:`. The task required proving the
+workflow actually goes green — with real evidence, not a guess — before calling it done,
+but under three simultaneous constraints: push the feature branch only, never push to
+`main`, and never open a PR (all three explicit, non-negotiable).
+
+Those three constraints are individually reasonable (don't touch `main`, don't create
+review noise for a branch mid-iteration) but together they're incompatible with how
+GitHub Actions decides whether to run a workflow at all. `push.branches: [main]` matches
+only pushes whose ref is `refs/heads/main` — pushing `build-hygiene` matches neither that
+filter nor `pull_request` (no PR event exists). Confirmed empirically, not assumed: after
+the first push, `gh run list`, `gh workflow list`, and `gh api .../actions/workflows` and
+`.../actions/runs` all came back empty — GitHub hadn't even registered the workflow yet,
+let alone run it. The obvious escape hatch, adding a `workflow_dispatch:` trigger for a
+manual run, is also a dead end: GitHub only allows dispatching a `workflow_dispatch`
+workflow when that trigger already exists **on the default branch**, which by definition
+it doesn't for a workflow file that has never been merged. There is no `gh` flag or API
+call that manually enqueues a run for an event that doesn't apply to the pushed ref.
+
+### The solution
+
+Temporarily widened `push.branches` on the feature branch itself to include
+`build-hygiene` — a content change to a file the constraints already permitted to exist
+on that branch, distinct from pushing to `main` or opening a PR — pushed, watched the run
+go green, downloaded its `if: always()`-uploaded report artifact from a second run to read
+the actual test counts, then reverted both temporary changes in a follow-up commit so the
+file committed at the end exactly matches the target spec (`branches: [main]`,
+`upload reports: if: failure()`). The two test runs and the final commit share the
+identical `check` job body (checkout → setup-java → setup-gradle → `gradlew clean check`);
+only the trigger filter and an unrelated `if:` condition on the failure-only upload step
+differed between what ran and what's now committed, and neither affects what the job
+executes. The four intermediate commits (`workflow_dispatch` attempt, branch-filter
+widen, always-upload, revert) were left in the branch history rather than squashed away,
+so the reasoning is auditable rather than silently rewritten.
+
+### Lesson
+
+A brief's "push and watch the run" step can silently assume a trigger topology it never
+verified — treat "did a run actually start" as a fact to check via `gh run list`/`gh api`
+immediately after the first push, not an assumption to build on. When a task's own
+guardrails (no push to `main`, no PR) conflict with the only two events GitHub will
+actually fire a workflow for pre-merge, the workflow's trigger *filter* itself — not the
+job body — is the smallest surface that can be safely and reversibly edited to create a
+test signal, precisely because editing it doesn't touch the constraints being protected
+(nothing lands on `main`, no PR is opened) and it's trivial to prove reverted (`git diff`
+against the target spec). Prefer this over `workflow_dispatch` as a manual-trigger
+workaround for a not-yet-merged workflow: it looks like the standard escape hatch but
+silently doesn't work until the trigger is already on the default branch, which is exactly
+the chicken-and-egg state a first-ever CI workflow starts in.
+
+---
+
+## Challenge 60 — A formatter's exclude list can encode a runtime invariant, not a style preference
+
+**Phase:** Design / Implementation
+
+### The problem
+
+Spotless (palantir-java-format, build-hygiene slice) reformats every `.java`, `.gradle.kts`, and
+`.yml` file it can reach. Two file categories under `src/main/resources` were deliberately never
+put in scope: `db/migration/*.sql` (32 Flyway migrations) and `templates/quotation.xhtml`.
+Nothing about a formatter's target-file list obviously encodes a runtime correctness rule — on
+its face it looks like ordinary scope-narrowing, only format the languages the tool understands.
+
+But Flyway checksums every applied migration file and refuses to start if a byte of an
+already-applied migration changes (`flyway_schema_history.checksum`, validated on every startup).
+Worse, **this failure would not appear in CI**: a fresh Testcontainers database has never applied
+the *old* text, so it computes a checksum from the *new*, reformatted text and matches itself —
+the build stays green. The failure only appears against a database that already ran the original
+migration: a developer's long-lived local database, or a production deployment on its next
+restart. Of everything in this slice, this is the one change whose blast radius is a running
+database rather than a red build (design spec §10 names it for exactly this reason).
+
+### The solution
+
+Both exclusions are structural, not remembered: every Spotless target in
+`easycrm.quality-conventions.gradle.kts` is extension-scoped (`src/**/*.java`, `*.yml` matched
+only under `src/main/resources`), so `.sql` files are never matched by construction — there is no
+exclude *rule* sitting next to an include rule, waiting for someone to delete it later.
+`templates/quotation.xhtml` is excluded for a related but distinct reason: it is Thymeleaf XML
+parsed in XML mode by openhtmltopdf, and whitespace there is load-bearing for PDF layout with no
+test that would catch a subtle regression if it moved.
+
+### Lesson
+
+When a whole-tree mechanical tool (formatter, linter, or any other tree-wide rewrite) is scoped to
+"the file types it understands," check whether any of the *excluded* types carry a runtime
+invariant tied to their literal bytes — a checksum, a signature, a hash-addressed cache key — not
+just a style preference the team happens to hold. Flyway's checksum is one instance of a broader
+pattern (Docker layer caching, subresource-integrity hashes, content-addressed storage): "the
+bytes didn't functionally change" and "the bytes are byte-identical" are different claims, and
+only the second is safe to assume survives after a mechanical, semantics-preserving reformat.
+
+---
+
+## Challenge 61 — A precompiled Gradle script plugin cannot see typed version catalog accessors (but can see the catalog itself)
+
+**Phase:** Implementation
+
+### The problem
+
+The build-hygiene slice moved every third-party version into `gradle/libs.versions.toml`,
+specifically so each version's justifying comment (why 7.2.1 and not the newer 8.10.1, why an
+artifact id is JDK-qualified, why a BOM must be pinned separately) travels with the number instead
+of being scattered across build files. Shared quality-gate config (Spotless, SpotBugs, JaCoCo
+targets and floors) was written once, as a precompiled script plugin —
+`buildSrc/src/main/kotlin/easycrm.quality-conventions.gradle.kts` — applied explicitly by both
+Gradle projects so the block exists in one place. Two versions are needed *inside that file*, at
+configuration time: the `palantirJavaFormat(...)` formatter version and the find-sec-bugs plugin
+coordinate. The obvious move is `libs.versions.palantirJavaFormat.get()`, the same type-safe
+accessor every other build file in the project already uses.
+
+It does not resolve. Gradle's *type-safe* catalog accessors (`libs.versions.x.get()`,
+`libs.someLib`) are generated source, produced by a `generateExternalPluginSpecBuilders`-style
+task keyed to the specific build script that declares the catalog. A precompiled script plugin is
+compiled as part of `buildSrc` itself — a separate, independently-built Gradle project — and no
+generation step ever produces `libs` accessors scoped to a *plugin* file, even when that plugin's
+own build (`buildSrc/settings.gradle.kts`) declares a catalog named `libs`. The accessor genuinely
+does not exist at that point in the build's lifecycle; it is not a typo or a missing import.
+
+### The solution
+
+Initially assumed unfixable and worked around with two hand-kept literal versions, one in the TOML
+and one in the plugin file, each commented to say "keep this equal to the other." **That
+conclusion was wrong** — a subsequent review pushed back on it and proved the fix by appending a
+probe line to the plugin file and running `./gradlew help`:
+
+```kotlin
+extensions.getByType(org.gradle.api.artifacts.VersionCatalogsExtension::class.java).named("libs")
+```
+
+This resolved `palantirJavaFormat=2.97.0` and `findsecbugs=1.14.0` correctly in both Gradle
+projects. The type-safe *accessor* (`libs.versions.x.get()`) is unavailable inside a precompiled
+script plugin for the structural reason above, but the *catalog itself* is an ordinary extension
+object registered on the project by `buildSrc/settings.gradle.kts`'s `versionCatalogs {}` block,
+and any plugin — precompiled or not — can look it up untyped via `VersionCatalogsExtension` and
+call `.findVersion("key")`. `easycrm.quality-conventions.gradle.kts` now does exactly that once at
+the top of the file, and both `palantirJavaFormat(...)` and the find-sec-bugs plugin coordinate
+read from the result. `gradle/libs.versions.toml` is the single source of truth again; no comment
+pair to keep in sync by hand.
+
+### Lesson
+
+"Type-safe accessors don't work here" and "the version catalog isn't visible here" are not the
+same claim — the first is a real, structural limitation of precompiled script plugins; the second
+does not follow from it and should have been checked, not assumed, before writing "no clean way to
+eliminate it" into a comment. `VersionCatalogsExtension` is the general escape hatch any Gradle
+plugin can use to read a registered catalog without generated accessors; reach for it before
+concluding a catalog is unreachable from a given file.

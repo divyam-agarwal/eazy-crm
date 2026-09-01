@@ -1,8 +1,17 @@
 package com.easycrm.sales;
 
 public enum EnquiryStage {
-    NEW, CONTACTED, QUALIFIED, CONVERTED, LOST;
+    NEW,
+    CONTACTED,
+    QUALIFIED,
+    CONVERTED,
+    LOST;
 
-    public boolean isTerminal() { return this == CONVERTED || this == LOST; }
-    public boolean isActive()   { return !isTerminal(); }
+    public boolean isTerminal() {
+        return this == CONVERTED || this == LOST;
+    }
+
+    public boolean isActive() {
+        return !isTerminal();
+    }
 }

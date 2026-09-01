@@ -1,5 +1,7 @@
 package com.easycrm.sales;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.catalog.PriceList;
 import com.easycrm.catalog.PriceListItem;
 import com.easycrm.catalog.PriceListItemRepository;
@@ -12,26 +14,37 @@ import com.easycrm.crm.CustomerRepository;
 import com.easycrm.crm.CustomerSource;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
+import java.math.BigDecimal;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.math.BigDecimal;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 class PriceResolverTest extends IntegrationTest {
-    @Autowired PriceResolver resolver;
-    @Autowired ProductRepository products;
-    @Autowired CustomerRepository customers;
-    @Autowired PriceListRepository priceLists;
-    @Autowired PriceListItemRepository priceListItems;
-    @Autowired PlatformTransactionManager txManager;
+    @Autowired
+    PriceResolver resolver;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    ProductRepository products;
+
+    @Autowired
+    CustomerRepository customers;
+
+    @Autowired
+    PriceListRepository priceLists;
+
+    @Autowired
+    PriceListItemRepository priceListItems;
+
+    @Autowired
+    PlatformTransactionManager txManager;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private void asTenant(UUID t) {
         TenantContext.set(new TenantContext.TenantPrincipal(t, UUID.randomUUID(), "OWNER"));

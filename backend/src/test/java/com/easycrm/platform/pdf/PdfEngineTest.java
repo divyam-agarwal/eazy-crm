@@ -1,12 +1,11 @@
 package com.easycrm.platform.pdf;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.time.Instant;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class PdfEngineTest {
 
@@ -46,7 +45,8 @@ class PdfEngineTest {
             // Task 8 serves these PDFs inline in a browser, where /Title becomes the
             // tab name; the metadata-stamping step must not discard it while pinning
             // the deterministic fields (producer, creator, dates).
-            assertEquals("Quotation QTN/2026-27/0001", doc.getDocumentInformation().getTitle());
+            assertEquals(
+                    "Quotation QTN/2026-27/0001", doc.getDocumentInformation().getTitle());
         }
     }
 

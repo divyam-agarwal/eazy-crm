@@ -2,7 +2,6 @@ package com.easycrm.sales.web.dto;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -12,6 +11,6 @@ import java.util.UUID;
  * decision, and no window in which the two rows could disagree about what they hang off.
  */
 public record NextFollowUpRequest(
-    @NotNull Instant dueAt,
-    @NotNull UUID assignedTo,
-    @Size(max = 500) String note) {}
+        @NotNull Instant dueAt,
+        @NotNull UUID assignedTo,
+        @Size(max = 500) String note) {}

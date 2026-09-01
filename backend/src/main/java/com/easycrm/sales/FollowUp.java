@@ -8,7 +8,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -63,8 +62,8 @@ public class FollowUp extends TenantScopedEntity {
 
     protected FollowUp() {}
 
-    public FollowUp(SubjectType subjectType, UUID subjectId, Instant dueAt, UUID assignedTo,
-                    String note, UUID createdBy) {
+    public FollowUp(
+            SubjectType subjectType, UUID subjectId, Instant dueAt, UUID assignedTo, String note, UUID createdBy) {
         if (assignedTo == null) {
             throw new ValidationException("assignedTo", "a follow-up must have an owner");
         }
@@ -98,8 +97,7 @@ public class FollowUp extends TenantScopedEntity {
     public void cancel(String reason, Instant now) {
         requirePending("cancelled");
         if (reason == null || reason.isBlank()) {
-            throw new ValidationException("reason",
-                "a reason is required to cancel a follow-up");
+            throw new ValidationException("reason", "a reason is required to cancel a follow-up");
         }
         this.status = FollowUpStatus.CANCELLED;
         this.completedAt = now;
@@ -113,18 +111,44 @@ public class FollowUp extends TenantScopedEntity {
      */
     private void requirePending(String verb) {
         if (status.isTerminal()) {
-            throw new ValidationException("status",
-                "a " + status.name().toLowerCase() + " follow-up cannot be " + verb);
+            throw new ValidationException(
+                    "status", "a " + status.name().toLowerCase() + " follow-up cannot be " + verb);
         }
     }
 
-    public SubjectType getSubjectType() { return subjectType; }
-    public UUID getSubjectId() { return subjectId; }
-    public Instant getDueAt() { return dueAt; }
-    public UUID getAssignedTo() { return assignedTo; }
-    public FollowUpStatus getStatus() { return status; }
-    public String getNote() { return note; }
-    public Instant getCompletedAt() { return completedAt; }
-    public String getCompletionNote() { return completionNote; }
-    public UUID getCreatedBy() { return createdBy; }
+    public SubjectType getSubjectType() {
+        return subjectType;
+    }
+
+    public UUID getSubjectId() {
+        return subjectId;
+    }
+
+    public Instant getDueAt() {
+        return dueAt;
+    }
+
+    public UUID getAssignedTo() {
+        return assignedTo;
+    }
+
+    public FollowUpStatus getStatus() {
+        return status;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
+    }
+
+    public String getCompletionNote() {
+        return completionNote;
+    }
+
+    public UUID getCreatedBy() {
+        return createdBy;
+    }
 }

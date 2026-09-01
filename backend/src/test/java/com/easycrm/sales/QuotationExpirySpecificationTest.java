@@ -1,21 +1,20 @@
 package com.easycrm.sales;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.support.IntegrationTest;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.support.TransactionTemplate;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves the candidate query selects exactly the quotations that should auto-expire.
@@ -27,28 +26,40 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
 
     private static final LocalDate AS_OF = LocalDate.of(2026, 9, 1);
 
-    @Autowired QuotationRepository quotations;
-    @Autowired QuotationVersionRepository versions;
-    @Autowired VisibleFinder finder;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    QuotationRepository quotations;
+
+    @Autowired
+    QuotationVersionRepository versions;
+
+    @Autowired
+    VisibleFinder finder;
+
+    @Autowired
+    TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
     private int seq = 0;
 
-    private UUID lapsedSent, todaySent, openEndedSent, lapsedDraft, lapsedAccepted,
-                 lapsedRejected, lapsedAlreadyExpired;
+    private UUID lapsedSent,
+            todaySent,
+            openEndedSent,
+            lapsedDraft,
+            lapsedAccepted,
+            lapsedRejected,
+            lapsedAlreadyExpired;
     private UUID supersededLapsed;
 
     @BeforeEach
     void seed() {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         tx.execute(s -> {
-            lapsedSent           = seed(AS_OF.minusDays(1), QuotationStatus.SENT);
-            todaySent            = seed(AS_OF,              QuotationStatus.SENT);
-            openEndedSent        = seed(null,               QuotationStatus.SENT);
-            lapsedDraft          = seed(AS_OF.minusDays(1), QuotationStatus.DRAFT);
-            lapsedAccepted       = seed(AS_OF.minusDays(1), QuotationStatus.ACCEPTED);
-            lapsedRejected       = seed(AS_OF.minusDays(1), QuotationStatus.REJECTED);
+            lapsedSent = seed(AS_OF.minusDays(1), QuotationStatus.SENT);
+            todaySent = seed(AS_OF, QuotationStatus.SENT);
+            openEndedSent = seed(null, QuotationStatus.SENT);
+            lapsedDraft = seed(AS_OF.minusDays(1), QuotationStatus.DRAFT);
+            lapsedAccepted = seed(AS_OF.minusDays(1), QuotationStatus.ACCEPTED);
+            lapsedRejected = seed(AS_OF.minusDays(1), QuotationStatus.REJECTED);
             lapsedAlreadyExpired = seed(AS_OF.minusDays(1), QuotationStatus.EXPIRED);
             supersededLapsed = seedTwoVersions(AS_OF.minusDays(10), AS_OF.plusDays(7));
             return null;
@@ -56,7 +67,10 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
         TenantContext.clear();
     }
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void selectsOnlyTheSentQuotationWhoseValidUntilHasLapsed() {
@@ -75,8 +89,7 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
 
     @Test
     void doesNotSelectNonSentStatusesHoweverStaleTheirDate() {
-        assertThat(idsOfCandidates())
-            .doesNotContain(lapsedDraft, lapsedAccepted, lapsedRejected, lapsedAlreadyExpired);
+        assertThat(idsOfCandidates()).doesNotContain(lapsedDraft, lapsedAccepted, lapsedRejected, lapsedAlreadyExpired);
     }
 
     @Test
@@ -87,9 +100,9 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
     private List<UUID> idsOfCandidates() {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         try {
-            return tx.execute(s -> finder
-                .listQuotations(QuotationSpecifications.expirableAsOf(AS_OF))
-                .stream().map(Quotation::getId).toList());
+            return tx.execute(s -> finder.listQuotations(QuotationSpecifications.expirableAsOf(AS_OF)).stream()
+                    .map(Quotation::getId)
+                    .toList());
         } finally {
             TenantContext.clear();
         }
@@ -108,11 +121,11 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
         // door into SENT, and the terminal statuses are only reachable through it.
         q.markSent();
         switch (status) {
-            case DRAFT    -> q.reviseToDraft();
+            case DRAFT -> q.reviseToDraft();
             case ACCEPTED -> q.markAccepted();
             case REJECTED -> q.reject();
-            case EXPIRED  -> q.expire();
-            case SENT     -> { }
+            case EXPIRED -> q.expire();
+            case SENT -> {}
         }
         return quotations.saveAndFlush(q).getId();
     }

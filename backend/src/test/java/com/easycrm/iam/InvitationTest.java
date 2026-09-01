@@ -1,21 +1,25 @@
 package com.easycrm.iam;
 
-import com.easycrm.platform.error.ConflictException;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
+import com.easycrm.platform.error.ConflictException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
 class InvitationTest {
 
     private static final Instant NOW = Instant.parse("2026-09-01T10:00:00Z");
 
     private Invitation pending() {
-        return new Invitation(UUID.randomUUID(), "ravi@shop.in", Role.SALES_EXEC,
-            "a".repeat(64), NOW.plus(7, ChronoUnit.DAYS), UUID.randomUUID());
+        return new Invitation(
+                UUID.randomUUID(),
+                "ravi@shop.in",
+                Role.SALES_EXEC,
+                "a".repeat(64),
+                NOW.plus(7, ChronoUnit.DAYS),
+                UUID.randomUUID());
     }
 
     @Test
@@ -65,9 +69,9 @@ class InvitationTest {
 
     @Test
     void isExpiredIsFalseBeforeTheBoundaryAndTrueAfter() {
-        Invitation inv = pending();                        // expires NOW + 7d
+        Invitation inv = pending(); // expires NOW + 7d
         assertFalse(inv.isExpired(NOW));
-        assertFalse(inv.isExpired(NOW.plus(7, ChronoUnit.DAYS)));       // exactly at expiry
+        assertFalse(inv.isExpired(NOW.plus(7, ChronoUnit.DAYS))); // exactly at expiry
         assertTrue(inv.isExpired(NOW.plus(7, ChronoUnit.DAYS).plusSeconds(1)));
     }
 }

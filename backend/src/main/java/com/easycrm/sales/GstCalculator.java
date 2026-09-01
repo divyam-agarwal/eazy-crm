@@ -19,8 +19,8 @@ public final class GstCalculator {
 
     public record LineInput(BigDecimal qty, BigDecimal rate, BigDecimal discountPct, BigDecimal gstRate) {}
 
-    public record LineResult(BigDecimal taxableValue, BigDecimal cgst, BigDecimal sgst,
-                             BigDecimal igst, BigDecimal lineTotal) {}
+    public record LineResult(
+            BigDecimal taxableValue, BigDecimal cgst, BigDecimal sgst, BigDecimal igst, BigDecimal lineTotal) {}
 
     public record Totals(BigDecimal subTotal, BigDecimal totalTax, BigDecimal grandTotal) {}
 

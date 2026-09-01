@@ -1,11 +1,10 @@
 package com.easycrm.platform.money;
 
-import org.junit.jupiter.api.Test;
-import tools.jackson.databind.json.JsonMapper;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MF5: the serialiser had no unit test at all — only MoneyWireFormatTest, a full @SpringBootTest.
@@ -19,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BigDecimalStringModuleTest {
 
     private final JsonMapper mapper =
-        JsonMapper.builder().addModule(new BigDecimalStringModule()).build();
+            JsonMapper.builder().addModule(new BigDecimalStringModule()).build();
 
     private String write(BigDecimal v) {
         return mapper.writeValueAsString(new Holder(v));
@@ -67,8 +66,8 @@ class BigDecimalStringModuleTest {
         // number, which is contained rather than prevented — the server recomputes every total
         // and is authoritative, and the client preview is never trusted.
         assertThat(mapper.readValue("{\"amount\":\"12.50\"}", Holder.class).amount())
-            .isEqualByComparingTo("12.50");
+                .isEqualByComparingTo("12.50");
         assertThat(mapper.readValue("{\"amount\":12.50}", Holder.class).amount())
-            .isEqualByComparingTo("12.50");
+                .isEqualByComparingTo("12.50");
     }
 }

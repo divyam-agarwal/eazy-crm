@@ -2,12 +2,11 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.visibility.SubjectType;
 import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.jpa.domain.Specification;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.jpa.domain.Specification;
 
 /**
  * AND-composes whichever filters are non-null. Tenant scoping comes from RLS and
@@ -22,16 +21,20 @@ public final class FollowUpSpecifications {
 
     private FollowUpSpecifications() {}
 
-    public static Specification<FollowUp> filter(FollowUpScope scope, FollowUpStatus status,
-                                                 UUID assignedTo, SubjectType subjectType,
-                                                 UUID subjectId, Instant now,
-                                                 Instant endOfToday) {
+    public static Specification<FollowUp> filter(
+            FollowUpScope scope,
+            FollowUpStatus status,
+            UUID assignedTo,
+            SubjectType subjectType,
+            UUID subjectId,
+            Instant now,
+            Instant endOfToday) {
         return (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            if (status != null)       ps.add(cb.equal(root.get("status"), status));
-            if (assignedTo != null)   ps.add(cb.equal(root.get("assignedTo"), assignedTo));
-            if (subjectType != null)  ps.add(cb.equal(root.get("subjectType"), subjectType));
-            if (subjectId != null)    ps.add(cb.equal(root.get("subjectId"), subjectId));
+            if (status != null) ps.add(cb.equal(root.get("status"), status));
+            if (assignedTo != null) ps.add(cb.equal(root.get("assignedTo"), assignedTo));
+            if (subjectType != null) ps.add(cb.equal(root.get("subjectType"), subjectType));
+            if (subjectId != null) ps.add(cb.equal(root.get("subjectId"), subjectId));
 
             // The due scopes are inherently about PENDING work, so each one implies
             // status = PENDING. ALL adds no due_at predicate and no implied status,
@@ -45,7 +48,9 @@ public final class FollowUpSpecifications {
                         ps.add(cb.lessThan(root.get("dueAt"), endOfToday));
                     }
                     case UPCOMING -> ps.add(cb.greaterThanOrEqualTo(root.get("dueAt"), endOfToday));
-                    case ALL -> { /* unreachable — guarded above */ }
+                    case ALL -> {
+                        /* unreachable — guarded above */
+                    }
                 }
             }
             return cb.and(ps.toArray(new Predicate[0])); // empty -> always-true conjunction

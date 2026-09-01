@@ -25,8 +25,8 @@ public final class DueWindow {
     public static Window today(Instant now) {
         LocalDate todayInIst = todayDate(now);
         return new Window(
-            todayInIst.atStartOfDay(IST).toInstant(),
-            todayInIst.plusDays(1).atStartOfDay(IST).toInstant());
+                todayInIst.atStartOfDay(IST).toInstant(),
+                todayInIst.plusDays(1).atStartOfDay(IST).toInstant());
     }
 
     /**

@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    id("easycrm.quality-conventions")
 }
 
 group = "com.easycrm"
@@ -15,7 +16,7 @@ dependencies {
     // The Boot BOM is the single source of dependency versions across both projects.
     // The Spring Boot Gradle plugin is deliberately NOT applied here: this is a plain
     // library jar, not an application, and applying it would attach a bootJar task.
-    api(platform("org.springframework.boot:spring-boot-dependencies:4.1.0"))
+    api(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.springBoot.get()}"))
 
     // `api`, not `implementation`: EventJson.mapper() returns a JsonMapper (Task 4) and
     // platform-outbox must see the type. Every consumer already receives jackson-databind
@@ -30,11 +31,11 @@ dependencies {
     compileOnly("org.springframework:spring-context")
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
 
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation(platform(libs.junit.bom))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.assertj:assertj-core")
     // 1.4.x parses Java 25 bytecode; 1.3.0 silently skips it and passes vacuously.
-    testImplementation("com.tngtech.archunit:archunit-junit5:1.4.1")
+    testImplementation(libs.archunit.junit5)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

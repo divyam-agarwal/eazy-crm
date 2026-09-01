@@ -1,20 +1,19 @@
 package com.easycrm.platform.ratelimit;
 
-import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
-
-import java.io.IOException;
-import java.util.Map;
-import java.util.Optional;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Per-IP token bucket, in front of everything.
@@ -47,17 +46,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final RateLimitStore store;
     private final ObjectMapper objectMapper;
 
-    public RateLimitFilter(RateLimitProperties properties, RateLimitStore store,
-                           ObjectMapper objectMapper) {
+    public RateLimitFilter(RateLimitProperties properties, RateLimitStore store, ObjectMapper objectMapper) {
         this.properties = properties;
         this.store = store;
         this.objectMapper = objectMapper;
     }
 
     @Override
-    protected void doFilterInternal(@NonNull HttpServletRequest request,
-                                    @NonNull HttpServletResponse response,
-                                    @NonNull FilterChain chain)
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain chain)
             throws ServletException, IOException {
         if (!properties.enabled()) {
             chain.doFilter(request, response);
@@ -106,8 +103,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         response.setStatus(429);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
-        objectMapper.writeValue(response.getOutputStream(), Map.of("error", Map.of(
-            "code", "RATE_LIMITED",
-            "message", "too many requests; please retry shortly")));
+        objectMapper.writeValue(
+                response.getOutputStream(),
+                Map.of(
+                        "error",
+                        Map.of(
+                                "code", "RATE_LIMITED",
+                                "message", "too many requests; please retry shortly")));
     }
 }

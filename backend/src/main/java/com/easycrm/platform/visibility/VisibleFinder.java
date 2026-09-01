@@ -11,14 +11,13 @@ import com.easycrm.sales.Order;
 import com.easycrm.sales.OrderRepository;
 import com.easycrm.sales.Quotation;
 import com.easycrm.sales.QuotationRepository;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 /**
  * The ONLY class permitted to call a read method on the four visibility-scoped
@@ -36,9 +35,13 @@ public class VisibleFinder {
     private final OrderRepository orders;
     private final FollowUpRepository followUps;
 
-    public VisibleFinder(VisibilityPolicy policy, CustomerRepository customers,
-                         EnquiryRepository enquiries, QuotationRepository quotations,
-                         OrderRepository orders, FollowUpRepository followUps) {
+    public VisibleFinder(
+            VisibilityPolicy policy,
+            CustomerRepository customers,
+            EnquiryRepository enquiries,
+            QuotationRepository quotations,
+            OrderRepository orders,
+            FollowUpRepository followUps) {
         this.policy = policy;
         this.customers = customers;
         this.enquiries = enquiries;
@@ -123,15 +126,15 @@ public class VisibleFinder {
      * See spec 2026-08-30-activity-follow-up-design.md §4.2.
      */
     public UUID requireVisibleSubject(SubjectType type, UUID id) {
-        boolean visible = switch (type) {
-            case CUSTOMER  -> findCustomer(id).isPresent();
-            case ENQUIRY   -> findEnquiry(id).isPresent();
-            case QUOTATION -> findQuotation(id).isPresent();
-            case ORDER     -> findOrder(id).isPresent();
-        };
+        boolean visible =
+                switch (type) {
+                    case CUSTOMER -> findCustomer(id).isPresent();
+                    case ENQUIRY -> findEnquiry(id).isPresent();
+                    case QUOTATION -> findQuotation(id).isPresent();
+                    case ORDER -> findOrder(id).isPresent();
+                };
         if (!visible) {
-            throw new NotFoundException(
-                type.name().toLowerCase() + " " + id + " was not found");
+            throw new NotFoundException(type.name().toLowerCase() + " " + id + " was not found");
         }
         return id;
     }

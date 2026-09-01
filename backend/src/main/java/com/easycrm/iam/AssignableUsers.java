@@ -1,9 +1,8 @@
 package com.easycrm.iam;
 
 import com.easycrm.platform.error.ValidationException;
-import org.springframework.stereotype.Component;
-
 import java.util.UUID;
+import org.springframework.stereotype.Component;
 
 /**
  * "Is this user someone I can assign work to?" — extracted from the identical private
@@ -19,12 +18,14 @@ public class AssignableUsers {
 
     private final UserRepository users;
 
-    public AssignableUsers(UserRepository users) { this.users = users; }
+    public AssignableUsers(UserRepository users) {
+        this.users = users;
+    }
 
     public void require(UUID userId) {
         if (userId == null) return;
         users.findById(userId)
-            .filter(u -> u.getStatus() == UserStatus.ACTIVE)
-            .orElseThrow(() -> new ValidationException("assignedTo", "must be an active user"));
+                .filter(u -> u.getStatus() == UserStatus.ACTIVE)
+                .orElseThrow(() -> new ValidationException("assignedTo", "must be an active user"));
     }
 }

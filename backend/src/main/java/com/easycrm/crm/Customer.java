@@ -7,13 +7,15 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
 import java.util.UUID;
 
 @Entity
-@Table(name = "customer",
-       uniqueConstraints = @UniqueConstraint(name = "uq_customer_tenant_gstin",
-                                             columnNames = {"tenant_id", "gstin"}))
+@Table(
+        name = "customer",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_customer_tenant_gstin",
+                        columnNames = {"tenant_id", "gstin"}))
 public class Customer extends TenantScopedEntity {
 
     @Column(name = "business_name", nullable = false)
@@ -49,9 +51,16 @@ public class Customer extends TenantScopedEntity {
 
     protected Customer() {}
 
-    public Customer(String businessName, String gstin, String stateCode,
-                    String billingAddress, String shippingAddress, int creditDays,
-                    UUID assignedTo, UUID priceListId, CustomerSource source) {
+    public Customer(
+            String businessName,
+            String gstin,
+            String stateCode,
+            String billingAddress,
+            String shippingAddress,
+            int creditDays,
+            UUID assignedTo,
+            UUID priceListId,
+            CustomerSource source) {
         this.businessName = businessName;
         this.gstin = gstin;
         this.stateCode = stateCode;
@@ -64,9 +73,16 @@ public class Customer extends TenantScopedEntity {
         this.active = true;
     }
 
-    public void update(String businessName, String gstin, String stateCode,
-                       String billingAddress, String shippingAddress, int creditDays,
-                       UUID assignedTo, UUID priceListId, CustomerSource source) {
+    public void update(
+            String businessName,
+            String gstin,
+            String stateCode,
+            String billingAddress,
+            String shippingAddress,
+            int creditDays,
+            UUID assignedTo,
+            UUID priceListId,
+            CustomerSource source) {
         this.businessName = businessName;
         this.gstin = gstin;
         this.stateCode = stateCode;
@@ -78,17 +94,51 @@ public class Customer extends TenantScopedEntity {
         this.source = source;
     }
 
-    public void activate() { this.active = true; }
-    public void deactivate() { this.active = false; }
+    public void activate() {
+        this.active = true;
+    }
 
-    public String getBusinessName() { return businessName; }
-    public String getGstin() { return gstin; }
-    public String getStateCode() { return stateCode; }
-    public String getBillingAddress() { return billingAddress; }
-    public String getShippingAddress() { return shippingAddress; }
-    public int getCreditDays() { return creditDays; }
-    public UUID getAssignedTo() { return assignedTo; }
-    public UUID getPriceListId() { return priceListId; }
-    public CustomerSource getSource() { return source; }
-    public boolean isActive() { return active; }
+    public void deactivate() {
+        this.active = false;
+    }
+
+    public String getBusinessName() {
+        return businessName;
+    }
+
+    public String getGstin() {
+        return gstin;
+    }
+
+    public String getStateCode() {
+        return stateCode;
+    }
+
+    public String getBillingAddress() {
+        return billingAddress;
+    }
+
+    public String getShippingAddress() {
+        return shippingAddress;
+    }
+
+    public int getCreditDays() {
+        return creditDays;
+    }
+
+    public UUID getAssignedTo() {
+        return assignedTo;
+    }
+
+    public UUID getPriceListId() {
+        return priceListId;
+    }
+
+    public CustomerSource getSource() {
+        return source;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
 }

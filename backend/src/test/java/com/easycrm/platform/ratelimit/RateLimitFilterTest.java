@@ -1,21 +1,20 @@
 package com.easycrm.platform.ratelimit;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import tools.jackson.databind.ObjectMapper;
 
 class RateLimitFilterTest {
 
@@ -23,14 +22,16 @@ class RateLimitFilterTest {
     static final class RecordingStore implements RateLimitStore {
         final List<String> keys = new ArrayList<>();
         boolean deny = false;
-        @Override public Decision tryConsume(String key, RateLimitPolicy policy) {
+
+        @Override
+        public Decision tryConsume(String key, RateLimitPolicy policy) {
             keys.add(key);
             return deny ? new Decision(false, 36_500_000_000L) : new Decision(true, 0);
         }
     }
 
-    private static final RateLimitProperties PROPS = new RateLimitProperties(true, List.of(
-        new RateLimitPolicy("public-share", "/public/q/*", 2, Duration.ofHours(1))));
+    private static final RateLimitProperties PROPS = new RateLimitProperties(
+            true, List.of(new RateLimitPolicy("public-share", "/public/q/*", 2, Duration.ofHours(1))));
 
     private static MockHttpServletRequest request(String path, String remoteAddr) {
         MockHttpServletRequest req = new MockHttpServletRequest("GET", path);
@@ -66,15 +67,16 @@ class RateLimitFilterTest {
         assertEquals(429, res.getStatus());
         assertEquals("37", res.getHeader("Retry-After"));
         assertEquals("application/json", res.getContentType());
-        assertTrue(res.getContentAsString().contains("\"code\":\"RATE_LIMITED\""),
-            "must match the ApiExceptionHandler envelope shape, got: " + res.getContentAsString());
+        assertTrue(
+                res.getContentAsString().contains("\"code\":\"RATE_LIMITED\""),
+                "must match the ApiExceptionHandler envelope shape, got: " + res.getContentAsString());
         assertTrue(res.getContentAsString().contains("\"error\""));
     }
 
     @Test
     void unmatchedPathIsNeverConsulted() throws Exception {
         RecordingStore store = new RecordingStore();
-        store.deny = true;   // would deny if it were ever asked
+        store.deny = true; // would deny if it were ever asked
         RateLimitFilter filter = new RateLimitFilter(PROPS, store, new ObjectMapper());
         MockHttpServletResponse res = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
@@ -125,8 +127,8 @@ class RateLimitFilterTest {
         filter.doFilter(req, res, chain);
 
         verify(chain).doFilter(any(), any());
-        assertEquals(List.of("1.2.3.4"), store.keys,
-            "a request under a non-empty context path must still match its policy");
+        assertEquals(
+                List.of("1.2.3.4"), store.keys, "a request under a non-empty context path must still match its policy");
     }
 
     @Test
@@ -138,7 +140,7 @@ class RateLimitFilterTest {
         // token, and PublicShareController's javadoc is explicit that the token must
         // never reach a log.
         ch.qos.logback.classic.Logger logbackLogger =
-            (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(RateLimitFilter.class);
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(RateLimitFilter.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         logbackLogger.addAppender(appender);
@@ -157,10 +159,8 @@ class RateLimitFilterTest {
             String message = event.getFormattedMessage();
             assertTrue(message.contains("public-share"), "must name the policy: " + message);
             assertTrue(message.contains("9.9.9.9"), "must name the client: " + message);
-            assertFalse(message.contains("super-secret-token"),
-                "must never log the share token: " + message);
-            assertFalse(message.contains("/public/q"),
-                "must never log the request URI/path: " + message);
+            assertFalse(message.contains("super-secret-token"), "must never log the share token: " + message);
+            assertFalse(message.contains("/public/q"), "must never log the request URI/path: " + message);
         } finally {
             logbackLogger.detachAppender(appender);
         }

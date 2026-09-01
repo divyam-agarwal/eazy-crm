@@ -10,13 +10,12 @@ import com.easycrm.sales.web.dto.ActivityCreateRequest;
 import com.easycrm.sales.web.dto.ActivityResponse;
 import com.easycrm.sales.web.dto.ActivityUpdateRequest;
 import com.easycrm.sales.web.dto.NextFollowUpRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ActivityService {
@@ -27,8 +26,12 @@ public class ActivityService {
     private final AssignableUsers assignableUsers;
     private final Clock clock;
 
-    public ActivityService(ActivityRepository activities, FollowUpRepository followUps,
-                           VisibleFinder finder, AssignableUsers assignableUsers, Clock clock) {
+    public ActivityService(
+            ActivityRepository activities,
+            FollowUpRepository followUps,
+            VisibleFinder finder,
+            AssignableUsers assignableUsers,
+            Clock clock) {
         this.activities = activities;
         this.followUps = followUps;
         this.finder = finder;
@@ -47,26 +50,38 @@ public class ActivityService {
         Instant now = clock.instant();
         Instant occurredAt = req.occurredAt() == null ? now : req.occurredAt();
         Activity saved = activities.save(Activity.manual(
-            req.subjectType(), req.subjectId(), req.type(), req.body(), req.outcome(),
-            occurredAt, currentUserId(), now));
+                req.subjectType(),
+                req.subjectId(),
+                req.type(),
+                req.body(),
+                req.outcome(),
+                occurredAt,
+                currentUserId(),
+                now));
 
         UUID followUpId = null;
         NextFollowUpRequest next = req.nextFollowUp();
         if (next != null) {
             assignableUsers.require(next.assignedTo());
-            followUpId = followUps.save(new FollowUp(req.subjectType(), req.subjectId(),
-                next.dueAt(), next.assignedTo(), next.note(), currentUserId())).getId();
+            followUpId = followUps
+                    .save(new FollowUp(
+                            req.subjectType(),
+                            req.subjectId(),
+                            next.dueAt(),
+                            next.assignedTo(),
+                            next.note(),
+                            currentUserId()))
+                    .getId();
         }
         return ActivityResponse.of(saved, followUpId);
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ActivityResponse> list(SubjectType subjectType, UUID subjectId,
-                                               Pageable pageable) {
+    public PageResponse<ActivityResponse> list(SubjectType subjectType, UUID subjectId, Pageable pageable) {
         finder.requireVisibleSubject(subjectType, subjectId);
         return PageResponse.of(activities
-            .findBySubjectTypeAndSubjectIdOrderByOccurredAtDesc(subjectType, subjectId, pageable)
-            .map(ActivityResponse::of));
+                .findBySubjectTypeAndSubjectIdOrderByOccurredAtDesc(subjectType, subjectId, pageable)
+                .map(ActivityResponse::of));
     }
 
     /**
@@ -88,8 +103,7 @@ public class ActivityService {
      * logManualForGatedCaller instead.)
      */
     @Transactional
-    public void logSystem(SubjectType subjectType, UUID subjectId, ActivityType type,
-                          String body, UUID actorUserId) {
+    public void logSystem(SubjectType subjectType, UUID subjectId, ActivityType type, String body, UUID actorUserId) {
         Instant now = clock.instant();
         activities.save(Activity.system(subjectType, subjectId, type, body, actorUserId, now));
     }
@@ -104,11 +118,10 @@ public class ActivityService {
      * already-gated claim; if it cannot, it wants create() and the full gate.
      */
     @Transactional
-    public void logManualForGatedCaller(SubjectType subjectType, UUID subjectId,
-                                        ActivityType type, String body, String outcome) {
+    public void logManualForGatedCaller(
+            SubjectType subjectType, UUID subjectId, ActivityType type, String body, String outcome) {
         Instant now = clock.instant();
-        activities.save(Activity.manual(subjectType, subjectId, type, body, outcome,
-            now, currentUserId(), now));
+        activities.save(Activity.manual(subjectType, subjectId, type, body, outcome, now, currentUserId(), now));
     }
 
     /**
@@ -125,8 +138,8 @@ public class ActivityService {
     public ActivityResponse update(UUID id, ActivityUpdateRequest req) {
         finder.requireVisibleSubject(req.subjectType(), req.subjectId());
         Activity a = activities
-            .findByIdAndSubjectTypeAndSubjectId(id, req.subjectType(), req.subjectId())
-            .orElseThrow(() -> new NotFoundException("activity " + id + " was not found"));
+                .findByIdAndSubjectTypeAndSubjectId(id, req.subjectType(), req.subjectId())
+                .orElseThrow(() -> new NotFoundException("activity " + id + " was not found"));
         a.edit(req.body(), req.outcome(), currentUserId());
         return ActivityResponse.of(a);
     }

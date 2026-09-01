@@ -1,8 +1,11 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-01 — **User invitations are built and merged to `main` as `f265cfe`.
-Nothing is in flight; `main` is the baseline for new work.**
-A tenant can finally have more than one user. An owner invites an email and a role, the invitee
+**Last updated:** 2026-09-01 — **`build-hygiene` is on branch `build-hygiene`, off `main` at
+`2dc50ba`, all seven tasks done and pushed to `origin` — awaiting whole-branch review, NOT
+merged.** It adds this repo's first automated quality gates (Spotless/palantir-java-format,
+SpotBugs + find-sec-bugs, JaCoCo, GitHub Actions CI) with zero application-code changes; see
+§3's new top bullet for the detail. Before it, user invitations were merged to `main` as
+`f265cfe`. A tenant can finally have more than one user. An owner invites an email and a role, the invitee
 follows a link, sets a password, and becomes an `ACTIVE` user of that tenant — which is what makes
 `assigned_to`, the record-visibility slice and the `SALES_EXEC` role stop being notional. The
 `invitation` table is the codebase's **third global, RLS-exempt table** after `refresh_token` and
@@ -30,7 +33,24 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### `build-hygiene` is in flight, not yet merged
+
+**The current branch adds this repo's first automated quality gates and is done but not
+merged.** Seven tasks off `main` at `2dc50ba`, pushed to `origin/build-hygiene`, awaiting
+whole-branch review — see `docs/superpowers/specs/2026-09-01-build-hygiene-design.md` and
+`docs/superpowers/plans/2026-09-01-build-hygiene.md`, plus the SDD ledger at
+`.superpowers/sdd/2026-09-01-build-hygiene/progress.md` for the execution-time findings (worth
+reading even after merge — it carries the reasoning behind several rulings §3/§5/§6/§8 below only
+summarize). **The new baseline command is `./gradlew clean check`, not `clean test`:** `check` now
+runs test **plus** `spotlessCheck` **plus** `spotbugsMain` **plus**
+`jacocoTestCoverageVerification` for both projects, so it is strictly stronger than the old
+baseline and is the exact command CI runs — a green local `clean check` and a green CI run now
+assert the same thing. `clean test` still works but no longer proves what "the build is green"
+means on this repo. See §3 for the gate detail (SpotBugs baseline count, coverage floors, plugin
+versions) and §8 for the follow-on waves this opens up.
+
+**Below this point, §0 describes the state of `main` as the previous session left it** — clean,
+`user-invitations` merged as `f265cfe` — which `build-hygiene` branched from and has not changed.
 
 **`main` is clean and is the baseline for new work.** Eight tasks (the `RoleGuard` extraction, the
 `invitation` table/entity/repository plus both isolation-guard allowlists, the owner invite
@@ -75,13 +95,16 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On `main` this is now
+   then `cd backend && ./gradlew clean check`. **Once `build-hygiene` is merged, `clean check` is
+   the baseline command, not `clean test`** — it is strictly stronger (adds `spotlessCheck`,
+   `spotbugsMain`, `jacocoTestCoverageVerification`) and is the same command CI runs. On `main`
+   (pre-`build-hygiene`) this is
    **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
    **464-test** baseline before the invitations slice. Gradle prints no total for a
    multi-project build, so count it yourself:
 
    ```bash
-   cd backend && ./gradlew clean test
+   cd backend && ./gradlew clean check
    find . -path '*/build/test-results/test/*.xml' -exec grep -ho 'tests="[0-9]*"' {} + \
      | sed 's/[^0-9]//g' | awk '{s+=$1} END {print "tests:", s}'
    find . -path '*/build/test-results/test/*.xml' -exec grep -ho 'failures="[0-9]*"' {} + \
@@ -254,13 +277,114 @@ All under `docs/superpowers/`:
     error contract (§8), why expiry is lazy with no job (§7), and what `acceptUrl` points at
     (§6.3/D10)). Source of truth for *what* this slice built.
 38. **`plans/2026-09-01-user-invitations.md`** — the eight-task implementation plan for it.
-    Executed in full, every task reviewed clean; **on branch `user-invitations`, not yet merged**
-    — see §0 and §3.
+    Executed in full, every task reviewed clean; **merged to `main` as `f265cfe`** — see §0 and §3.
+39. **`specs/2026-09-01-build-hygiene-design.md`** — build-hygiene design spec (Wave 1 of a
+    three-wave hygiene programme; the version-catalog/convention-plugin structure, the Spotless
+    exclusion reasoning, the SpotBugs baseline-vs-fix-now decision, the measure-then-floor JaCoCo
+    approach, and the full Wave 1.5/2/3 triage in §3). Source of truth for *what* this slice built
+    and *why the rest is deferred*. **Note:** §10's `--add-exports` risk entry was written before
+    execution and turned out to be wrong — see §5 below for the corrected finding.
+40. **`plans/2026-09-01-build-hygiene.md`** — the seven-task implementation plan for it.
+    Executed in full; **on branch `build-hygiene`, done and pushed, NOT yet merged** — see §0 and
+    §3. Its own SDD ledger (`.superpowers/sdd/2026-09-01-build-hygiene/progress.md`) is worth
+    reading directly — several rulings below (the CI-trigger decision, the module BRANCH-floor
+    debate, the version-catalog blind spot) are summarized here but reasoned there in full.
 
 ## 3. Current state
 
-- **Latest code work: user invitations** — **on branch `user-invitations`, complete and green but
-  NOT yet merged.** Off `main` at `830f4bd`; the task commits run from `42d20e2` (the `RoleGuard`
+- **Latest code work: build hygiene** — **on branch `build-hygiene`, off `main` at `2dc50ba`,
+  seven tasks done and pushed, NOT yet merged** (whole-branch review pending). Zero application-code
+  diff other than a reformat and a temporary, reverted proof-of-concept violation (below); the
+  entire slice is build configuration: `gradle/libs.versions.toml` (a version catalog with the
+  justifying comment for every non-obvious pin travelling with the number, not left behind in
+  build files), a `buildSrc` precompiled convention plugin (`easycrm.quality-conventions`) applied
+  explicitly by both Gradle projects, and four new gates.
+
+  **Spotless, `palantirJavaFormat()` 2.97.0, applied whole-tree in one mechanical commit
+  (`2616049`), recorded in `.git-blame-ignore-revs`.** 4-space/120-col, the closest match to the
+  pre-existing style. Two exclusions are structural (extension-scoped targets, not a rule that
+  could later be deleted): `db/migration/*.sql` and `templates/quotation.xhtml` are never matched
+  by any Spotless target. The `.sql` exclusion is not a style choice — Flyway checksums every
+  applied migration, and a reformatted byte would pass CI silently (a fresh Testcontainers
+  database recomputes the checksum from the new text) while failing `flyway validate` against any
+  database that already ran the old text; see engineering-challenges #60. **`importOrder()` was
+  NOT added** — palantir-java-format reorders imports itself (it collapses the codebase's
+  separated `java.*`-last block into one alphabetical group), and the design spec's own §5 left
+  this an open question to be resolved in the task, not asserted; a second ordering step would
+  have fought palantir's and produced an unstable format.
+
+  **SpotBugs 6.5.11 at `effort = MAX` + find-sec-bugs 1.14.0, gated by a baseline of
+  today's findings — 32 total, split 29 root / 3 `platform-primitives`.** By category:
+  `EI_EXPOSE_REP2` ×17, `EI_EXPOSE_REP` ×8, `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` ×3,
+  `CT_CONSTRUCTOR_THROW` ×3, `MS_EXPOSE_REP` ×1. 26 of the 32 are the defensive-copy family
+  (`EI_EXPOSE_REP2`/`EI_EXPOSE_REP`/`MS_EXPOSE_REP`), largely noise on JPA entities and records —
+  see the §8 backlog item for the case to make that a permanent `config/spotbugs/exclude.xml`
+  category exclusion rather than baseline debt. The other 6
+  (`NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` ×3, `CT_CONSTRUCTOR_THROW` ×3) deserve a real look.
+  **Zero SECURITY-category findings** from find-sec-bugs across JWT mint/parse, the bcrypt
+  password path, the `permitAll` PDF route, and the rate limiter — verified as a genuine clean
+  result rather than a silently-unloaded plugin (`-pluginList` shows the jar in `--info` output;
+  the report XML carries `<Plugin id="com.h3xstream.findsecbugs" enabled="true"/>`). The baseline
+  mechanism is `spotbugs { baselineFile = ... }`, which SpotBugs Gradle plugin 6.5.11 wires
+  through to the SpotBugs-core `-excludeBugs` flag (matched by `instanceHash`, not by project, so
+  one file safely covers both) — confirmed by decompiling the plugin jar, not by trusting the
+  property's existence; challenge #58 is the write-up, including the `--` in an XML comment that
+  silently broke it once.
+
+  **JaCoCo, per-project floors measured before being set (design spec D10), not assumed.**
+  Measured 2026-09-01: root (`easycrm-backend`) LINE 93.89% / BRANCH 82.34%;
+  `platform-primitives` LINE 84.13% / BRANCH 100.0%. Floors (round the measured value down to the
+  nearest whole percent, then subtract one, so an unlucky run doesn't redden the build; ratchet up
+  only): root LINE `0.92` / BRANCH `0.81`, `platform-primitives` LINE `0.83` / BRANCH `0.99`. **A
+  conventional 80%/70% bar would have been slack against 93.9% measured line coverage** — the
+  measure-first decision is vindicated, not merely defensible, by the actual number. One open
+  question, decided but recorded for the eventual reviewer to reweigh: the module's BRANCH floor
+  is `0.99` against a measured `100.0%`; a reviewer argued for `1.0` since branch coverage on a
+  small, deterministic module doesn't have the "-1 for an unlucky run" excuse LINE does, and a
+  single new untested branch among 22 already drops to 0.956 — well under either floor. Kept at
+  `0.99` for rule-uniformity (all four floors computed the same mechanical way), not because the
+  argument for `1.0` is wrong. `jacoco-report-aggregation` is deliberately not applied — the two
+  projects (496 Spring-integration tests vs. 23 pure-value-type tests) have different enough
+  character that one blended number would mask movement in either.
+
+  **`.github/workflows/ci.yml`: `ubuntu-latest`, JDK 25 (Temurin), `./gradlew clean check
+  --no-daemon`, triggered on `push: [main]` and `pull_request:`.** One command — the same one a
+  developer runs — so CI and a local run produce the same verdict, with no CI-only checks.
+  **CI is a post-merge smoke alarm, not a pre-merge gate, and that is a deliberate, reasoned
+  choice, not an oversight.** This repo has never used a pull request (`gh pr list --state all` is
+  empty; every slice so far merged with `git merge --no-ff` — `f265cfe`, `2fb2b85`, `f97c62c`,
+  `c81f59f`, …), so the `pull_request` trigger has **never fired and is unproven** — dormant but
+  correct config, the same untested-gate category as challenge #33, not evidence CI is fully
+  exercised. Under `push: [main]` + `pull_request`, with no PRs ever opened, CI only runs *after* a
+  merge lands: it can tell you `main` broke, it cannot stop `main` from breaking. Broadening the
+  push trigger to every branch was considered and **rejected**: it would fire earlier, but
+  still block nothing, because required-status-check branch protection is PR-shaped and cannot
+  gate a direct push to `main` — so broadening buys earliness at the cost of Actions minutes on
+  every docs/spec/plan-only commit (of which this repo makes many per slice), plus genuinely
+  duplicate runs if PRs are ever adopted later, since the workflow's `concurrency` group is keyed
+  on `github.ref`, which differs between a branch and its PR. Making CI genuinely blocking means
+  adopting pull requests — a process change for the user to choose, not something this slice
+  should decide quietly. Proven with a real red run, not just gate execution (Task 6 already
+  proved the gates execute): pushing a deliberate `trimTrailingWhitespace` violation to a
+  temporarily-widened trigger produced a FAILED run on `spotlessJavaCheck` with a non-zero exit;
+  see the Task 7 report for the run URL and log excerpt. The workflow file and
+  `TenantJobRunner.java` both end this slice byte-identical to their pre-slice state
+  (`grep -n build-hygiene .github/workflows/ci.yml` returns nothing).
+
+  **A fresh clone needs one command Spotless's own blame-ignore doesn't give it for free:**
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs`. GitHub's web blame honours
+  `.git-blame-ignore-revs` automatically; local `git blame` does not until this is set. Verified:
+  with it unset, 8 lines of `TenantJobRunner.java` still attribute to the reformat commit
+  `2616049`; with it set, they fall back to the real original commit `a855056b`. See §5.
+
+  **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`) — unchanged from the
+  `user-invitations` baseline, as this slice makes no application-code change. New challenges
+  **#58–#61** (#58 SpotBugs baseline mechanism/XML pitfall, #59 the CI chicken-and-egg problem, #60
+  the Flyway-checksum exclusion, #61 the version-catalog blind spot inside `buildSrc`); the
+  annotations reference needed no new rows — this is a build-tooling slice, not application code.
+
+- **Previous code work: user invitations** — **merged to `main` as `f265cfe`.** Off `main` at
+  `830f4bd`; the task commits run from `42d20e2` (the `RoleGuard`
   extraction) through `4f8cc7f` (the expiry and race tests) to this docs wrap-up, with challenge #54
   logged in `0840c38` and #55 in `fb30786`. Eight tasks closing the last
   open piece of the P0-auth follow-up (§8 item 3), and the first thing in this codebase that lets a
@@ -729,8 +853,27 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
+- **`backend/gradle.properties`** carries five `--add-exports jdk.compiler/...=ALL-UNNAMED` flags
+  under `org.gradle.jvmargs` (plus a restated `-Xmx2g`, since setting `jvmargs` at all replaces
+  Gradle's default heap). These exist for `palantirJavaFormat()` (Spotless), which reaches into
+  `jdk.compiler` internals. **The JVM that needs opening up is the Gradle *daemon*, not the
+  toolchain** — the daemon runs on the shell default (JDK 21 here), and the toolchain JDK 25 used
+  to compile/test is a separate JVM entirely; it's easy to reach for a JDK-25 fix when the actual
+  target is the daemon. In practice this repo's Gradle 9.6.1 daemon already supplies
+  `--add-exports` for `jdk.compiler.{api,util}` by default, so palantir ran cleanly with zero
+  configuration on both this machine and CI's — the five flags are kept anyway as insurance (3 of
+  the 5 cover palantir codepaths this tree doesn't currently exercise, and a different Gradle/JDK
+  combination could supply a different default set); do not read their presence as evidence they
+  were load-bearing here. See engineering-challenges for the fuller version if one gets written up.
+- **A fresh clone must run one command for local `git blame` to honour the whole-tree reformat:**
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs`. GitHub's web blame reads
+  `.git-blame-ignore-revs` automatically; local `git` does not until this is set per-clone (it's a
+  repo-level file but a per-checkout config, so it does not survive a fresh `git clone`). Verified:
+  with it unset, `git blame` on `TenantJobRunner.java` attributes 8 reformatted-only lines to the
+  reformat commit `2616049`; with it set, those lines correctly fall back to the real original
+  commit `a855056b`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -751,6 +894,14 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Two DB roles:** Flyway runs as the **owner** (Testcontainers superuser); the app connects as **`easycrm_app`** (non-owner, no BYPASSRLS) — this is what makes RLS real. `IntegrationTest` wires both datasources.
 - **`ddl-auto: validate`** is on — migration column types must match entity mappings exactly (e.g. `VARCHAR` not `CHAR` for a `String`).
 - **`spring.jpa.open-in-view: false` is load-bearing, not a preference.** `GET /public/q/{token}` resolves its tenant from the `share_link` row and installs it with `TenantContext.runAs` **before** the rendering transaction opens. With OSIV enabled, the `EntityManager` opens in an interceptor *before* the controller runs, so Hibernate would pin the wrong tenant at session-open (challenge #9's rule) and the public endpoint would silently read under no tenant. **Nothing in the build would catch it** — no test fails, no exception is thrown. Do not flip this flag. See challenge #29.
+- **A precompiled Gradle script plugin (anything under `buildSrc/src/main/kotlin/*.gradle.kts`)
+  cannot see the version catalog.** Type-safe `libs.*` accessors do not exist there — `buildSrc`
+  is its own Gradle build with its own catalog visibility, not an extension of the including
+  build's. `easycrm.quality-conventions.gradle.kts` needs `palantirJavaFormat` and `findsecbugs`
+  versions at configuration time and cannot reach `gradle/libs.versions.toml` for either, so both
+  are literals in that file with a comment naming the catalog key they must be kept equal to (and
+  the catalog's own comment says the reverse) — a second source of truth that must be updated by
+  hand on every version bump. Challenge #61.
 
 ## 7. Working agreements (also in CLAUDE.md — enforced)
 
@@ -916,6 +1067,121 @@ copy: `follow_up` shipped `(tenant_id, assigned_to, status, due_at)` in its crea
 because that is the dashboard's every-login query, and `activity` shipped
 `(tenant_id, subject_type, subject_id, occurred_at DESC)` to cover the timeline read. Adding the
 index when the table is created costs one line; retrofitting it costs a migration on a live table.
+
+### Build-hygiene follow-ons — Wave 1.5, Wave 2, Wave 3 (raised 2026-09-01)
+
+**Wave 1 (this slice, `build-hygiene`) is done: CI, Spotless, SpotBugs + find-sec-bugs, JaCoCo,
+version catalog — see §3.** The design spec's own triage
+(`specs/2026-09-01-build-hygiene-design.md` §3) laid out the rest of a three-wave-plus-a-split
+programme; recording the waves and the deferrals here so choosing the next one doesn't require
+re-deriving the reasoning from that spec each time.
+
+- **Wave 1.5 — supply chain, a short follow-up, not yet started.** `gitleaks` (secret scanning),
+  Dependabot or Renovate (dependency update PRs), OWASP Dependency-Check (published-CVE
+  scanning), and `squawk` (unsafe Postgres DDL linting for Flyway migrations). Deliberately split
+  out of Wave 1 rather than folded in: it's a third distinct tool family, and Dependency-Check
+  needs an NVD cache that makes CI setup meaningfully slower — bundling it with Spotless/SpotBugs/
+  JaCoCo would have blurred one clean slice into two. Higher real security value than anything in
+  the deferred list below it.
+- **Wave 2 — observability, not yet started.** Structured JSON logging, an MDC correlation filter
+  carrying `requestId`/`tenantId`/`userId`, a redaction rule for GSTIN/phone/email, Micrometer
+  with `/actuator/prometheus`, and Micrometer Tracing over OTLP. Not academic: the two known
+  production hazards this file already flags — the in-process rate-limit store that multiplies
+  every limit by N per instance, and the unlocked 00:30 expiry sweep that duplicates work across
+  instances (both above, "Before any second app instance") — are **currently invisible**; nothing
+  would show either happening. **The runtime-assertion TODO immediately below (statement-count
+  assertions, connection-pool tuning, Digma) is Wave 2-adjacent material** — it's about *test-time*
+  assertions on query/pool/call behaviour rather than *production* observability, but both need
+  the same underlying instrumentation, so plan them together rather than standing up tracing
+  twice.
+- **Wave 3 — OpenAPI, not yet started.** springdoc, a committed spec snapshot, and `oasdiff`
+  breaking-change detection in CI. Arguably the highest-value item on the user's original list:
+  there are 18 controllers and the frontend has never been started, so this spec **is** the
+  contract the frontend gets built against — and it's the honest substitute for consumer-driven
+  contract testing in a repo with no consumer yet (see Pact below).
+- **Deferred, each with a trigger, not a vague "later":** SonarQube (deferred on merit, not
+  sequencing — SpotBugs + Spotless + JaCoCo + ArchUnit already cover most of what it would flag,
+  and it earns its keep with a team and a PR queue rather than solo; the JaCoCo XML report stays
+  on so it's a drop-in later); Pact (when the React frontend exists — no consumer today); Spring
+  Cloud Contract (when the five-service AWS split is actually built); AsyncAPI (when
+  `platform-outbox`, LLD #3, unbuilt, puts events on SNS/SQS — in-process `ApplicationEvent`s
+  aren't an async API); Chaos Monkey for Spring Boot (after the service split, and after retries/
+  timeouts/circuit breakers exist to validate — nothing to discover in a monolith with no
+  downstream calls); AWS FIS (after there is AWS); a load baseline, k6 or Gatling (before the
+  first large tenant, alongside the two missing indexes already flagged above); Trivy image
+  scanning (blocked on there being a `Dockerfile` — there is none).
+
+**The 32 baselined SpotBugs findings (§3) are a backlog item, not fixed by this slice — by
+design (spec D9).** Split 29 root / 3 `platform-primitives`; by category `EI_EXPOSE_REP2` ×17,
+`EI_EXPOSE_REP` ×8, `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` ×3, `CT_CONSTRUCTOR_THROW` ×3,
+`MS_EXPOSE_REP` ×1. 26 of the 32 are the defensive-copy family and are largely noise on JPA
+entities and records that never mutate their own fields after construction — the better home for
+those is probably a permanent category exclusion in `config/spotbugs/exclude.xml` (currently
+empty, ready for this) rather than baseline debt that looks like it's waiting to be "paid off."
+The other 6 — 3× `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`, 3× `CT_CONSTRUCTOR_THROW` — are a
+different kind of finding and deserve someone actually reading each one, not a blanket exclusion.
+
+### TODO — assert runtime behaviour, not just outcomes (raised 2026-09-01)
+
+Every test in this repo asserts what came *out* of a call. Nothing asserts **how** it got there — how
+many SQL statements a transaction issued, how the connection pool behaved, or how many outbound HTTP
+calls a method made. Three tools close that, and they belong with the Wave 2 observability slice
+rather than in build hygiene:
+
+- **`datasource-proxy` + `hypersistence-utils` — assert the SQL statement count per transaction or
+  method.** `SQLStatementCountValidator` (hypersistence-utils) wraps a call and asserts exactly how
+  many selects/inserts/updates/deletes it issued; `datasource-proxy` is the JDBC interception layer
+  underneath that makes the counting possible. **This is the highest-value item of the three here,
+  because this codebase already has a known N+1 and no way to detect the next one.** The
+  quotation-expiry sweep does one `findById` per candidate version (deferred-minor #47–49's area),
+  the visibility predicate `assigned_to = :me OR assigned_to IS NULL` runs unindexed, and
+  `VisibleFinder` puts a correlated subquery behind four aggregates — all places where an innocuous
+  refactor turns one query into N with no failing test. A statement-count assertion is the only
+  cheap, structural guard against that, and it fails loudly rather than getting slower quietly.
+- **`flexy-pool` — size and monitor the connection pool.** It adds adaptive sizing plus metrics
+  (acquisition time, timeouts, overflow) on top of HikariCP, which is what turns pool tuning into a
+  measurement rather than a guess. Note the interaction with what already exists: `open-in-view` is
+  **false** and load-bearing (challenge #29), and `TenantJobRunner` opens a `REQUIRES_NEW`
+  transaction *per tenant* in a loop, so the nightly sweep's pool demand scales with tenant count in
+  a way nothing currently observes.
+- **Evaluate `quickperf` — and decide it *against* the bullet above, not alongside it.** QuickPerf
+  is an annotation layer over the same idea: `@ExpectSelect(1)`, `@ExpectMaxQueryExecutionTime`,
+  `@ExpectJdbcBatches`, `@ExpectNoJoin`, and — most relevant here —
+  `@DisableSameSelectTypesWithDifferentParams`, which detects an N+1 *by shape* rather than by a
+  hand-counted number, so it keeps working when the row count changes. It also measures JVM heap
+  allocation (`@ExpectMaxHeapAllocation`), which `SQLStatementCountValidator` does not do at all.
+  **These two are alternatives for one job, not two items to adopt.** The trade-off worth deciding
+  deliberately: QuickPerf is declarative and reads well on a test method, but it is another test
+  runtime with its own JUnit 5 extension and Spring integration to keep working across Boot
+  upgrades — and this project is on Boot 4.1 / Java 25 / Hibernate 7, where §6 shows most
+  third-party tooling has needed a version hunt. `SQLStatementCountValidator` is a plain assertion
+  in a plain test with almost no integration surface. **Evaluate QuickPerf's Boot 4 / JUnit 5
+  compatibility first** — if it lags, the plain validator is the lower-risk way to get the same
+  N+1 guard. Either way, run it in measure-mode first to discover today's real query counts before
+  asserting on them; do not guess the expected numbers.
+- **Count client-side REST calls by asserting on `RestTemplate`.** Worth recording, but be honest
+  about the trigger: **there are zero outbound HTTP calls in `src/` today** — no `RestTemplate`,
+  `WebClient`, `RestClient` or `HttpClient` anywhere, which is also why Pact and Spring Cloud
+  Contract are deferred. This becomes real the moment the first one lands: a real `EmailSender`
+  (today's is a logging stub), a payment or GST-validation integration, or the AWS service split.
+  `MockRestServiceServer` covers the assertion side; a counting `ClientHttpRequestInterceptor`
+  covers it in integration tests.
+- **Evaluate `digma` — complementary to the bullets above, not an alternative to them.** Digma is
+  an OpenTelemetry-based continuous-feedback tool (IDE plugin + a self-hosted backend) that reads
+  *actual traces* and surfaces N+1 query patterns, slow queries, bottlenecks and scaling issues in
+  the editor. The distinction from `hypersistence-utils`/`quickperf` is the one that matters:
+  those are **test-time assertions** that fail a build deterministically once you already know
+  what to assert; Digma is **runtime observation** that tells you what you did not know to look
+  for. Discovery versus regression-prevention — you would plausibly want one of each, not one
+  instead of the other. Two sequencing facts decide when this is worth doing: (1) it is OTel-based,
+  so it depends on Wave 2 (observability, above) landing tracing first — evaluating it before that
+  means standing up instrumentation twice; (2) it needs traffic to observe, and this app has no
+  frontend and no production traffic, so the realistic trace source today is **the test suite
+  itself**, which is a first-class Digma workflow and is unusually well-suited here: 519 tests,
+  many of them Testcontainers integration tests hitting real Postgres, would exercise the exact
+  `VisibleFinder` correlated-subquery and expiry-sweep paths the bullets above are worried about.
+  Cost to weigh: it runs its own backend in Docker plus an IDE plugin, materially heavier setup
+  than adding an assertion to a test.
 
 ### Smaller deferred-Minor backlog
 

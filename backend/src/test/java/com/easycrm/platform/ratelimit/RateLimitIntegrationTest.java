@@ -1,6 +1,11 @@
 package com.easycrm.platform.ratelimit;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.support.IntegrationTest;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,12 +14,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * End-to-end proof that the rate limiter is wired in correctly, including the one
@@ -63,12 +62,18 @@ class RateLimitIntegrationTest extends IntegrationTest {
         registry.add("easycrm.rate-limit.policies[1].refill-period", () -> "1h");
     }
 
-    @Autowired MockMvc mvc;
-    @Autowired RateLimitProperties properties;
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    RateLimitProperties properties;
 
     /** Distinct source addresses, so each test gets a fresh bucket in the shared store. */
     private static RequestPostProcessor from(String ip) {
-        return request -> { request.setRemoteAddr(ip); return request; };
+        return request -> {
+            request.setRemoteAddr(ip);
+            return request;
+        };
     }
 
     private static String someToken() {
@@ -89,11 +94,15 @@ class RateLimitIntegrationTest extends IntegrationTest {
      */
     @Test
     void theLimiterIsEnabledInThisTestContext() {
-        assertTrue(properties.enabled(), "the limiter is disabled in this context — "
-            + "check @DynamicPropertySource precedence against IntegrationTest");
-        assertEquals(2, properties.policyFor("/public/q/anything").orElseThrow().capacity(),
-            "expected this class's tiny test capacity (2), not the shipped default (60) — "
-            + "the limiter is reading the wrong property source");
+        assertTrue(
+                properties.enabled(),
+                "the limiter is disabled in this context — "
+                        + "check @DynamicPropertySource precedence against IntegrationTest");
+        assertEquals(
+                2,
+                properties.policyFor("/public/q/anything").orElseThrow().capacity(),
+                "expected this class's tiny test capacity (2), not the shipped default (60) — "
+                        + "the limiter is reading the wrong property source");
     }
 
     @Test
@@ -101,20 +110,19 @@ class RateLimitIntegrationTest extends IntegrationTest {
         String token = someToken();
         // An unknown token 404s, which is fine: the limiter runs before the handler, so
         // the response status below proves the bucket drained regardless of the outcome.
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.10")))
-            .andExpect(status().isNotFound());
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.10")))
-            .andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.10"))).andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.10"))).andExpect(status().isNotFound());
 
         var third = mvc.perform(get("/public/q/" + token).with(from("203.0.113.10")))
-            .andExpect(status().isTooManyRequests())
-            .andExpect(header().exists("Retry-After"))
-            .andExpect(jsonPath("$.error.code").value("RATE_LIMITED"))
-            .andExpect(jsonPath("$.error.message").exists())
-            .andReturn();
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.error.code").value("RATE_LIMITED"))
+                .andExpect(jsonPath("$.error.message").exists())
+                .andReturn();
 
-        assertTrue(Integer.parseInt(third.getResponse().getHeader("Retry-After")) >= 1,
-            "Retry-After must never be 0 — that invites an immediate retry");
+        assertTrue(
+                Integer.parseInt(third.getResponse().getHeader("Retry-After")) >= 1,
+                "Retry-After must never be 0 — that invites an immediate retry");
     }
 
     @Test
@@ -122,41 +130,37 @@ class RateLimitIntegrationTest extends IntegrationTest {
         String token = someToken();
         // Priming calls assert 404 (unknown token, bucket not yet drained) so a bucket
         // leaked from an earlier test fails right here, not silently at the third call.
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.20"))
-                .header("X-Forwarded-For", "1.1.1.1"))
-            .andExpect(status().isNotFound());
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.20"))
-                .header("X-Forwarded-For", "2.2.2.2"))
-            .andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.20")).header("X-Forwarded-For", "1.1.1.1"))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.20")).header("X-Forwarded-For", "2.2.2.2"))
+                .andExpect(status().isNotFound());
 
         // If the filter trusted the header, each request would have minted its own bucket
         // and this third one would sail through — a bypass any client could perform.
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.20"))
-                .header("X-Forwarded-For", "3.3.3.3"))
-            .andExpect(status().isTooManyRequests());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.20")).header("X-Forwarded-For", "3.3.3.3"))
+                .andExpect(status().isTooManyRequests());
     }
 
     @Test
     void limiterRunsBeforeSpringSecurity() throws Exception {
         // No Authorization header: this route answers 401 normally.
         mvc.perform(get("/api/v1/customers/" + UUID.randomUUID()).with(from("203.0.113.30")))
-            .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/customers/" + UUID.randomUUID()).with(from("203.0.113.30")))
-            .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized());
 
         // Once the bucket is drained the answer must become 429, NOT 401. A 401 here means
         // the filter is running behind the security chain — in which case the auth policy
         // would never see a failed login, and every other test in this class would still
         // pass. This is the assertion that catches a misordered filter.
         mvc.perform(get("/api/v1/customers/" + UUID.randomUUID()).with(from("203.0.113.30")))
-            .andExpect(status().isTooManyRequests());
+                .andExpect(status().isTooManyRequests());
     }
 
     @Test
     void unmatchedPathsAreNeverLimited() throws Exception {
         for (int i = 0; i < 5; i++) {
-            mvc.perform(get("/actuator/health").with(from("203.0.113.40")))
-                .andExpect(status().isOk());
+            mvc.perform(get("/actuator/health").with(from("203.0.113.40"))).andExpect(status().isOk());
         }
     }
 
@@ -165,16 +169,12 @@ class RateLimitIntegrationTest extends IntegrationTest {
         String token = someToken();
         // Priming calls assert 404 (unknown token, bucket not yet drained) so a bucket
         // leaked from an earlier test fails right here, not silently at the third call.
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")))
-            .andExpect(status().isNotFound());
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")))
-            .andExpect(status().isNotFound());
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50")))
-            .andExpect(status().isTooManyRequests());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50"))).andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50"))).andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.50"))).andExpect(status().isTooManyRequests());
 
         // Same token, different recipient: a forwarded share link must still open. This is
         // the behaviour a per-token bucket would have broken (spec section 3).
-        mvc.perform(get("/public/q/" + token).with(from("203.0.113.51")))
-            .andExpect(status().isNotFound());
+        mvc.perform(get("/public/q/" + token).with(from("203.0.113.51"))).andExpect(status().isNotFound());
     }
 }

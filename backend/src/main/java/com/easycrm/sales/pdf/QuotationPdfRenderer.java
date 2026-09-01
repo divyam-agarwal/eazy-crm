@@ -1,11 +1,10 @@
 package com.easycrm.sales.pdf;
 
 import com.easycrm.platform.pdf.PdfEngine;
+import java.util.Locale;
 import org.springframework.stereotype.Component;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
-
-import java.util.Locale;
 
 @Component
 public class QuotationPdfRenderer {

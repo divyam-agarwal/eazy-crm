@@ -1,5 +1,12 @@
 package com.easycrm.sales;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.iam.Role;
 import com.easycrm.iam.User;
 import com.easycrm.iam.UserRepository;
@@ -7,6 +14,7 @@ import com.easycrm.iam.UserStatus;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,15 +24,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.not;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * Endpoint-level: proves the HTTP contract 404s for an invisible enquiry, on both reads
@@ -39,11 +38,20 @@ class EnquiryVisibilityTest extends IntegrationTest {
     private static final String AUTH = "Authorization";
     private static final String EXEC_B_PHONE = "9876500002";
 
-    @Autowired MockMvc mvc;
-    @Autowired TestTokens tokens;
-    @Autowired EnquiryRepository enquiries;
-    @Autowired UserRepository users;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    TestTokens tokens;
+
+    @Autowired
+    EnquiryRepository enquiries;
+
+    @Autowired
+    UserRepository users;
+
+    @Autowired
+    TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID execAId = UUID.randomUUID();
@@ -65,60 +73,62 @@ class EnquiryVisibilityTest extends IntegrationTest {
         TenantContext.clear();
     }
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void execCanGetTheirOwnEnquiry() throws Exception {
         mvc.perform(get("/api/v1/enquiries/" + mine).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void execCannotGetAnotherExecsEnquiry() throws Exception {
         mvc.perform(get("/api/v1/enquiries/" + execBEnquiry).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void execCanGetAnUnassignedEnquiry() throws Exception {
         mvc.perform(get("/api/v1/enquiries/" + pool).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void ownerCanGetAnyEnquiry() throws Exception {
         mvc.perform(get("/api/v1/enquiries/" + execBEnquiry).header(AUTH, bearer(ownerToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void execListOmitsAnotherExecsEnquiry() throws Exception {
         mvc.perform(get("/api/v1/enquiries").header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content[*].id")
-                .value(not(hasItem(execBEnquiry.toString()))))
-            .andExpect(jsonPath("$.content[*].id").value(hasItem(mine.toString())))
-            .andExpect(jsonPath("$.content[*].id").value(hasItem(pool.toString())));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].id").value(not(hasItem(execBEnquiry.toString()))))
+                .andExpect(jsonPath("$.content[*].id").value(hasItem(mine.toString())))
+                .andExpect(jsonPath("$.content[*].id").value(hasItem(pool.toString())));
     }
 
     /** WRITE coverage — a read-only filter would leave this path open. */
     @Test
     void execCannotPatchAnotherExecsEnquiry() throws Exception {
         mvc.perform(patch("/api/v1/enquiries/" + execBEnquiry)
-                .header(AUTH, bearer(execAToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(validEnquiryJson()))
-            .andExpect(status().isNotFound());
+                        .header(AUTH, bearer(execAToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEnquiryJson()))
+                .andExpect(status().isNotFound());
     }
 
     /** WRITE coverage on the lifecycle path, which does not go through PATCH. */
     @Test
     void execCannotAdvanceAnotherExecsEnquiry() throws Exception {
         mvc.perform(post("/api/v1/enquiries/" + execBEnquiry + "/advance")
-                .header(AUTH, bearer(execAToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"stage\":\"QUALIFIED\"}"))
-            .andExpect(status().isNotFound());
+                        .header(AUTH, bearer(execAToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stage\":\"QUALIFIED\"}"))
+                .andExpect(status().isNotFound());
     }
 
     /**
@@ -142,18 +152,18 @@ class EnquiryVisibilityTest extends IntegrationTest {
     void dedupeStillTripsAgainstAnInvisibleEnquiry() throws Exception {
         // execB owns an active enquiry on this phone; execA cannot see it.
         mvc.perform(get("/api/v1/enquiries/" + execBEnquiry).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
 
         mvc.perform(post("/api/v1/enquiries")
-                .header(AUTH, bearer(execAToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(enquiryJsonFor(EXEC_B_PHONE)))
-            .andExpect(status().isConflict())
-            // The discriminator: this message only comes from the app-level pre-check.
-            // The unique-index backstop's message is the generic "the request conflicts
-            // with existing data" (ApiExceptionHandler.dataIntegrity) and would NOT match.
-            .andExpect(jsonPath("$.error.message")
-                .value(containsString("active enquiry already exists for this phone")));
+                        .header(AUTH, bearer(execAToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(enquiryJsonFor(EXEC_B_PHONE)))
+                .andExpect(status().isConflict())
+                // The discriminator: this message only comes from the app-level pre-check.
+                // The unique-index backstop's message is the generic "the request conflicts
+                // with existing data" (ApiExceptionHandler.dataIntegrity) and would NOT match.
+                .andExpect(jsonPath("$.error.message")
+                        .value(containsString("active enquiry already exists for this phone")));
 
         // Secondary sanity check only -- NOT a discriminator. A constraint violation rolls
         // back the whole transaction, so this count would also read 1 if the pre-check
@@ -171,30 +181,30 @@ class EnquiryVisibilityTest extends IntegrationTest {
     @Test
     void rejectsAnAssignedToThatIsNotAUserInThisTenant() throws Exception {
         mvc.perform(post("/api/v1/enquiries")
-                .header(AUTH, bearer(ownerToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(enquiryJsonAssignedTo("9876500011", UUID.randomUUID())))
-            .andExpect(status().isUnprocessableEntity());
+                        .header(AUTH, bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(enquiryJsonAssignedTo("9876500011", UUID.randomUUID())))
+                .andExpect(status().isUnprocessableEntity());
     }
 
     @Test
     void rejectsAnAssignedToThatNamesAnInactiveUser() throws Exception {
         UUID inactive = seedUser(UserStatus.DISABLED);
         mvc.perform(post("/api/v1/enquiries")
-                .header(AUTH, bearer(ownerToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(enquiryJsonAssignedTo("9876500012", inactive)))
-            .andExpect(status().isUnprocessableEntity());
+                        .header(AUTH, bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(enquiryJsonAssignedTo("9876500012", inactive)))
+                .andExpect(status().isUnprocessableEntity());
     }
 
     @Test
     void acceptsAnAssignedToThatNamesAnActiveUser() throws Exception {
         UUID active = seedUser(UserStatus.ACTIVE);
         mvc.perform(post("/api/v1/enquiries")
-                .header(AUTH, bearer(ownerToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(enquiryJsonAssignedTo("9876500013", active)))
-            .andExpect(status().isCreated());
+                        .header(AUTH, bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(enquiryJsonAssignedTo("9876500013", active)))
+                .andExpect(status().isCreated());
     }
 
     /**
@@ -204,31 +214,32 @@ class EnquiryVisibilityTest extends IntegrationTest {
     @Test
     void acceptsANullAssignedTo() throws Exception {
         mvc.perform(post("/api/v1/enquiries")
-                .header(AUTH, bearer(ownerToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(enquiryJsonAssignedTo("9876500014", null)))
-            .andExpect(status().isCreated());
+                        .header(AUTH, bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(enquiryJsonAssignedTo("9876500014", null)))
+                .andExpect(status().isCreated());
     }
 
     // --- helpers -------------------------------------------------------------
 
     private Enquiry newEnquiry(String phone, UUID assignedTo) {
-        return new Enquiry(null, "Test Contact", phone, phone, null,
-            EnquirySource.MANUAL, null, assignedTo, null);
+        return new Enquiry(null, "Test Contact", phone, phone, null, EnquirySource.MANUAL, null, assignedTo, null);
     }
 
     private long countActiveEnquiriesFor(String phone) {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, execAId, "OWNER"));
         try {
             return enquiries.findByNormalizedPhone(phone).stream()
-                .filter(e -> e.getStage().isActive())
-                .count();
+                    .filter(e -> e.getStage().isActive())
+                    .count();
         } finally {
             TenantContext.clear();
         }
     }
 
-    private String bearer(String token) { return "Bearer " + token; }
+    private String bearer(String token) {
+        return "Bearer " + token;
+    }
 
     private String validEnquiryJson() {
         return """
@@ -243,15 +254,15 @@ class EnquiryVisibilityTest extends IntegrationTest {
     private String enquiryJsonAssignedTo(String phone, UUID assignedTo) {
         String assignedJson = assignedTo == null ? "null" : "\"" + assignedTo + "\"";
         return """
-            {"contactName":"Assign Test","contactPhone":"%s","source":"MANUAL","assignedTo":%s}"""
-            .formatted(phone, assignedJson);
+            {"contactName":"Assign Test","contactPhone":"%s","source":"MANUAL","assignedTo":%s}""".formatted(phone, assignedJson);
     }
 
     /** Seeds a real User row in this test's tenant so assignedTo can resolve against it. */
     private UUID seedUser(UserStatus status) {
-        return TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
-            () -> tx.execute(s -> users.save(new User(
-                "user-" + UUID.randomUUID() + "@example.com", null, "hash",
-                Role.SALES_EXEC, status)).getId()));
+        return TenantContext.runAs(
+                new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+                () -> tx.execute(s -> users.save(new User(
+                                "user-" + UUID.randomUUID() + "@example.com", null, "hash", Role.SALES_EXEC, status))
+                        .getId()));
     }
 }

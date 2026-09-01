@@ -1,5 +1,10 @@
 package com.easycrm.sales;
 
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.crm.Customer;
 import com.easycrm.crm.CustomerRepository;
 import com.easycrm.crm.CustomerSource;
@@ -10,6 +15,8 @@ import com.easycrm.iam.UserStatus;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
+import java.math.BigDecimal;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,14 +26,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
-
-import java.math.BigDecimal;
-import java.util.UUID;
-
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.not;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * Endpoint-level: proves quotations and orders -- neither of which carries its own
@@ -40,14 +39,29 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
 
     private static final String AUTH = "Authorization";
 
-    @Autowired MockMvc mvc;
-    @Autowired TestTokens tokens;
-    @Autowired CustomerRepository customers;
-    @Autowired QuotationRepository quotations;
-    @Autowired QuotationVersionRepository versions;
-    @Autowired OrderRepository orders;
-    @Autowired UserRepository users;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    TestTokens tokens;
+
+    @Autowired
+    CustomerRepository customers;
+
+    @Autowired
+    QuotationRepository quotations;
+
+    @Autowired
+    QuotationVersionRepository versions;
+
+    @Autowired
+    OrderRepository orders;
+
+    @Autowired
+    UserRepository users;
+
+    @Autowired
+    TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID execBId = UUID.randomUUID();
@@ -73,7 +87,8 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, execAId, "OWNER"));
         customerA = customers.saveAndFlush(newCustomer("Customer A", execAId)).getId();
         customerB = customers.saveAndFlush(newCustomer("Customer B", execBId)).getId();
-        customerPool = customers.saveAndFlush(newCustomer("Customer Pool", null)).getId();
+        customerPool =
+                customers.saveAndFlush(newCustomer("Customer Pool", null)).getId();
 
         quoteUnderA = seedQuotationAndOrder(customerA);
         quoteUnderB = seedQuotationAndOrder(customerB);
@@ -81,53 +96,55 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
         TenantContext.clear();
     }
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     // --- quotation reads -------------------------------------------------------------
 
     @Test
     void execCanGetTheQuotationUnderTheirOwnCustomer() throws Exception {
         mvc.perform(get("/api/v1/quotations/" + quoteUnderA).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void execCannotGetTheQuotationUnderAnotherExecsCustomer() throws Exception {
         mvc.perform(get("/api/v1/quotations/" + quoteUnderB).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void execCanGetTheQuotationUnderAnUnassignedCustomer() throws Exception {
         mvc.perform(get("/api/v1/quotations/" + quoteUnderPool).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void ownerCanGetAnyQuotation() throws Exception {
         mvc.perform(get("/api/v1/quotations/" + quoteUnderA).header(AUTH, bearer(ownerToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
         mvc.perform(get("/api/v1/quotations/" + quoteUnderB).header(AUTH, bearer(ownerToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
         mvc.perform(get("/api/v1/quotations/" + quoteUnderPool).header(AUTH, bearer(ownerToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void execQuotationListOmitsAnotherExecsCustomersQuotation() throws Exception {
         mvc.perform(get("/api/v1/quotations").header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(quoteUnderB.toString()))))
-            .andExpect(jsonPath("$.content[*].id").value(hasItem(quoteUnderA.toString())))
-            .andExpect(jsonPath("$.content[*].id").value(hasItem(quoteUnderPool.toString())));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].id").value(not(hasItem(quoteUnderB.toString()))))
+                .andExpect(jsonPath("$.content[*].id").value(hasItem(quoteUnderA.toString())))
+                .andExpect(jsonPath("$.content[*].id").value(hasItem(quoteUnderPool.toString())));
     }
 
     /** WRITE coverage. Findable-first ordering means the 404 fires before any status check. */
     @Test
     void execCannotAcceptTheQuotationUnderAnotherExecsCustomer() throws Exception {
-        mvc.perform(post("/api/v1/quotations/" + quoteUnderB + "/accept")
-                .header(AUTH, bearer(execAToken)))
-            .andExpect(status().isNotFound());
+        mvc.perform(post("/api/v1/quotations/" + quoteUnderB + "/accept").header(AUTH, bearer(execAToken)))
+                .andExpect(status().isNotFound());
     }
 
     // --- order reads -------------------------------------------------------------
@@ -135,49 +152,49 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
     @Test
     void execCanGetTheOrderUnderTheirOwnCustomer() throws Exception {
         mvc.perform(get("/api/v1/orders/" + orderUnderA).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void execCannotGetTheOrderUnderAnotherExecsCustomer() throws Exception {
         mvc.perform(get("/api/v1/orders/" + orderUnderB).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void execCanGetTheOrderUnderAnUnassignedCustomer() throws Exception {
         mvc.perform(get("/api/v1/orders/" + orderUnderPool).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void ownerCanGetAnyOrder() throws Exception {
         mvc.perform(get("/api/v1/orders/" + orderUnderA).header(AUTH, bearer(ownerToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
         mvc.perform(get("/api/v1/orders/" + orderUnderB).header(AUTH, bearer(ownerToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
         mvc.perform(get("/api/v1/orders/" + orderUnderPool).header(AUTH, bearer(ownerToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
     void execOrderListOmitsAnotherExecsCustomersOrder() throws Exception {
         mvc.perform(get("/api/v1/orders").header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content[*].id").value(not(hasItem(orderUnderB.toString()))))
-            .andExpect(jsonPath("$.content[*].id").value(hasItem(orderUnderA.toString())))
-            .andExpect(jsonPath("$.content[*].id").value(hasItem(orderUnderPool.toString())));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].id").value(not(hasItem(orderUnderB.toString()))))
+                .andExpect(jsonPath("$.content[*].id").value(hasItem(orderUnderA.toString())))
+                .andExpect(jsonPath("$.content[*].id").value(hasItem(orderUnderPool.toString())));
     }
 
     /** WRITE coverage. Findable-first ordering means the 404 fires before any status check. */
     @Test
     void execCannotCancelTheOrderUnderAnotherExecsCustomer() throws Exception {
         mvc.perform(post("/api/v1/orders/" + orderUnderB + "/cancel")
-                .header(AUTH, bearer(execAToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+                        .header(AUTH, bearer(execAToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
                     {"cancelReason":"testing"}"""))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 
     /**
@@ -188,12 +205,12 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
     @Test
     void reassigningTheCustomerMovesItsQuotations() throws Exception {
         mvc.perform(get("/api/v1/quotations/" + quoteUnderB).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
 
         reassignCustomer(customerB, execAId);
 
         mvc.perform(get("/api/v1/quotations/" + quoteUnderB).header(AUTH, bearer(execAToken)))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     // --- helpers -------------------------------------------------------------
@@ -215,9 +232,17 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
         quotation.markAccepted();
         quotations.saveAndFlush(quotation);
 
-        UUID orderId = orders.saveAndFlush(new Order(quotation.getId(), version.getId(), customerId,
-            "O-SEED-" + seq, BigDecimal.TEN, BigDecimal.ONE,
-            new BigDecimal("11"), null, null)).getId();
+        UUID orderId = orders.saveAndFlush(new Order(
+                        quotation.getId(),
+                        version.getId(),
+                        customerId,
+                        "O-SEED-" + seq,
+                        BigDecimal.TEN,
+                        BigDecimal.ONE,
+                        new BigDecimal("11"),
+                        null,
+                        null))
+                .getId();
 
         if (customerId.equals(customerA)) orderUnderA = orderId;
         else if (customerId.equals(customerB)) orderUnderB = orderId;
@@ -229,21 +254,23 @@ class QuotationOrderVisibilityTest extends IntegrationTest {
     /** Owner-authenticated update of a customer's assignment through the real endpoint. */
     private void reassignCustomer(UUID customerId, UUID assignTo) throws Exception {
         mvc.perform(put("/api/v1/customers/" + customerId)
-                .header(AUTH, bearer(ownerToken))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"businessName":"Customer B","stateCode":"27","source":"MANUAL","assignedTo":"%s"}"""
-                    .formatted(assignTo)))
-            .andExpect(status().isOk());
+                        .header(AUTH, bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {"businessName":"Customer B","stateCode":"27","source":"MANUAL","assignedTo":"%s"}""".formatted(assignTo)))
+                .andExpect(status().isOk());
     }
 
-    private String bearer(String token) { return "Bearer " + token; }
+    private String bearer(String token) {
+        return "Bearer " + token;
+    }
 
     /** Seeds a real User row in this test's tenant so assignedTo can resolve against it. */
     private UUID seedUser(UserStatus status) {
-        return TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
-            () -> tx.execute(s -> users.save(new User(
-                "user-" + UUID.randomUUID() + "@example.com", null, "hash",
-                Role.SALES_EXEC, status)).getId()));
+        return TenantContext.runAs(
+                new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
+                () -> tx.execute(s -> users.save(new User(
+                                "user-" + UUID.randomUUID() + "@example.com", null, "hash", Role.SALES_EXEC, status))
+                        .getId()));
     }
 }

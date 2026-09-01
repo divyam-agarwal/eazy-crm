@@ -7,16 +7,18 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
-@Table(name = "quotation_version",
-       uniqueConstraints = @UniqueConstraint(name = "uq_qv_tenant_quotation_no",
-                                             columnNames = {"tenant_id", "quotation_id", "version_no"}))
+@Table(
+        name = "quotation_version",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_qv_tenant_quotation_no",
+                        columnNames = {"tenant_id", "quotation_id", "version_no"}))
 public class QuotationVersion extends TenantScopedEntity {
 
     @Column(name = "quotation_id", nullable = false)
@@ -83,16 +85,51 @@ public class QuotationVersion extends TenantScopedEntity {
         this.sentAt = sentAt;
     }
 
-    public UUID getQuotationId() { return quotationId; }
-    public int getVersionNo() { return versionNo; }
-    public VersionStatus getStatus() { return status; }
-    public LocalDate getValidUntil() { return validUntil; }
-    public String getPaymentTerms() { return paymentTerms; }
-    public String getDeliveryTerms() { return deliveryTerms; }
-    public String getNotes() { return notes; }
-    public String getPlaceOfSupply() { return placeOfSupply; }
-    public BigDecimal getSubTotal() { return subTotal; }
-    public BigDecimal getTotalTax() { return totalTax; }
-    public BigDecimal getGrandTotal() { return grandTotal; }
-    public Instant getSentAt() { return sentAt; }
+    public UUID getQuotationId() {
+        return quotationId;
+    }
+
+    public int getVersionNo() {
+        return versionNo;
+    }
+
+    public VersionStatus getStatus() {
+        return status;
+    }
+
+    public LocalDate getValidUntil() {
+        return validUntil;
+    }
+
+    public String getPaymentTerms() {
+        return paymentTerms;
+    }
+
+    public String getDeliveryTerms() {
+        return deliveryTerms;
+    }
+
+    public String getNotes() {
+        return notes;
+    }
+
+    public String getPlaceOfSupply() {
+        return placeOfSupply;
+    }
+
+    public BigDecimal getSubTotal() {
+        return subTotal;
+    }
+
+    public BigDecimal getTotalTax() {
+        return totalTax;
+    }
+
+    public BigDecimal getGrandTotal() {
+        return grandTotal;
+    }
+
+    public Instant getSentAt() {
+        return sentAt;
+    }
 }

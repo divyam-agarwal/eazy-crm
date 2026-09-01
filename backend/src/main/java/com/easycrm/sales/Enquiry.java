@@ -7,7 +7,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
-
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -52,9 +51,16 @@ public class Enquiry extends TenantScopedEntity {
 
     protected Enquiry() {}
 
-    public Enquiry(UUID customerId, String contactName, String contactPhone, String normalizedPhone,
-                   String contactEmail, EnquirySource source, String requirementText,
-                   UUID assignedTo, BigDecimal expectedValue) {
+    public Enquiry(
+            UUID customerId,
+            String contactName,
+            String contactPhone,
+            String normalizedPhone,
+            String contactEmail,
+            EnquirySource source,
+            String requirementText,
+            UUID assignedTo,
+            BigDecimal expectedValue) {
         this.customerId = customerId;
         this.contactName = contactName;
         this.contactPhone = contactPhone;
@@ -68,9 +74,16 @@ public class Enquiry extends TenantScopedEntity {
     }
 
     /** Edit header fields. Allowed only while the enquiry is active. */
-    public void updateHeader(UUID customerId, String contactName, String contactPhone,
-                             String normalizedPhone, String contactEmail, EnquirySource source,
-                             String requirementText, UUID assignedTo, BigDecimal expectedValue) {
+    public void updateHeader(
+            UUID customerId,
+            String contactName,
+            String contactPhone,
+            String normalizedPhone,
+            String contactEmail,
+            EnquirySource source,
+            String requirementText,
+            UUID assignedTo,
+            BigDecimal expectedValue) {
         requireActive("edited");
         this.customerId = customerId;
         this.contactName = contactName;
@@ -87,8 +100,7 @@ public class Enquiry extends TenantScopedEntity {
     public void advanceTo(EnquiryStage target) {
         requireActive("advanced");
         if (!target.isActive() || target.ordinal() <= this.stage.ordinal()) {
-            throw new ValidationException("stage",
-                "can only advance to a later active stage");
+            throw new ValidationException("stage", "can only advance to a later active stage");
         }
         this.stage = target;
     }
@@ -110,20 +122,51 @@ public class Enquiry extends TenantScopedEntity {
 
     private void requireActive(String verb) {
         if (stage.isTerminal()) {
-            throw new ValidationException("stage",
-                "a " + stage.name().toLowerCase() + " enquiry cannot be " + verb);
+            throw new ValidationException("stage", "a " + stage.name().toLowerCase() + " enquiry cannot be " + verb);
         }
     }
 
-    public UUID getCustomerId() { return customerId; }
-    public String getContactName() { return contactName; }
-    public String getContactPhone() { return contactPhone; }
-    public String getNormalizedPhone() { return normalizedPhone; }
-    public String getContactEmail() { return contactEmail; }
-    public EnquirySource getSource() { return source; }
-    public String getRequirementText() { return requirementText; }
-    public UUID getAssignedTo() { return assignedTo; }
-    public EnquiryStage getStage() { return stage; }
-    public BigDecimal getExpectedValue() { return expectedValue; }
-    public String getLostReason() { return lostReason; }
+    public UUID getCustomerId() {
+        return customerId;
+    }
+
+    public String getContactName() {
+        return contactName;
+    }
+
+    public String getContactPhone() {
+        return contactPhone;
+    }
+
+    public String getNormalizedPhone() {
+        return normalizedPhone;
+    }
+
+    public String getContactEmail() {
+        return contactEmail;
+    }
+
+    public EnquirySource getSource() {
+        return source;
+    }
+
+    public String getRequirementText() {
+        return requirementText;
+    }
+
+    public UUID getAssignedTo() {
+        return assignedTo;
+    }
+
+    public EnquiryStage getStage() {
+        return stage;
+    }
+
+    public BigDecimal getExpectedValue() {
+        return expectedValue;
+    }
+
+    public String getLostReason() {
+        return lostReason;
+    }
 }

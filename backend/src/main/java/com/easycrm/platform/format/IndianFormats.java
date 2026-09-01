@@ -12,8 +12,7 @@ import java.util.Locale;
 public final class IndianFormats {
 
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
-    private static final DateTimeFormatter DAY_FIRST =
-        DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ROOT);
+    private static final DateTimeFormatter DAY_FIRST = DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ROOT);
 
     private IndianFormats() {}
 
@@ -50,7 +49,7 @@ public final class IndianFormats {
     private static String indianGrouped(BigDecimal amount) {
         BigDecimal scaled = amount.setScale(2, RoundingMode.HALF_UP);
         boolean negative = scaled.signum() < 0;
-        String plain = scaled.abs().toPlainString();     // setScale(2) guarantees a '.'
+        String plain = scaled.abs().toPlainString(); // setScale(2) guarantees a '.'
         int dot = plain.indexOf('.');
         String whole = plain.substring(0, dot);
         String fraction = plain.substring(dot);

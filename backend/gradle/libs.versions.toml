@@ -1,0 +1,56 @@
+[versions]
+springBoot = "4.1.0"
+springDependencyManagement = "1.1.7"
+# 1.1.x was never cut upstream (as of 2026-07-28: latest on Maven Central is 1.0.10,
+# dev branch pom.xml reads 1.0.11-SNAPSHOT). 1.0.10 IS the latest.
+openhtmltopdf = "1.0.10"
+jjwt = "0.12.6"
+# The artifact id is JDK-qualified as of 8.10: com.bucket4j:bucket4j-core is a stale
+# coordinate that silently resolves to 8.1.x.
+bucket4j = "8.19.0"
+# The Spring Boot 4.1 BOM does not manage Testcontainers module versions; pin the BOM.
+testcontainers = "1.21.3"
+# 1.4.x parses Java 25 bytecode. 1.3.0 silently skips it and every rule passes vacuously.
+archunit = "1.4.1"
+junit = "5.13.4"
+# --- quality tooling, added by the build-hygiene slice ---
+# Verified against the Gradle Plugin Portal maven repo (plugins.gradle.org/m2) on
+# 2026-09-01. The 8.x line exists upstream (latest 8.10.1) but the brief calls out 7.x
+# as the known-good major line for Gradle 9.6.1; 7.2.1 is the newest patch on that line.
+# Documented floor was 7.0.2 -- this is a verified-latest-on-the-known-good-line pick.
+spotless = "7.2.1"
+# Verified against plugins.gradle.org/m2 on 2026-09-01: 6.5.11 is both the newest release
+# overall and still the known-good 6.x major line called out in the brief (no 7.x exists
+# yet upstream). Documented floor was 6.1.13 -- this is a verified-latest pick.
+spotbugs = "6.5.11"
+# Pinned separately from the Spotless plugin: the formatter version decides the actual
+# output bytes, so bumping it reformats the tree. Treat a bump as its own commit.
+# Verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release: 2.97.0).
+# Documented floor was 2.50.0.
+# This is the single source of truth: easycrm.quality-conventions.gradle.kts reads it back
+# via the untyped VersionCatalogsExtension lookup (type-safe `libs.` accessors are not
+# available inside a precompiled script plugin, but that untyped lookup is) -- see the
+# comment at the top of that file. Bump only here.
+palantirJavaFormat = "2.97.0"
+# Verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release: 1.14.0).
+# Documented floor was 1.13.0.
+# Single source of truth for the same reason as palantirJavaFormat above -- read back by
+# easycrm.quality-conventions.gradle.kts via the untyped catalog lookup. Bump only here.
+findsecbugs = "1.14.0"
+
+[libraries]
+openhtmltopdf-pdfbox = { module = "com.openhtmltopdf:openhtmltopdf-pdfbox", version.ref = "openhtmltopdf" }
+jjwt-api = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
+jjwt-impl = { module = "io.jsonwebtoken:jjwt-impl", version.ref = "jjwt" }
+jjwt-jackson = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
+bucket4j-core = { module = "com.bucket4j:bucket4j_jdk17-core", version.ref = "bucket4j" }
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+findsecbugs = { module = "com.h3xstream.findsecbugs:findsecbugs-plugin", version.ref = "findsecbugs" }
+
+[plugins]
+springBoot = { id = "org.springframework.boot", version.ref = "springBoot" }
+springDependencyManagement = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+spotbugs = { id = "com.github.spotbugs", version.ref = "spotbugs" }

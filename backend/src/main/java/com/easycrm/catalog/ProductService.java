@@ -7,27 +7,33 @@ import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.web.PageResponse;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductService {
 
     // Compared with compareTo (not equals): BigDecimal("18") != BigDecimal("18.0") under equals.
     private static final BigDecimal[] ALLOWED_GST_RATES = {
-        new BigDecimal("0"), new BigDecimal("0.25"), new BigDecimal("3"),
-        new BigDecimal("5"), new BigDecimal("12"), new BigDecimal("18"), new BigDecimal("28")
+        new BigDecimal("0"),
+        new BigDecimal("0.25"),
+        new BigDecimal("3"),
+        new BigDecimal("5"),
+        new BigDecimal("12"),
+        new BigDecimal("18"),
+        new BigDecimal("28")
     };
 
     private final ProductRepository products;
 
-    public ProductService(ProductRepository products) { this.products = products; }
+    public ProductService(ProductRepository products) {
+        this.products = products;
+    }
 
     @Transactional
     public ProductResponse create(ProductCreateRequest req) {
@@ -35,8 +41,8 @@ public class ProductService {
         products.findBySku(req.sku()).ifPresent(p -> {
             throw new ConflictException("product with this SKU already exists");
         });
-        Product saved = products.save(new Product(req.sku(), req.name(), req.hsnCode(),
-                                                  req.uom(), req.gstRate(), req.baseRate()));
+        Product saved = products.save(
+                new Product(req.sku(), req.name(), req.hsnCode(), req.uom(), req.gstRate(), req.baseRate()));
         return ProductResponse.of(saved);
     }
 
@@ -47,9 +53,7 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public PageResponse<ProductResponse> list(Boolean active, Pageable pageable) {
-        var page = (active == null)
-            ? products.findAll(pageable)
-            : products.findByActive(active, pageable);
+        var page = (active == null) ? products.findAll(pageable) : products.findByActive(active, pageable);
         return PageResponse.of(page.map(ProductResponse::of));
     }
 
@@ -81,8 +85,7 @@ public class ProductService {
 
     private void validate(String hsnCode, BigDecimal gstRate, BigDecimal baseRate) {
         Map<String, String> errors = new LinkedHashMap<>();
-        if (hsnCode != null && !hsnCode.isBlank()
-                && !hsnCode.matches("\\d{4}|\\d{6}|\\d{8}")) {
+        if (hsnCode != null && !hsnCode.isBlank() && !hsnCode.matches("\\d{4}|\\d{6}|\\d{8}")) {
             errors.put("hsnCode", "HSN code must be 4, 6, or 8 digits");
         }
         if (gstRate != null && !isAllowedRate(gstRate)) {

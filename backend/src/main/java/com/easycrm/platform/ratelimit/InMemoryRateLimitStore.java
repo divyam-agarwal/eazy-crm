@@ -5,7 +5,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import io.github.bucket4j.TimeMeter;
-
 import java.time.Duration;
 
 /**
@@ -77,9 +76,9 @@ public class InMemoryRateLimitStore implements RateLimitStore {
         this.evictionWindow = evictionWindow;
         this.timeMeter = timeMeter;
         this.buckets = Caffeine.newBuilder()
-            .maximumSize(MAX_BUCKETS)
-            .expireAfterAccess(evictionWindow)
-            .build();
+                .maximumSize(MAX_BUCKETS)
+                .expireAfterAccess(evictionWindow)
+                .build();
     }
 
     /**
@@ -89,9 +88,9 @@ public class InMemoryRateLimitStore implements RateLimitStore {
      */
     static Duration evictionWindowFor(RateLimitProperties properties) {
         Duration longestRefillPeriod = properties.policies().stream()
-            .map(RateLimitPolicy::refillPeriod)
-            .max(Duration::compareTo)
-            .orElse(Duration.ZERO);
+                .map(RateLimitPolicy::refillPeriod)
+                .max(Duration::compareTo)
+                .orElse(Duration.ZERO);
         Duration doubled = longestRefillPeriod.multipliedBy(2);
         return doubled.compareTo(MIN_EVICTION_WINDOW) > 0 ? doubled : MIN_EVICTION_WINDOW;
     }
@@ -108,17 +107,15 @@ public class InMemoryRateLimitStore implements RateLimitStore {
         String cacheKey = policy.name() + '|' + key;
         Bucket bucket = buckets.get(cacheKey, k -> newBucket(policy));
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
-        return probe.isConsumed()
-            ? Decision.allow()
-            : new Decision(false, probe.getNanosToWaitForRefill());
+        return probe.isConsumed() ? Decision.allow() : new Decision(false, probe.getNanosToWaitForRefill());
     }
 
     private Bucket newBucket(RateLimitPolicy policy) {
         return Bucket.builder()
-            .addLimit(limit -> limit.capacity(policy.capacity())
-                                    .refillGreedy(policy.capacity(), policy.refillPeriod()))
-            .withCustomTimePrecision(timeMeter)
-            .build();
+                .addLimit(limit ->
+                        limit.capacity(policy.capacity()).refillGreedy(policy.capacity(), policy.refillPeriod()))
+                .withCustomTimePrecision(timeMeter)
+                .build();
     }
 
     /** Test seam: how many buckets are currently retained. */

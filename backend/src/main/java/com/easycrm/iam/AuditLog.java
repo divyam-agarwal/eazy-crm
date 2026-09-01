@@ -4,11 +4,10 @@ import com.easycrm.platform.persistence.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "audit_log")
@@ -32,7 +31,15 @@ public class AuditLog extends TenantScopedEntity {
         this.detail = detail;
     }
 
-    public String getAction() { return action; }
-    public UUID getActorUserId() { return actorUserId; }
-    public Map<String, Object> getDetail() { return detail; }
+    public String getAction() {
+        return action;
+    }
+
+    public UUID getActorUserId() {
+        return actorUserId;
+    }
+
+    public Map<String, Object> getDetail() {
+        return detail;
+    }
 }

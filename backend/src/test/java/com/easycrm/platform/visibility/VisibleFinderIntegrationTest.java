@@ -1,5 +1,7 @@
 package com.easycrm.platform.visibility;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.crm.Customer;
 import com.easycrm.crm.CustomerRepository;
 import com.easycrm.crm.CustomerSource;
@@ -9,24 +11,30 @@ import com.easycrm.sales.OrderRepository;
 import com.easycrm.sales.Quotation;
 import com.easycrm.sales.QuotationRepository;
 import com.easycrm.support.IntegrationTest;
+import java.math.BigDecimal;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.math.BigDecimal;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 class VisibleFinderIntegrationTest extends IntegrationTest {
 
-    @Autowired VisibleFinder finder;
-    @Autowired CustomerRepository customers;
-    @Autowired QuotationRepository quotations;
-    @Autowired OrderRepository orders;
-    @Autowired TransactionTemplate tx;
+    @Autowired
+    VisibleFinder finder;
+
+    @Autowired
+    CustomerRepository customers;
+
+    @Autowired
+    QuotationRepository quotations;
+
+    @Autowired
+    OrderRepository orders;
+
+    @Autowired
+    TransactionTemplate tx;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID execA = UUID.randomUUID();
@@ -37,12 +45,13 @@ class VisibleFinderIntegrationTest extends IntegrationTest {
     @BeforeEach
     void seed() {
         run(execA, "OWNER", () -> {
-            mine   = customers.save(customer("Mine", execA)).getId();
+            mine = customers.save(customer("Mine", execA)).getId();
             theirs = customers.save(customer("Theirs", execB)).getId();
-            pool   = customers.save(customer("Pool", null)).getId();
+            pool = customers.save(customer("Pool", null)).getId();
 
             for (UUID customerId : new UUID[] {mine, theirs, pool}) {
-                UUID quotationId = quotations.save(new Quotation(customerId, null)).getId();
+                UUID quotationId =
+                        quotations.save(new Quotation(customerId, null)).getId();
                 orders.save(order(customerId, quotationId));
             }
         });
@@ -50,26 +59,22 @@ class VisibleFinderIntegrationTest extends IntegrationTest {
 
     @Test
     void byIdReturnsAVisibleRecord() {
-        run(execA, "SALES_EXEC", () ->
-            assertThat(finder.findCustomer(mine)).isPresent());
+        run(execA, "SALES_EXEC", () -> assertThat(finder.findCustomer(mine)).isPresent());
     }
 
     @Test
     void byIdReturnsEmptyForAnInvisibleRecord() {
-        run(execA, "SALES_EXEC", () ->
-            assertThat(finder.findCustomer(theirs)).isEmpty());
+        run(execA, "SALES_EXEC", () -> assertThat(finder.findCustomer(theirs)).isEmpty());
     }
 
     @Test
     void byIdReturnsAnUnassignedRecord() {
-        run(execA, "SALES_EXEC", () ->
-            assertThat(finder.findCustomer(pool)).isPresent());
+        run(execA, "SALES_EXEC", () -> assertThat(finder.findCustomer(pool)).isPresent());
     }
 
     @Test
     void ownerSeesEvenAnotherExecsRecordById() {
-        run(execA, "OWNER", () ->
-            assertThat(finder.findCustomer(theirs)).isPresent());
+        run(execA, "OWNER", () -> assertThat(finder.findCustomer(theirs)).isPresent());
     }
 
     /**
@@ -117,18 +122,25 @@ class VisibleFinderIntegrationTest extends IntegrationTest {
     }
 
     private void run(UUID userId, String role, Runnable body) {
-        TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, userId, role),
-            () -> tx.executeWithoutResult(s -> body.run()));
+        TenantContext.runAs(
+                new TenantContext.TenantPrincipal(tenantId, userId, role),
+                () -> tx.executeWithoutResult(s -> body.run()));
     }
 
     private Customer customer(String name, UUID assignedTo) {
-        return new Customer(name, null, "27", "addr", "addr", 0,
-            assignedTo, null, CustomerSource.MANUAL);
+        return new Customer(name, null, "27", "addr", "addr", 0, assignedTo, null, CustomerSource.MANUAL);
     }
 
     private Order order(UUID customerId, UUID quotationId) {
-        return new Order(quotationId, UUID.randomUUID(), customerId,
-            "SO-" + UUID.randomUUID().toString().substring(0, 8),
-            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, null);
+        return new Order(
+                quotationId,
+                UUID.randomUUID(),
+                customerId,
+                "SO-" + UUID.randomUUID().toString().substring(0, 8),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null);
     }
 }

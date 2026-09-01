@@ -3,12 +3,11 @@ package com.easycrm.sales;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
-import org.springframework.data.jpa.domain.Specification;
-
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.jpa.domain.Specification;
 
 public final class QuotationSpecifications {
 
@@ -18,7 +17,7 @@ public final class QuotationSpecifications {
     public static Specification<Quotation> filter(QuotationStatus status, UUID customerId) {
         return (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            if (status != null)     ps.add(cb.equal(root.get("status"), status));
+            if (status != null) ps.add(cb.equal(root.get("status"), status));
             if (customerId != null) ps.add(cb.equal(root.get("customerId"), customerId));
             return cb.and(ps.toArray(new Predicate[0])); // empty -> always-true conjunction
         };
@@ -43,12 +42,10 @@ public final class QuotationSpecifications {
             Root<QuotationVersion> v = sub.from(QuotationVersion.class);
             sub.select(v.get("id"));
             sub.where(cb.and(
-                cb.equal(v.get("id"), root.get("currentVersionId")),
-                cb.isNotNull(v.get("validUntil")),
-                cb.lessThan(v.<LocalDate>get("validUntil"), asOf)));
-            return cb.and(
-                cb.equal(root.get("status"), QuotationStatus.SENT),
-                cb.exists(sub));
+                    cb.equal(v.get("id"), root.get("currentVersionId")),
+                    cb.isNotNull(v.get("validUntil")),
+                    cb.lessThan(v.<LocalDate>get("validUntil"), asOf)));
+            return cb.and(cb.equal(root.get("status"), QuotationStatus.SENT), cb.exists(sub));
         };
     }
 }

@@ -18,7 +18,9 @@ public class AuthController {
 
     private final AuthService auth;
 
-    public AuthController(AuthService auth) { this.auth = auth; }
+    public AuthController(AuthService auth) {
+        this.auth = auth;
+    }
 
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest req) {

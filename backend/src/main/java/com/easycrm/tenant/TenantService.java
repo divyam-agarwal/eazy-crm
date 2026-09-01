@@ -5,10 +5,9 @@ import com.easycrm.platform.security.RoleGuard;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.web.dto.TenantProfileRequest;
 import com.easycrm.tenant.web.dto.TenantResponse;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 @Service
 public class TenantService {

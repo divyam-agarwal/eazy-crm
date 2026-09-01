@@ -1,11 +1,10 @@
 package com.easycrm.platform.money;
 
+import java.math.BigDecimal;
 import tools.jackson.core.JsonGenerator;
 import tools.jackson.databind.SerializationContext;
 import tools.jackson.databind.ValueSerializer;
 import tools.jackson.databind.module.SimpleModule;
-
-import java.math.BigDecimal;
 
 /**
  * Serializes every BigDecimal as a JSON string in plain notation. JS numbers are IEEE-754

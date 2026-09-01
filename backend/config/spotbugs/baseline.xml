@@ -1,0 +1,826 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs baseline, generated 2026-09-01 during the build-hygiene slice.
+
+  This is a snapshot of every finding present across both Gradle projects
+  (root `easycrm-backend` and `platform:platform-primitives`) on the day
+  SpotBugs (with find-sec-bugs 1.14.0) was first wired into the build.
+
+  Total: 32 findings — 29 root (`easycrm-backend`), 3 `platform-primitives`.
+  By type:
+    EI_EXPOSE_REP2                          x17
+    EI_EXPOSE_REP                            x8
+    NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE   x3
+    CT_CONSTRUCTOR_THROW                     x3
+    MS_EXPOSE_REP                            x1
+  26 of the 32 (EI_EXPOSE_REP2 + EI_EXPOSE_REP + MS_EXPOSE_REP) are the
+  defensive-copy family, largely noise on JPA entities and records. The
+  other 6 (NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE x3, CT_CONSTRUCTOR_THROW
+  x3) deserve a real look. Zero SECURITY-category findings from
+  find-sec-bugs.
+
+  This breakdown is inlined here, rather than linked out to a task report,
+  because `.superpowers/sdd/**` is .gitignore'd — a report path is not
+  reachable from a fresh clone. This file is the durable record.
+
+  To re-enumerate the baselined findings yourself (e.g. to check this
+  breakdown, or before triaging the backlog): comment out the
+  `baselineFile = ...` line below and run `./gradlew spotbugsMain`. With
+  baselineFile active, `-excludeBugs` filters the emitted BugCollection
+  itself, not just the pass/fail decision — both the HTML and XML reports
+  print `total_bugs="0"` with zero `<BugInstance>` elements, so the
+  baselined findings are invisible in normal build output; removing
+  baselineFile is the only way to see them via SpotBugs' own reports.
+
+  Consumed via `spotbugs { baselineFile = ... }`, which SpotBugs Gradle
+  plugin 6.5.11 wires to the underlying `-excludeBugs` flag: bugs are
+  matched by `instanceHash` and suppressed from the current run's
+  failure decision. This is a snapshot, not a permanent exclusion
+  (contrast with exclude.xml): fix findings against your own change, but
+  do not silently fix or regenerate away someone else's baselined entry,
+  and do NOT append new findings to this file to make the gate pass; new
+  findings must be fixed in the code that introduced them.
+-->
+<BugCollection version="4.10.4" sequence="0" timestamp="0" analysisTimestamp="0" release="">
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="ad07f82c55d7ee639233a92a582fd12e" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.catalog.web.PriceListItemController(PriceListItemService) may expose internal representation by storing an externally mutable object into PriceListItemController.service</LongMessage>
+    <Class classname="com.easycrm.catalog.web.PriceListItemController" primary="true" classAnnotationNames="org.springframework.web.bind.annotation.RestController,org.springframework.web.bind.annotation.RequestMapping">
+      <SourceLine classname="com.easycrm.catalog.web.PriceListItemController" start="19" end="37" sourcefile="PriceListItemController.java" sourcepath="com/easycrm/catalog/web/PriceListItemController.java" relSourcepath="java/com/easycrm/catalog/web/PriceListItemController.java">
+        <Message>At PriceListItemController.java:[lines 19-37]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.catalog.web.PriceListItemController</Message>
+    </Class>
+    <Method classname="com.easycrm.catalog.web.PriceListItemController" name="&lt;init&gt;" signature="(Lcom/easycrm/catalog/PriceListItemService;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.catalog.web.PriceListItemController" start="19" end="21" startBytecode="0" endBytecode="69" sourcefile="PriceListItemController.java" sourcepath="com/easycrm/catalog/web/PriceListItemController.java" relSourcepath="java/com/easycrm/catalog/web/PriceListItemController.java"/>
+      <Message>In method new com.easycrm.catalog.web.PriceListItemController(PriceListItemService)</Message>
+    </Method>
+    <Field classname="com.easycrm.catalog.web.PriceListItemController" name="service" signature="Lcom/easycrm/catalog/PriceListItemService;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.catalog.web.PriceListItemController" sourcefile="PriceListItemController.java" sourcepath="com/easycrm/catalog/web/PriceListItemController.java" relSourcepath="java/com/easycrm/catalog/web/PriceListItemController.java">
+        <Message>In PriceListItemController.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.catalog.web.PriceListItemController.service</Message>
+    </Field>
+    <LocalVariable name="service" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named service</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.catalog.web.PriceListItemController" primary="true" start="20" end="20" startBytecode="6" endBytecode="6" sourcefile="PriceListItemController.java" sourcepath="com/easycrm/catalog/web/PriceListItemController.java" relSourcepath="java/com/easycrm/catalog/web/PriceListItemController.java">
+      <Message>At PriceListItemController.java:[line 20]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="1af4fed2a2f6bbbc49feaccb6d177971" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.crm.web.ContactController(ContactService) may expose internal representation by storing an externally mutable object into ContactController.service</LongMessage>
+    <Class classname="com.easycrm.crm.web.ContactController" primary="true" classAnnotationNames="org.springframework.web.bind.annotation.RestController,org.springframework.web.bind.annotation.RequestMapping">
+      <SourceLine classname="com.easycrm.crm.web.ContactController" start="19" end="42" sourcefile="ContactController.java" sourcepath="com/easycrm/crm/web/ContactController.java" relSourcepath="java/com/easycrm/crm/web/ContactController.java">
+        <Message>At ContactController.java:[lines 19-42]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.crm.web.ContactController</Message>
+    </Class>
+    <Method classname="com.easycrm.crm.web.ContactController" name="&lt;init&gt;" signature="(Lcom/easycrm/crm/ContactService;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.crm.web.ContactController" start="19" end="21" startBytecode="0" endBytecode="69" sourcefile="ContactController.java" sourcepath="com/easycrm/crm/web/ContactController.java" relSourcepath="java/com/easycrm/crm/web/ContactController.java"/>
+      <Message>In method new com.easycrm.crm.web.ContactController(ContactService)</Message>
+    </Method>
+    <Field classname="com.easycrm.crm.web.ContactController" name="service" signature="Lcom/easycrm/crm/ContactService;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.crm.web.ContactController" sourcefile="ContactController.java" sourcepath="com/easycrm/crm/web/ContactController.java" relSourcepath="java/com/easycrm/crm/web/ContactController.java">
+        <Message>In ContactController.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.crm.web.ContactController.service</Message>
+    </Field>
+    <LocalVariable name="service" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named service</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.crm.web.ContactController" primary="true" start="20" end="20" startBytecode="6" endBytecode="6" sourcefile="ContactController.java" sourcepath="com/easycrm/crm/web/ContactController.java" relSourcepath="java/com/easycrm/crm/web/ContactController.java">
+      <Message>At ContactController.java:[line 20]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="618ba5428f10315773dbdd0bc15e8c35" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.iam.AuditLog.getDetail() may expose internal representation by returning AuditLog.detail</LongMessage>
+    <Class classname="com.easycrm.iam.AuditLog" primary="true" classAnnotationNames="jakarta.persistence.Entity,jakarta.persistence.Table">
+      <SourceLine classname="com.easycrm.iam.AuditLog" start="26" end="43" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java">
+        <Message>At AuditLog.java:[lines 26-43]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.iam.AuditLog</Message>
+    </Class>
+    <Method classname="com.easycrm.iam.AuditLog" name="getDetail" signature="()Ljava/util/Map;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.AuditLog" start="43" end="43" startBytecode="0" endBytecode="46" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java"/>
+      <Message>In method com.easycrm.iam.AuditLog.getDetail()</Message>
+    </Method>
+    <Field classname="com.easycrm.iam.AuditLog" name="detail" signature="Ljava/util/Map;" isStatic="false" primary="true" classAnnotationNames="org.hibernate.annotations.JdbcTypeCode,jakarta.persistence.Column">
+      <SourceLine classname="com.easycrm.iam.AuditLog" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java">
+        <Message>In AuditLog.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.iam.AuditLog.detail</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.iam.AuditLog" primary="true" start="43" end="43" startBytecode="4" endBytecode="4" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java">
+      <Message>At AuditLog.java:[line 43]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="c30c1b723efbd6b6c375245bc1df8a68" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.iam.AuditLog(String, UUID, Map) may expose internal representation by storing an externally mutable object into AuditLog.detail</LongMessage>
+    <Class classname="com.easycrm.iam.AuditLog" primary="true" classAnnotationNames="jakarta.persistence.Entity,jakarta.persistence.Table">
+      <SourceLine classname="com.easycrm.iam.AuditLog" start="26" end="43" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java">
+        <Message>At AuditLog.java:[lines 26-43]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.iam.AuditLog</Message>
+    </Class>
+    <Method classname="com.easycrm.iam.AuditLog" name="&lt;init&gt;" signature="(Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.AuditLog" start="28" end="32" startBytecode="0" endBytecode="125" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java"/>
+      <Message>In method new com.easycrm.iam.AuditLog(String, UUID, Map)</Message>
+    </Method>
+    <Field classname="com.easycrm.iam.AuditLog" name="detail" signature="Ljava/util/Map;" isStatic="false" primary="true" classAnnotationNames="org.hibernate.annotations.JdbcTypeCode,jakarta.persistence.Column">
+      <SourceLine classname="com.easycrm.iam.AuditLog" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java">
+        <Message>In AuditLog.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.iam.AuditLog.detail</Message>
+    </Field>
+    <LocalVariable name="detail" register="3" pc="16" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named detail</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.iam.AuditLog" primary="true" start="31" end="31" startBytecode="16" endBytecode="16" sourcefile="AuditLog.java" sourcepath="com/easycrm/iam/AuditLog.java" relSourcepath="java/com/easycrm/iam/AuditLog.java">
+      <Message>At AuditLog.java:[line 31]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="7b53538e013b0d36646d3d6fdeda4b90" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.iam.AuthService(TenantRepository, UserRepository, PasswordEncoder, JwtService, RefreshTokenService, AuditService, EmailSender, TransactionTemplate) may expose internal representation by storing an externally mutable object into AuthService.tx</LongMessage>
+    <Class classname="com.easycrm.iam.AuthService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
+      <SourceLine classname="com.easycrm.iam.AuthService" start="49" end="195" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
+        <Message>At AuthService.java:[lines 49-195]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.iam.AuthService</Message>
+    </Class>
+    <Method classname="com.easycrm.iam.AuthService" name="&lt;init&gt;" signature="(Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/iam/UserRepository;Lorg/springframework/security/crypto/password/PasswordEncoder;Lcom/easycrm/platform/security/JwtService;Lcom/easycrm/iam/RefreshTokenService;Lcom/easycrm/iam/AuditService;Lcom/easycrm/iam/email/EmailSender;Lorg/springframework/transaction/support/TransactionTemplate;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.AuthService" start="49" end="58" startBytecode="0" endBytecode="207" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java"/>
+      <Message>In method new com.easycrm.iam.AuthService(TenantRepository, UserRepository, PasswordEncoder, JwtService, RefreshTokenService, AuditService, EmailSender, TransactionTemplate)</Message>
+    </Method>
+    <Field classname="com.easycrm.iam.AuthService" name="tx" signature="Lorg/springframework/transaction/support/TransactionTemplate;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.AuthService" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
+        <Message>In AuthService.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.iam.AuthService.tx</Message>
+    </Field>
+    <LocalVariable name="tx" register="8" pc="46" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named tx</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.iam.AuthService" primary="true" start="57" end="57" startBytecode="46" endBytecode="46" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
+      <Message>At AuthService.java:[line 57]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" priority="2" rank="13" abbrev="NP" category="STYLE" instanceHash="d278f48011a9f6ced6053fb4b0f440d" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="476">
+    <ShortMessage>Possible null pointer dereference due to return value of called method</ShortMessage>
+    <LongMessage>Possible null pointer dereference in com.easycrm.iam.AuthService.lambda$login$1(LoginRequest, Tenant, TransactionStatus) due to return value of called method</LongMessage>
+    <Class classname="com.easycrm.iam.AuthService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
+      <SourceLine classname="com.easycrm.iam.AuthService" start="49" end="195" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
+        <Message>At AuthService.java:[lines 49-195]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.iam.AuthService</Message>
+    </Class>
+    <Method classname="com.easycrm.iam.AuthService" name="lambda$login$1" signature="(Lcom/easycrm/iam/web/dto/LoginRequest;Lcom/easycrm/tenant/Tenant;Lorg/springframework/transaction/TransactionStatus;)Lcom/easycrm/iam/web/dto/AuthResponse;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.AuthService" start="133" end="147" startBytecode="0" endBytecode="367" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java"/>
+      <Message>In method com.easycrm.iam.AuthService.lambda$login$1(LoginRequest, Tenant, TransactionStatus)</Message>
+    </Method>
+    <Method classname="com.easycrm.tenant.Tenant" name="getId" signature="()Ljava/util/UUID;" isStatic="false" role="METHOD_CALLED">
+      <SourceLine classname="com.easycrm.tenant.Tenant" start="108" end="108" startBytecode="0" endBytecode="46" sourcefile="Tenant.java" sourcepath="com/easycrm/tenant/Tenant.java" relSourcepath="java/com/easycrm/tenant/Tenant.java"/>
+      <Message>Called method com.easycrm.tenant.Tenant.getId()</Message>
+    </Method>
+    <SourceLine classname="com.easycrm.iam.AuthService" primary="true" start="145" end="145" startBytecode="138" endBytecode="138" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java" role="SOURCE_LINE_INVOKED">
+      <Message>Method invoked at AuthService.java:[line 145]</Message>
+    </SourceLine>
+    <SourceLine classname="com.easycrm.iam.AuthService" start="145" end="145" startBytecode="122" endBytecode="122" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java" role="SOURCE_LINE_KNOWN_NULL">
+      <Message>Known null at AuthService.java:[line 145]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" priority="2" rank="13" abbrev="NP" category="STYLE" instanceHash="d77792daaf8dd2d8b336a9cb0f7ac2d1" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="476">
+    <ShortMessage>Possible null pointer dereference due to return value of called method</ShortMessage>
+    <LongMessage>Possible null pointer dereference in com.easycrm.iam.AuthService.lambda$signup$0(Tenant, SignupRequest, TransactionStatus) due to return value of called method</LongMessage>
+    <Class classname="com.easycrm.iam.AuthService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
+      <SourceLine classname="com.easycrm.iam.AuthService" start="49" end="195" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
+        <Message>At AuthService.java:[lines 49-195]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.iam.AuthService</Message>
+    </Class>
+    <Method classname="com.easycrm.iam.AuthService" name="lambda$signup$0" signature="(Lcom/easycrm/tenant/Tenant;Lcom/easycrm/iam/web/dto/SignupRequest;Lorg/springframework/transaction/TransactionStatus;)Lcom/easycrm/iam/web/dto/AuthResponse;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.AuthService" start="101" end="109" startBytecode="0" endBytecode="282" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java"/>
+      <Message>In method com.easycrm.iam.AuthService.lambda$signup$0(Tenant, SignupRequest, TransactionStatus)</Message>
+    </Method>
+    <Method classname="com.easycrm.tenant.Tenant" name="getId" signature="()Ljava/util/UUID;" isStatic="false" role="METHOD_CALLED">
+      <SourceLine classname="com.easycrm.tenant.Tenant" start="108" end="108" startBytecode="0" endBytecode="46" sourcefile="Tenant.java" sourcepath="com/easycrm/tenant/Tenant.java" relSourcepath="java/com/easycrm/tenant/Tenant.java"/>
+      <Message>Called method com.easycrm.tenant.Tenant.getId()</Message>
+    </Method>
+    <SourceLine classname="com.easycrm.iam.AuthService" primary="true" start="107" end="107" startBytecode="103" endBytecode="103" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java" role="SOURCE_LINE_INVOKED">
+      <Message>Method invoked at AuthService.java:[line 107]</Message>
+    </SourceLine>
+    <SourceLine classname="com.easycrm.iam.AuthService" start="107" end="107" startBytecode="89" endBytecode="89" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java" role="SOURCE_LINE_KNOWN_NULL">
+      <Message>Known null at AuthService.java:[line 107]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="8f09a5afd05e5be3e6ea3cb596757c3b" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.iam.InvitationService(InvitationRepository, UserRepository, TenantRepository, TokenHasher, RoleGuard, AuditService, EmailSender, PasswordEncoder, JwtService, RefreshTokenService, TransactionTemplate, String) may expose internal representation by storing an externally mutable object into InvitationService.tx</LongMessage>
+    <Class classname="com.easycrm.iam.InvitationService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
+      <SourceLine classname="com.easycrm.iam.InvitationService" start="36" end="293" sourcefile="InvitationService.java" sourcepath="com/easycrm/iam/InvitationService.java" relSourcepath="java/com/easycrm/iam/InvitationService.java">
+        <Message>At InvitationService.java:[lines 36-293]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.iam.InvitationService</Message>
+    </Class>
+    <Method classname="com.easycrm.iam.InvitationService" name="&lt;init&gt;" signature="(Lcom/easycrm/iam/InvitationRepository;Lcom/easycrm/iam/UserRepository;Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/iam/TokenHasher;Lcom/easycrm/platform/security/RoleGuard;Lcom/easycrm/iam/AuditService;Lcom/easycrm/iam/email/EmailSender;Lorg/springframework/security/crypto/password/PasswordEncoder;Lcom/easycrm/platform/security/JwtService;Lcom/easycrm/iam/RefreshTokenService;Lorg/springframework/transaction/support/TransactionTemplate;Ljava/lang/String;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.InvitationService" start="64" end="77" startBytecode="0" endBytecode="316" sourcefile="InvitationService.java" sourcepath="com/easycrm/iam/InvitationService.java" relSourcepath="java/com/easycrm/iam/InvitationService.java"/>
+      <Message>In method new com.easycrm.iam.InvitationService(InvitationRepository, UserRepository, TenantRepository, TokenHasher, RoleGuard, AuditService, EmailSender, PasswordEncoder, JwtService, RefreshTokenService, TransactionTemplate, String)</Message>
+    </Method>
+    <Field classname="com.easycrm.iam.InvitationService" name="tx" signature="Lorg/springframework/transaction/support/TransactionTemplate;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.InvitationService" sourcefile="InvitationService.java" sourcepath="com/easycrm/iam/InvitationService.java" relSourcepath="java/com/easycrm/iam/InvitationService.java">
+        <Message>In InvitationService.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.iam.InvitationService.tx</Message>
+    </Field>
+    <LocalVariable name="tx" register="11" pc="85" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named tx</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.iam.InvitationService" primary="true" start="75" end="75" startBytecode="85" endBytecode="85" sourcefile="InvitationService.java" sourcepath="com/easycrm/iam/InvitationService.java" relSourcepath="java/com/easycrm/iam/InvitationService.java">
+      <Message>At InvitationService.java:[line 75]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="578acc654482c66bbd5a50acb4d82fc9" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.platform.ratelimit.RateLimitFilter(RateLimitProperties, RateLimitStore, ObjectMapper) may expose internal representation by storing an externally mutable object into RateLimitFilter.objectMapper</LongMessage>
+    <Class classname="com.easycrm.platform.ratelimit.RateLimitFilter" primary="true">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitFilter" start="34" end="113" sourcefile="RateLimitFilter.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitFilter.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitFilter.java">
+        <Message>At RateLimitFilter.java:[lines 34-113]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.ratelimit.RateLimitFilter</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.ratelimit.RateLimitFilter" name="&lt;init&gt;" signature="(Lcom/easycrm/platform/ratelimit/RateLimitProperties;Lcom/easycrm/platform/ratelimit/RateLimitStore;Ltools/jackson/databind/ObjectMapper;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitFilter" start="49" end="53" startBytecode="0" endBytecode="107" sourcefile="RateLimitFilter.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitFilter.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitFilter.java"/>
+      <Message>In method new com.easycrm.platform.ratelimit.RateLimitFilter(RateLimitProperties, RateLimitStore, ObjectMapper)</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.ratelimit.RateLimitFilter" name="objectMapper" signature="Ltools/jackson/databind/ObjectMapper;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitFilter" sourcefile="RateLimitFilter.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitFilter.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitFilter.java">
+        <Message>In RateLimitFilter.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.ratelimit.RateLimitFilter.objectMapper</Message>
+    </Field>
+    <LocalVariable name="objectMapper" register="3" pc="16" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named objectMapper</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitFilter" primary="true" start="52" end="52" startBytecode="16" endBytecode="16" sourcefile="RateLimitFilter.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitFilter.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitFilter.java">
+      <Message>At RateLimitFilter.java:[line 52]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="af5d365a951985897379df40e4578bae" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.platform.ratelimit.RateLimitProperties.policies() may expose internal representation by returning RateLimitProperties.policies</LongMessage>
+    <Class classname="com.easycrm.platform.ratelimit.RateLimitProperties" primary="true" classAnnotationNames="org.springframework.boot.context.properties.ConfigurationProperties,org.springframework.validation.annotation.Validated">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" start="21" end="29" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java">
+        <Message>At RateLimitProperties.java:[lines 21-29]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.ratelimit.RateLimitProperties</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.ratelimit.RateLimitProperties" name="policies" signature="()Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" start="21" end="21" startBytecode="0" endBytecode="46" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java"/>
+      <Message>In method com.easycrm.platform.ratelimit.RateLimitProperties.policies()</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.ratelimit.RateLimitProperties" name="policies" signature="Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java">
+        <Message>In RateLimitProperties.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.ratelimit.RateLimitProperties.policies</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" primary="true" start="21" end="21" startBytecode="4" endBytecode="4" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java">
+      <Message>At RateLimitProperties.java:[line 21]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="bb4538c0c9d268093344a7a7b1fc3058" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.platform.ratelimit.RateLimitProperties(boolean, List) may expose internal representation by storing an externally mutable object into RateLimitProperties.policies</LongMessage>
+    <Class classname="com.easycrm.platform.ratelimit.RateLimitProperties" primary="true" classAnnotationNames="org.springframework.boot.context.properties.ConfigurationProperties,org.springframework.validation.annotation.Validated">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" start="21" end="29" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java">
+        <Message>At RateLimitProperties.java:[lines 21-29]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.ratelimit.RateLimitProperties</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.ratelimit.RateLimitProperties" name="&lt;init&gt;" signature="(ZLjava/util/List;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" start="23" end="23" startBytecode="0" endBytecode="94" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java"/>
+      <Message>In method new com.easycrm.platform.ratelimit.RateLimitProperties(boolean, List)</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.ratelimit.RateLimitProperties" name="policies" signature="Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java">
+        <Message>In RateLimitProperties.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.ratelimit.RateLimitProperties.policies</Message>
+    </Field>
+    <LocalVariable name="policies" register="2" pc="11" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named policies</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.platform.ratelimit.RateLimitProperties" primary="true" start="23" end="23" startBytecode="11" endBytecode="11" sourcefile="RateLimitProperties.java" sourcepath="com/easycrm/platform/ratelimit/RateLimitProperties.java" relSourcepath="java/com/easycrm/platform/ratelimit/RateLimitProperties.java">
+      <Message>At RateLimitProperties.java:[line 23]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="210a14ca6ab4bf42cd8c34a3137aea03" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
+    <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
+    <LongMessage>Exception thrown in class com.easycrm.platform.security.JwtService at new com.easycrm.platform.security.JwtService(JwtProperties) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
+    <Class classname="com.easycrm.platform.security.JwtService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
+      <SourceLine classname="com.easycrm.platform.security.JwtService" start="20" end="43" sourcefile="JwtService.java" sourcepath="com/easycrm/platform/security/JwtService.java" relSourcepath="java/com/easycrm/platform/security/JwtService.java">
+        <Message>At JwtService.java:[lines 20-43]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.security.JwtService</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.security.JwtService" name="&lt;init&gt;" signature="(Lcom/easycrm/platform/security/JwtProperties;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.security.JwtService" start="20" end="23" startBytecode="0" endBytecode="93" sourcefile="JwtService.java" sourcepath="com/easycrm/platform/security/JwtService.java" relSourcepath="java/com/easycrm/platform/security/JwtService.java"/>
+      <Message>In method new com.easycrm.platform.security.JwtService(JwtProperties)</Message>
+    </Method>
+    <SourceLine classname="com.easycrm.platform.security.JwtService" primary="true" start="21" end="21" startBytecode="15" endBytecode="15" sourcefile="JwtService.java" sourcepath="com/easycrm/platform/security/JwtService.java" relSourcepath="java/com/easycrm/platform/security/JwtService.java">
+      <Message>At JwtService.java:[line 21]</Message>
+    </SourceLine>
+    <SourceLine classname="com.easycrm.platform.security.JwtService" start="21" end="21" startBytecode="15" endBytecode="15" sourcefile="JwtService.java" sourcepath="com/easycrm/platform/security/JwtService.java" relSourcepath="java/com/easycrm/platform/security/JwtService.java">
+      <Message>At JwtService.java:[line 21]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="58786e64848050ffbe8ea09e2778da45" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.platform.web.PageResponse.content() may expose internal representation by returning PageResponse.content</LongMessage>
+    <Class classname="com.easycrm.platform.web.PageResponse" primary="true">
+      <SourceLine classname="com.easycrm.platform.web.PageResponse" start="7" end="10" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java">
+        <Message>At PageResponse.java:[lines 7-10]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.web.PageResponse</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.web.PageResponse" name="content" signature="()Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.web.PageResponse" start="7" end="7" startBytecode="0" endBytecode="64" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java"/>
+      <Message>In method com.easycrm.platform.web.PageResponse.content()</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.web.PageResponse" name="content" signature="Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.web.PageResponse" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java">
+        <Message>In PageResponse.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.web.PageResponse.content</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.platform.web.PageResponse" primary="true" start="7" end="7" startBytecode="4" endBytecode="4" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java">
+      <Message>At PageResponse.java:[line 7]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="84fdf24e603a6b523abf4e8e93558695" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.platform.web.PageResponse(List, int, int, long, int) may expose internal representation by storing an externally mutable object into PageResponse.content</LongMessage>
+    <Class classname="com.easycrm.platform.web.PageResponse" primary="true">
+      <SourceLine classname="com.easycrm.platform.web.PageResponse" start="7" end="10" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java">
+        <Message>At PageResponse.java:[lines 7-10]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.web.PageResponse</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.web.PageResponse" name="&lt;init&gt;" signature="(Ljava/util/List;IIJI)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.web.PageResponse" start="7" end="7" startBytecode="0" endBytecode="151" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java"/>
+      <Message>In method new com.easycrm.platform.web.PageResponse(List, int, int, long, int)</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.web.PageResponse" name="content" signature="Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.web.PageResponse" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java">
+        <Message>In PageResponse.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.web.PageResponse.content</Message>
+    </Field>
+    <LocalVariable name="content" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named content</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.platform.web.PageResponse" primary="true" start="7" end="7" startBytecode="6" endBytecode="6" sourcefile="PageResponse.java" sourcepath="com/easycrm/platform/web/PageResponse.java" relSourcepath="java/com/easycrm/platform/web/PageResponse.java">
+      <Message>At PageResponse.java:[line 7]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="894fac306baa7c6e1bef4d21b4afa826" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
+    <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
+    <LongMessage>Exception thrown in class com.easycrm.sales.Activity at new com.easycrm.sales.Activity(SubjectType, UUID, ActivityType, String, String, Instant, UUID, ActivitySource, Instant) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
+    <Class classname="com.easycrm.sales.Activity" primary="true" classAnnotationNames="jakarta.persistence.Entity,jakarta.persistence.Table">
+      <SourceLine classname="com.easycrm.sales.Activity" start="65" end="160" sourcefile="Activity.java" sourcepath="com/easycrm/sales/Activity.java" relSourcepath="java/com/easycrm/sales/Activity.java">
+        <Message>At Activity.java:[lines 65-160]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.Activity</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.Activity" name="&lt;init&gt;" signature="(Lcom/easycrm/platform/visibility/SubjectType;Ljava/util/UUID;Lcom/easycrm/sales/ActivityType;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;Ljava/util/UUID;Lcom/easycrm/sales/ActivitySource;Ljava/time/Instant;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.Activity" start="76" end="88" startBytecode="0" endBytecode="292" sourcefile="Activity.java" sourcepath="com/easycrm/sales/Activity.java" relSourcepath="java/com/easycrm/sales/Activity.java"/>
+      <Message>In method new com.easycrm.sales.Activity(SubjectType, UUID, ActivityType, String, String, Instant, UUID, ActivitySource, Instant)</Message>
+    </Method>
+    <SourceLine classname="com.easycrm.sales.Activity" primary="true" start="78" end="78" startBytecode="25" endBytecode="25" sourcefile="Activity.java" sourcepath="com/easycrm/sales/Activity.java" relSourcepath="java/com/easycrm/sales/Activity.java">
+      <Message>At Activity.java:[line 78]</Message>
+    </SourceLine>
+    <SourceLine classname="com.easycrm.sales.Activity" start="78" end="78" startBytecode="25" endBytecode="25" sourcefile="Activity.java" sourcepath="com/easycrm/sales/Activity.java" relSourcepath="java/com/easycrm/sales/Activity.java">
+      <Message>At Activity.java:[line 78]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="cd0b90505be6500e252710315e9c6d58" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
+    <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
+    <LongMessage>Exception thrown in class com.easycrm.sales.FollowUp at new com.easycrm.sales.FollowUp(SubjectType, UUID, Instant, UUID, String, UUID) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
+    <Class classname="com.easycrm.sales.FollowUp" primary="true" classAnnotationNames="jakarta.persistence.Entity,jakarta.persistence.Table">
+      <SourceLine classname="com.easycrm.sales.FollowUp" start="63" end="152" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
+        <Message>At FollowUp.java:[lines 63-152]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.FollowUp</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.FollowUp" name="&lt;init&gt;" signature="(Lcom/easycrm/platform/visibility/SubjectType;Ljava/util/UUID;Ljava/time/Instant;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.FollowUp" start="66" end="77" startBytecode="0" endBytecode="239" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java"/>
+      <Message>In method new com.easycrm.sales.FollowUp(SubjectType, UUID, Instant, UUID, String, UUID)</Message>
+    </Method>
+    <SourceLine classname="com.easycrm.sales.FollowUp" primary="true" start="68" end="68" startBytecode="20" endBytecode="20" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
+      <Message>At FollowUp.java:[line 68]</Message>
+    </SourceLine>
+    <SourceLine classname="com.easycrm.sales.FollowUp" start="68" end="68" startBytecode="20" endBytecode="20" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
+      <Message>At FollowUp.java:[line 68]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="b0c0811891c4c26da16ad94199b347bc" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.QuotationService(QuotationRepository, QuotationVersionRepository, QuotationItemRepository, TenantRepository, PriceResolver, DocumentNumberService, OrderRepository, ApplicationEventPublisher, VisibleFinder) may expose internal representation by storing an externally mutable object into QuotationService.items</LongMessage>
+    <Class classname="com.easycrm.sales.QuotationService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
+      <SourceLine classname="com.easycrm.sales.QuotationService" start="55" end="325" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
+        <Message>At QuotationService.java:[lines 55-325]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.QuotationService</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.QuotationService" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/QuotationRepository;Lcom/easycrm/sales/QuotationVersionRepository;Lcom/easycrm/sales/QuotationItemRepository;Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/sales/PriceResolver;Lcom/easycrm/sales/DocumentNumberService;Lcom/easycrm/sales/OrderRepository;Lorg/springframework/context/ApplicationEventPublisher;Lcom/easycrm/platform/visibility/VisibleFinder;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.QuotationService" start="55" end="65" startBytecode="0" endBytecode="227" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java"/>
+      <Message>In method new com.easycrm.sales.QuotationService(QuotationRepository, QuotationVersionRepository, QuotationItemRepository, TenantRepository, PriceResolver, DocumentNumberService, OrderRepository, ApplicationEventPublisher, VisibleFinder)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.QuotationService" name="items" signature="Lcom/easycrm/sales/QuotationItemRepository;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.QuotationService" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
+        <Message>In QuotationService.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.QuotationService.items</Message>
+    </Field>
+    <LocalVariable name="items" register="3" pc="16" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named items</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.QuotationService" primary="true" start="58" end="58" startBytecode="16" endBytecode="16" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
+      <Message>At QuotationService.java:[line 58]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="72a5d4a4ef560238fef816f8da5ac44f" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.sales.pdf.QuotationPdfData.lines() may expose internal representation by returning QuotationPdfData.lines</LongMessage>
+    <Class classname="com.easycrm.sales.pdf.QuotationPdfData" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" start="14" end="14" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java">
+        <Message>At QuotationPdfData.java:[line 14]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.pdf.QuotationPdfData</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.pdf.QuotationPdfData" name="lines" signature="()Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" start="14" end="14" startBytecode="0" endBytecode="46" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java"/>
+      <Message>In method com.easycrm.sales.pdf.QuotationPdfData.lines()</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.pdf.QuotationPdfData" name="lines" signature="Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java">
+        <Message>In QuotationPdfData.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.pdf.QuotationPdfData.lines</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" primary="true" start="14" end="14" startBytecode="4" endBytecode="4" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java">
+      <Message>At QuotationPdfData.java:[line 14]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="7aa785b6cbcb9a7c2a08d49aa938615a" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.pdf.QuotationPdfData(QuotationPdfData$Seller, QuotationPdfData$Buyer, QuotationPdfData$Doc, List, QuotationPdfData$Totals, boolean, Instant) may expose internal representation by storing an externally mutable object into QuotationPdfData.lines</LongMessage>
+    <Class classname="com.easycrm.sales.pdf.QuotationPdfData" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" start="14" end="14" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java">
+        <Message>At QuotationPdfData.java:[line 14]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.pdf.QuotationPdfData</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.pdf.QuotationPdfData" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/pdf/QuotationPdfData$Seller;Lcom/easycrm/sales/pdf/QuotationPdfData$Buyer;Lcom/easycrm/sales/pdf/QuotationPdfData$Doc;Ljava/util/List;Lcom/easycrm/sales/pdf/QuotationPdfData$Totals;ZLjava/time/Instant;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" start="14" end="14" startBytecode="0" endBytecode="173" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java"/>
+      <Message>In method new com.easycrm.sales.pdf.QuotationPdfData(QuotationPdfData$Seller, QuotationPdfData$Buyer, QuotationPdfData$Doc, List, QuotationPdfData$Totals, boolean, Instant)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.pdf.QuotationPdfData" name="lines" signature="Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java">
+        <Message>In QuotationPdfData.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.pdf.QuotationPdfData.lines</Message>
+    </Field>
+    <LocalVariable name="lines" register="4" pc="22" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named lines</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfData" primary="true" start="14" end="14" startBytecode="22" endBytecode="22" sourcefile="QuotationPdfData.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfData.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfData.java">
+      <Message>At QuotationPdfData.java:[line 14]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="5ebe0dcc2fbc6baecb893bd74414de5d" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.pdf.QuotationPdfRenderer(TemplateEngine, PdfEngine) may expose internal representation by storing an externally mutable object into QuotationPdfRenderer.templates</LongMessage>
+    <Class classname="com.easycrm.sales.pdf.QuotationPdfRenderer" primary="true" classAnnotationNames="org.springframework.stereotype.Component">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfRenderer" start="15" end="26" sourcefile="QuotationPdfRenderer.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfRenderer.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfRenderer.java">
+        <Message>At QuotationPdfRenderer.java:[lines 15-26]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.pdf.QuotationPdfRenderer</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.pdf.QuotationPdfRenderer" name="&lt;init&gt;" signature="(Lorg/thymeleaf/TemplateEngine;Lcom/easycrm/platform/pdf/PdfEngine;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfRenderer" start="15" end="18" startBytecode="0" endBytecode="88" sourcefile="QuotationPdfRenderer.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfRenderer.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfRenderer.java"/>
+      <Message>In method new com.easycrm.sales.pdf.QuotationPdfRenderer(TemplateEngine, PdfEngine)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.pdf.QuotationPdfRenderer" name="templates" signature="Lorg/thymeleaf/TemplateEngine;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfRenderer" sourcefile="QuotationPdfRenderer.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfRenderer.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfRenderer.java">
+        <Message>In QuotationPdfRenderer.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.pdf.QuotationPdfRenderer.templates</Message>
+    </Field>
+    <LocalVariable name="templates" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named templates</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfRenderer" primary="true" start="16" end="16" startBytecode="6" endBytecode="6" sourcefile="QuotationPdfRenderer.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfRenderer.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfRenderer.java">
+      <Message>At QuotationPdfRenderer.java:[line 16]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="f8992ea3fbe2d9e7d92dec7f563b89da" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.pdf.QuotationPdfService(QuotationVersionRepository, QuotationItemRepository, TenantRepository, VisibleFinder, QuotationPdfRenderer) may expose internal representation by storing an externally mutable object into QuotationPdfService.items</LongMessage>
+    <Class classname="com.easycrm.sales.pdf.QuotationPdfService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfService" start="38" end="152" sourcefile="QuotationPdfService.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfService.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfService.java">
+        <Message>At QuotationPdfService.java:[lines 38-152]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.pdf.QuotationPdfService</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.pdf.QuotationPdfService" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/QuotationVersionRepository;Lcom/easycrm/sales/QuotationItemRepository;Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/platform/visibility/VisibleFinder;Lcom/easycrm/sales/pdf/QuotationPdfRenderer;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfService" start="38" end="44" startBytecode="0" endBytecode="147" sourcefile="QuotationPdfService.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfService.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfService.java"/>
+      <Message>In method new com.easycrm.sales.pdf.QuotationPdfService(QuotationVersionRepository, QuotationItemRepository, TenantRepository, VisibleFinder, QuotationPdfRenderer)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.pdf.QuotationPdfService" name="items" signature="Lcom/easycrm/sales/QuotationItemRepository;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfService" sourcefile="QuotationPdfService.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfService.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfService.java">
+        <Message>In QuotationPdfService.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.pdf.QuotationPdfService.items</Message>
+    </Field>
+    <LocalVariable name="items" register="2" pc="11" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named items</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.pdf.QuotationPdfService" primary="true" start="40" end="40" startBytecode="11" endBytecode="11" sourcefile="QuotationPdfService.java" sourcepath="com/easycrm/sales/pdf/QuotationPdfService.java" relSourcepath="java/com/easycrm/sales/pdf/QuotationPdfService.java">
+      <Message>At QuotationPdfService.java:[line 40]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="76179ec125252621466a43ac73a9cbf4" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.web.QuotationController(QuotationService, QuotationPdfService, ShareLinkService) may expose internal representation by storing an externally mutable object into QuotationController.service</LongMessage>
+    <Class classname="com.easycrm.sales.web.QuotationController" primary="true" classAnnotationNames="org.springframework.web.bind.annotation.RestController,org.springframework.web.bind.annotation.RequestMapping">
+      <SourceLine classname="com.easycrm.sales.web.QuotationController" start="42" end="122" sourcefile="QuotationController.java" sourcepath="com/easycrm/sales/web/QuotationController.java" relSourcepath="java/com/easycrm/sales/web/QuotationController.java">
+        <Message>At QuotationController.java:[lines 42-122]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.web.QuotationController</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.web.QuotationController" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/QuotationService;Lcom/easycrm/sales/pdf/QuotationPdfService;Lcom/easycrm/sales/ShareLinkService;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.QuotationController" start="42" end="46" startBytecode="0" endBytecode="107" sourcefile="QuotationController.java" sourcepath="com/easycrm/sales/web/QuotationController.java" relSourcepath="java/com/easycrm/sales/web/QuotationController.java"/>
+      <Message>In method new com.easycrm.sales.web.QuotationController(QuotationService, QuotationPdfService, ShareLinkService)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.web.QuotationController" name="service" signature="Lcom/easycrm/sales/QuotationService;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.QuotationController" sourcefile="QuotationController.java" sourcepath="com/easycrm/sales/web/QuotationController.java" relSourcepath="java/com/easycrm/sales/web/QuotationController.java">
+        <Message>In QuotationController.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.web.QuotationController.service</Message>
+    </Field>
+    <LocalVariable name="service" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named service</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.web.QuotationController" primary="true" start="43" end="43" startBytecode="6" endBytecode="6" sourcefile="QuotationController.java" sourcepath="com/easycrm/sales/web/QuotationController.java" relSourcepath="java/com/easycrm/sales/web/QuotationController.java">
+      <Message>At QuotationController.java:[line 43]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="c333a8795f07667fbdc1add8f3817b8b" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.sales.web.dto.ItemsRequest.items() may expose internal representation by returning ItemsRequest.items</LongMessage>
+    <Class classname="com.easycrm.sales.web.dto.ItemsRequest" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" start="7" end="7" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java">
+        <Message>At ItemsRequest.java:[line 7]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.web.dto.ItemsRequest</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.web.dto.ItemsRequest" name="items" signature="()Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.constraints.NotEmpty,jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" start="7" end="7" startBytecode="0" endBytecode="46" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java"/>
+      <Message>In method com.easycrm.sales.web.dto.ItemsRequest.items()</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.web.dto.ItemsRequest" name="items" signature="Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.constraints.NotEmpty,jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java">
+        <Message>In ItemsRequest.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.web.dto.ItemsRequest.items</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" primary="true" start="7" end="7" startBytecode="4" endBytecode="4" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java">
+      <Message>At ItemsRequest.java:[line 7]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="44a83c01c655e977356d587577b5d8d6" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.web.dto.ItemsRequest(List) may expose internal representation by storing an externally mutable object into ItemsRequest.items</LongMessage>
+    <Class classname="com.easycrm.sales.web.dto.ItemsRequest" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" start="7" end="7" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java">
+        <Message>At ItemsRequest.java:[line 7]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.web.dto.ItemsRequest</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.web.dto.ItemsRequest" name="&lt;init&gt;" signature="(Ljava/util/List;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" start="7" end="7" startBytecode="0" endBytecode="79" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java"/>
+      <Message>In method new com.easycrm.sales.web.dto.ItemsRequest(List)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.web.dto.ItemsRequest" name="items" signature="Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.constraints.NotEmpty,jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java">
+        <Message>In ItemsRequest.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.web.dto.ItemsRequest.items</Message>
+    </Field>
+    <LocalVariable name="items" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named items</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.web.dto.ItemsRequest" primary="true" start="7" end="7" startBytecode="6" endBytecode="6" sourcefile="ItemsRequest.java" sourcepath="com/easycrm/sales/web/dto/ItemsRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/ItemsRequest.java">
+      <Message>At ItemsRequest.java:[line 7]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="41808cc46dbb44c386402e4bc2f28644" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.sales.web.dto.QuotationCreateRequest.items() may expose internal representation by returning QuotationCreateRequest.items</LongMessage>
+    <Class classname="com.easycrm.sales.web.dto.QuotationCreateRequest" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" start="10" end="10" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java">
+        <Message>At QuotationCreateRequest.java:[line 10]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.web.dto.QuotationCreateRequest</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.web.dto.QuotationCreateRequest" name="items" signature="()Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.constraints.NotEmpty,jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" start="10" end="10" startBytecode="0" endBytecode="46" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java"/>
+      <Message>In method com.easycrm.sales.web.dto.QuotationCreateRequest.items()</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.web.dto.QuotationCreateRequest" name="items" signature="Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.constraints.NotEmpty,jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java">
+        <Message>In QuotationCreateRequest.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.web.dto.QuotationCreateRequest.items</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" primary="true" start="10" end="10" startBytecode="4" endBytecode="4" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java">
+      <Message>At QuotationCreateRequest.java:[line 10]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="8ab4464df529f48107a22fc5359cf52e" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.web.dto.QuotationCreateRequest(UUID, UUID, LocalDate, String, String, String, List) may expose internal representation by storing an externally mutable object into QuotationCreateRequest.items</LongMessage>
+    <Class classname="com.easycrm.sales.web.dto.QuotationCreateRequest" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" start="10" end="10" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java">
+        <Message>At QuotationCreateRequest.java:[line 10]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.web.dto.QuotationCreateRequest</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.web.dto.QuotationCreateRequest" name="&lt;init&gt;" signature="(Ljava/util/UUID;Ljava/util/UUID;Ljava/time/LocalDate;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" start="10" end="10" startBytecode="0" endBytecode="173" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java"/>
+      <Message>In method new com.easycrm.sales.web.dto.QuotationCreateRequest(UUID, UUID, LocalDate, String, String, String, List)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.web.dto.QuotationCreateRequest" name="items" signature="Ljava/util/List;" isStatic="false" primary="true" classAnnotationNames="jakarta.validation.constraints.NotEmpty,jakarta.validation.Valid">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java">
+        <Message>In QuotationCreateRequest.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.web.dto.QuotationCreateRequest.items</Message>
+    </Field>
+    <LocalVariable name="items" register="7" pc="40" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named items</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.web.dto.QuotationCreateRequest" primary="true" start="10" end="10" startBytecode="40" endBytecode="40" sourcefile="QuotationCreateRequest.java" sourcepath="com/easycrm/sales/web/dto/QuotationCreateRequest.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationCreateRequest.java">
+      <Message>At QuotationCreateRequest.java:[line 10]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="b7b5125d98ecdf8544cfcecf14763d6d" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.sales.web.dto.QuotationVersionResponse.items() may expose internal representation by returning QuotationVersionResponse.items</LongMessage>
+    <Class classname="com.easycrm.sales.web.dto.QuotationVersionResponse" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" start="11" end="40" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java">
+        <Message>At QuotationVersionResponse.java:[lines 11-40]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.web.dto.QuotationVersionResponse</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.web.dto.QuotationVersionResponse" name="items" signature="()Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" start="11" end="11" startBytecode="0" endBytecode="46" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java"/>
+      <Message>In method com.easycrm.sales.web.dto.QuotationVersionResponse.items()</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.web.dto.QuotationVersionResponse" name="items" signature="Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java">
+        <Message>In QuotationVersionResponse.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.web.dto.QuotationVersionResponse.items</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" primary="true" start="11" end="11" startBytecode="4" endBytecode="4" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java">
+      <Message>At QuotationVersionResponse.java:[line 11]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="ae1020f31f23b70d7743fc6ebfdc77dc" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.sales.web.dto.QuotationVersionResponse(UUID, int, String, LocalDate, String, String, String, String, BigDecimal, BigDecimal, BigDecimal, Instant, List) may expose internal representation by storing an externally mutable object into QuotationVersionResponse.items</LongMessage>
+    <Class classname="com.easycrm.sales.web.dto.QuotationVersionResponse" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" start="11" end="40" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java">
+        <Message>At QuotationVersionResponse.java:[lines 11-40]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.sales.web.dto.QuotationVersionResponse</Message>
+    </Class>
+    <Method classname="com.easycrm.sales.web.dto.QuotationVersionResponse" name="&lt;init&gt;" signature="(Ljava/util/UUID;ILjava/lang/String;Ljava/time/LocalDate;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;Ljava/math/BigDecimal;Ljava/math/BigDecimal;Ljava/time/Instant;Ljava/util/List;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" start="11" end="11" startBytecode="0" endBytecode="269" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java"/>
+      <Message>In method new com.easycrm.sales.web.dto.QuotationVersionResponse(UUID, int, String, LocalDate, String, String, String, String, BigDecimal, BigDecimal, BigDecimal, Instant, List)</Message>
+    </Method>
+    <Field classname="com.easycrm.sales.web.dto.QuotationVersionResponse" name="items" signature="Ljava/util/List;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java">
+        <Message>In QuotationVersionResponse.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.sales.web.dto.QuotationVersionResponse.items</Message>
+    </Field>
+    <LocalVariable name="items" register="13" pc="76" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named items</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.sales.web.dto.QuotationVersionResponse" primary="true" start="11" end="11" startBytecode="76" endBytecode="76" sourcefile="QuotationVersionResponse.java" sourcepath="com/easycrm/sales/web/dto/QuotationVersionResponse.java" relSourcepath="java/com/easycrm/sales/web/dto/QuotationVersionResponse.java">
+      <Message>At QuotationVersionResponse.java:[line 11]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" priority="2" rank="13" abbrev="NP" category="STYLE" instanceHash="e649a048f7e12d906db69f8a8a44af8a" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="476">
+    <ShortMessage>Possible null pointer dereference due to return value of called method</ShortMessage>
+    <LongMessage>Possible null pointer dereference in com.easycrm.tenant.web.dto.TenantResponse.of(Tenant) due to return value of called method</LongMessage>
+    <Class classname="com.easycrm.tenant.web.dto.TenantResponse" primary="true">
+      <SourceLine classname="com.easycrm.tenant.web.dto.TenantResponse" start="5" end="16" sourcefile="TenantResponse.java" sourcepath="com/easycrm/tenant/web/dto/TenantResponse.java" relSourcepath="java/com/easycrm/tenant/web/dto/TenantResponse.java">
+        <Message>At TenantResponse.java:[lines 5-16]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.tenant.web.dto.TenantResponse</Message>
+    </Class>
+    <Method classname="com.easycrm.tenant.web.dto.TenantResponse" name="of" signature="(Lcom/easycrm/tenant/Tenant;)Lcom/easycrm/tenant/web/dto/TenantResponse;" isStatic="true" primary="true">
+      <SourceLine classname="com.easycrm.tenant.web.dto.TenantResponse" start="9" end="9" startBytecode="0" endBytecode="112" sourcefile="TenantResponse.java" sourcepath="com/easycrm/tenant/web/dto/TenantResponse.java" relSourcepath="java/com/easycrm/tenant/web/dto/TenantResponse.java"/>
+      <Message>In method com.easycrm.tenant.web.dto.TenantResponse.of(Tenant)</Message>
+    </Method>
+    <Method classname="com.easycrm.tenant.Tenant" name="getId" signature="()Ljava/util/UUID;" isStatic="false" role="METHOD_CALLED">
+      <SourceLine classname="com.easycrm.tenant.Tenant" start="108" end="108" startBytecode="0" endBytecode="46" sourcefile="Tenant.java" sourcepath="com/easycrm/tenant/Tenant.java" relSourcepath="java/com/easycrm/tenant/Tenant.java"/>
+      <Message>Called method com.easycrm.tenant.Tenant.getId()</Message>
+    </Method>
+    <SourceLine classname="com.easycrm.tenant.web.dto.TenantResponse" primary="true" start="10" end="10" startBytecode="8" endBytecode="8" sourcefile="TenantResponse.java" sourcepath="com/easycrm/tenant/web/dto/TenantResponse.java" relSourcepath="java/com/easycrm/tenant/web/dto/TenantResponse.java" role="SOURCE_LINE_DEREF">
+      <Message>Dereferenced at TenantResponse.java:[line 10]</Message>
+    </SourceLine>
+    <SourceLine classname="com.easycrm.tenant.web.dto.TenantResponse" start="10" end="10" startBytecode="5" endBytecode="5" sourcefile="TenantResponse.java" sourcepath="com/easycrm/tenant/web/dto/TenantResponse.java" relSourcepath="java/com/easycrm/tenant/web/dto/TenantResponse.java" role="SOURCE_LINE_KNOWN_NULL">
+      <Message>Known null at TenantResponse.java:[line 10]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="1dba7d2e2652c8e26a70d0f09d0310db" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
+    <LongMessage>com.easycrm.platform.error.ValidationException.getFields() may expose internal representation by returning ValidationException.fields</LongMessage>
+    <Class classname="com.easycrm.platform.error.ValidationException" primary="true">
+      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="11" end="20" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
+        <Message>At ValidationException.java:[lines 11-20]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.error.ValidationException</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.error.ValidationException" name="getFields" signature="()Ljava/util/Map;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="20" end="20" startBytecode="0" endBytecode="46" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java"/>
+      <Message>In method com.easycrm.platform.error.ValidationException.getFields()</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.error.ValidationException" name="fields" signature="Ljava/util/Map;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.error.ValidationException" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
+        <Message>In ValidationException.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.error.ValidationException.fields</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.platform.error.ValidationException" primary="true" start="20" end="20" startBytecode="4" endBytecode="4" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
+      <Message>At ValidationException.java:[line 20]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="95b3f13efaa1e6c0fffee4579a381fc7" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
+    <LongMessage>new com.easycrm.platform.error.ValidationException(Map) may expose internal representation by storing an externally mutable object into ValidationException.fields</LongMessage>
+    <Class classname="com.easycrm.platform.error.ValidationException" primary="true">
+      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="11" end="20" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
+        <Message>At ValidationException.java:[lines 11-20]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.error.ValidationException</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.error.ValidationException" name="&lt;init&gt;" signature="(Ljava/util/Map;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="11" end="13" startBytecode="0" endBytecode="89" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java"/>
+      <Message>In method new com.easycrm.platform.error.ValidationException(Map)</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.error.ValidationException" name="fields" signature="Ljava/util/Map;" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.platform.error.ValidationException" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
+        <Message>In ValidationException.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.error.ValidationException.fields</Message>
+    </Field>
+    <LocalVariable name="fields" register="1" pc="8" role="LOCAL_VARIABLE_NAMED">
+      <Message>Local variable named fields</Message>
+    </LocalVariable>
+    <SourceLine classname="com.easycrm.platform.error.ValidationException" primary="true" start="12" end="12" startBytecode="8" endBytecode="8" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
+      <Message>At ValidationException.java:[line 12]</Message>
+    </SourceLine>
+  </BugInstance>
+  <BugInstance type="MS_EXPOSE_REP" priority="2" rank="18" abbrev="MS" category="MALICIOUS_CODE" instanceHash="fda739a4549a90d37e73b88db95b3fb6" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="493">
+    <ShortMessage>Public static method may expose internal representation by returning a mutable object or array</ShortMessage>
+    <LongMessage>Public static com.easycrm.platform.money.EventJson.mapper() may expose internal representation by returning EventJson.MAPPER</LongMessage>
+    <Class classname="com.easycrm.platform.money.EventJson" primary="true">
+      <SourceLine classname="com.easycrm.platform.money.EventJson" start="35" end="66" sourcefile="EventJson.java" sourcepath="com/easycrm/platform/money/EventJson.java" relSourcepath="java/com/easycrm/platform/money/EventJson.java">
+        <Message>At EventJson.java:[lines 35-66]</Message>
+      </SourceLine>
+      <Message>In class com.easycrm.platform.money.EventJson</Message>
+    </Class>
+    <Method classname="com.easycrm.platform.money.EventJson" name="mapper" signature="()Ltools/jackson/databind/json/JsonMapper;" isStatic="true" primary="true">
+      <SourceLine classname="com.easycrm.platform.money.EventJson" start="66" end="66" startBytecode="0" endBytecode="27" sourcefile="EventJson.java" sourcepath="com/easycrm/platform/money/EventJson.java" relSourcepath="java/com/easycrm/platform/money/EventJson.java"/>
+      <Message>In method com.easycrm.platform.money.EventJson.mapper()</Message>
+    </Method>
+    <Field classname="com.easycrm.platform.money.EventJson" name="MAPPER" signature="Ltools/jackson/databind/json/JsonMapper;" isStatic="true" primary="true">
+      <SourceLine classname="com.easycrm.platform.money.EventJson" sourcefile="EventJson.java" sourcepath="com/easycrm/platform/money/EventJson.java" relSourcepath="java/com/easycrm/platform/money/EventJson.java">
+        <Message>In EventJson.java</Message>
+      </SourceLine>
+      <Message>Field com.easycrm.platform.money.EventJson.MAPPER</Message>
+    </Field>
+    <SourceLine classname="com.easycrm.platform.money.EventJson" primary="true" start="66" end="66" startBytecode="3" endBytecode="3" sourcefile="EventJson.java" sourcepath="com/easycrm/platform/money/EventJson.java" relSourcepath="java/com/easycrm/platform/money/EventJson.java">
+      <Message>At EventJson.java:[line 66]</Message>
+    </SourceLine>
+  </BugInstance>
+</BugCollection>

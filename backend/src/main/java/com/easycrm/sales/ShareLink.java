@@ -4,7 +4,6 @@ import com.easycrm.platform.persistence.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
-
 import java.util.UUID;
 
 /**
@@ -40,7 +39,15 @@ public class ShareLink extends BaseEntity {
         this.quotationVersionId = quotationVersionId;
     }
 
-    public String getToken() { return token; }
-    public UUID getTenantId() { return tenantId; }
-    public UUID getQuotationVersionId() { return quotationVersionId; }
+    public String getToken() {
+        return token;
+    }
+
+    public UUID getTenantId() {
+        return tenantId;
+    }
+
+    public UUID getQuotationVersionId() {
+        return quotationVersionId;
+    }
 }

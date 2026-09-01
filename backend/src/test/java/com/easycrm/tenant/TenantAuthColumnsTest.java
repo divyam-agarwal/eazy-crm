@@ -1,21 +1,20 @@
 package com.easycrm.tenant;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.support.IntegrationTest;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.Instant;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class TenantAuthColumnsTest extends IntegrationTest {
-    @Autowired TenantRepository tenants;
+    @Autowired
+    TenantRepository tenants;
 
     @Test
     void persistsStatusAndTrialAndGstin() {
         Instant trial = Instant.parse("2026-08-01T00:00:00Z");
-        Tenant t = new Tenant("gupta-trading", "Gupta Trading", "09",
-            "09ABCDE1234F1Z5", TenantStatus.TRIAL, trial);
+        Tenant t = new Tenant("gupta-trading", "Gupta Trading", "09", "09ABCDE1234F1Z5", TenantStatus.TRIAL, trial);
         tenants.save(t);
 
         Tenant loaded = tenants.findBySlug("gupta-trading").orElseThrow();
@@ -28,6 +27,8 @@ class TenantAuthColumnsTest extends IntegrationTest {
     void legacyThreeArgConstructorDefaultsToTrial() {
         Tenant t = new Tenant("no-frills", "No Frills", "27");
         tenants.save(t);
-        assertEquals(TenantStatus.TRIAL, tenants.findBySlug("no-frills").orElseThrow().getStatus());
+        assertEquals(
+                TenantStatus.TRIAL,
+                tenants.findBySlug("no-frills").orElseThrow().getStatus());
     }
 }

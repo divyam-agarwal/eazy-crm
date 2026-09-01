@@ -5,12 +5,11 @@ import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.OrderResponse;
+import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 @Service
 public class OrderService {
@@ -30,8 +29,7 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public PageResponse<OrderResponse> list(OrderStatus status, UUID customerId, Pageable pageable) {
-        return PageResponse.of(
-            finder.pageOrders(OrderSpecifications.filter(status, customerId), pageable)
+        return PageResponse.of(finder.pageOrders(OrderSpecifications.filter(status, customerId), pageable)
                 .map(OrderResponse::of));
     }
 
@@ -63,10 +61,10 @@ public class OrderService {
     }
 
     private void publish(Order o, OrderStatus from) {
-        UUID actorUserId = TenantContext.get()
-            .map(TenantContext.TenantPrincipal::userId).orElse(null);
-        events.publishEvent(new OrderStatusChangedEvent(o.getId(), o.getOrderNo(), from,
-            o.getStatus(), o.getCancelReason(), actorUserId));
+        UUID actorUserId =
+                TenantContext.get().map(TenantContext.TenantPrincipal::userId).orElse(null);
+        events.publishEvent(new OrderStatusChangedEvent(
+                o.getId(), o.getOrderNo(), from, o.getStatus(), o.getCancelReason(), actorUserId));
     }
 
     /**
@@ -75,7 +73,6 @@ public class OrderService {
      * caller must not be able to tell them apart.
      */
     private Order find(UUID id) {
-        return finder.findOrder(id)
-            .orElseThrow(() -> new NotFoundException("order not found"));
+        return finder.findOrder(id).orElseThrow(() -> new NotFoundException("order not found"));
     }
 }

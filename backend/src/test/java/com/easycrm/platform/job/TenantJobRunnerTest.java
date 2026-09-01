@@ -1,5 +1,7 @@
 package com.easycrm.platform.job;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.crm.Customer;
 import com.easycrm.crm.CustomerRepository;
 import com.easycrm.crm.CustomerSource;
@@ -8,6 +10,12 @@ import com.easycrm.support.IntegrationTest;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
 import com.easycrm.tenant.TenantStatus;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,15 +23,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The seam every future scheduled job inherits. The isolation test below is the one that
@@ -33,11 +32,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 class TenantJobRunnerTest extends IntegrationTest {
 
-    @Autowired TenantJobRunner runner;
-    @Autowired TenantRepository tenants;
-    @Autowired CustomerRepository customers;
-    @Autowired TransactionTemplate outerTx;   // Boot's autoconfigured, PROPAGATION_REQUIRED bean --
-                                               // stands in for a transactional caller.
+    @Autowired
+    TenantJobRunner runner;
+
+    @Autowired
+    TenantRepository tenants;
+
+    @Autowired
+    CustomerRepository customers;
+
+    @Autowired
+    TransactionTemplate outerTx; // Boot's autoconfigured, PROPAGATION_REQUIRED bean --
+    // stands in for a transactional caller.
 
     private UUID trialA, activeB, suspendedC;
     private String slugSeed;
@@ -45,17 +51,23 @@ class TenantJobRunnerTest extends IntegrationTest {
     @BeforeEach
     void seed() {
         slugSeed = UUID.randomUUID().toString().substring(0, 8);
-        trialA     = newTenant("trial-a",     TenantStatus.TRIAL);
-        activeB    = newTenant("active-b",    TenantStatus.ACTIVE);
+        trialA = newTenant("trial-a", TenantStatus.TRIAL);
+        activeB = newTenant("active-b", TenantStatus.ACTIVE);
         suspendedC = newTenant("suspended-c", TenantStatus.SUSPENDED);
     }
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void sweepsTrialAndActiveTenantsAndSkipsSuspendedOnes() {
         List<UUID> visited = new ArrayList<>();
-        runner.forEachTenant("test-job", t -> { visited.add(t); return 0; });
+        runner.forEachTenant("test-job", t -> {
+            visited.add(t);
+            return 0;
+        });
 
         assertThat(visited).contains(trialA, activeB);
         assertThat(visited).doesNotContain(suspendedC);
@@ -127,7 +139,7 @@ class TenantJobRunnerTest extends IntegrationTest {
             return 1;
         });
 
-        assertThat(visited).contains(trialA, activeB);   // reached the later tenant anyway
+        assertThat(visited).contains(trialA, activeB); // reached the later tenant anyway
         assertThat(summary.tenantsFailed()).isGreaterThanOrEqualTo(1);
         // A failed tenant contributes neither an item nor a swept count -- catches an
         // implementation that increments "swept" in a finally regardless of outcome.
@@ -145,7 +157,7 @@ class TenantJobRunnerTest extends IntegrationTest {
             return 7;
         });
 
-        assertThat(attemptsForA.get()).isEqualTo(2);              // tried, failed, retried
+        assertThat(attemptsForA.get()).isEqualTo(2); // tried, failed, retried
         // Every other tenant returns 0, so 7 is deterministic; >= 7 would not catch an
         // implementation that double-counted both attempts as 14.
         assertThat(summary.itemsProcessed()).isEqualTo(7);
@@ -170,15 +182,14 @@ class TenantJobRunnerTest extends IntegrationTest {
             return 0;
         });
 
-        assertThat(attemptsForA.get()).isEqualTo(2);   // one attempt, one retry, then stop
+        assertThat(attemptsForA.get()).isEqualTo(2); // one attempt, one retry, then stop
         assertThat(summary.tenantsFailed()).isGreaterThanOrEqualTo(1);
-        assertThat(visited).contains(activeB);         // the sweep carried on regardless
+        assertThat(visited).contains(activeB); // the sweep carried on regardless
     }
 
     @Test
     void sumsTheItemCountsTheBodyReports() {
-        TenantJobRunner.JobSummary summary =
-            runner.forEachTenant("test-job", t -> t.equals(trialA) ? 3 : 0);
+        TenantJobRunner.JobSummary summary = runner.forEachTenant("test-job", t -> t.equals(trialA) ? 3 : 0);
 
         assertThat(summary.itemsProcessed()).isEqualTo(3);
         assertThat(summary.tenantsSwept()).isGreaterThanOrEqualTo(2);
@@ -193,11 +204,9 @@ class TenantJobRunnerTest extends IntegrationTest {
         // BLOCK lambda, not an expression lambda: runAs is overloaded on Runnable and
         // Supplier, and `() -> customers.saveAndFlush(...)` matches both ("reference to
         // runAs is ambiguous"). The braces make it unambiguously a Runnable.
-        TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"),
-            () -> {
-                customers.saveAndFlush(new Customer(
-                    "Customer of " + tenantId, null, "27", null, null, 0, null, null,
-                    CustomerSource.MANUAL));
-            });
+        TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"), () -> {
+            customers.saveAndFlush(new Customer(
+                    "Customer of " + tenantId, null, "27", null, null, 0, null, null, CustomerSource.MANUAL));
+        });
     }
 }

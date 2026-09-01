@@ -8,11 +8,10 @@ import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.EnquiryCreateRequest;
 import com.easycrm.sales.web.dto.EnquiryResponse;
 import com.easycrm.sales.web.dto.EnquiryUpdateRequest;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 @Service
 public class EnquiryService {
@@ -33,9 +32,15 @@ public class EnquiryService {
         requireNoActiveDuplicateExcept(normalized, null);
         assignableUsers.require(req.assignedTo());
         Enquiry saved = enquiries.save(new Enquiry(
-            req.customerId(), req.contactName(), req.contactPhone(), normalized,
-            req.contactEmail(), req.source(), req.requirementText(),
-            req.assignedTo(), req.expectedValue()));
+                req.customerId(),
+                req.contactName(),
+                req.contactPhone(),
+                normalized,
+                req.contactEmail(),
+                req.source(),
+                req.requirementText(),
+                req.assignedTo(),
+                req.expectedValue()));
         return EnquiryResponse.of(saved);
     }
 
@@ -50,9 +55,16 @@ public class EnquiryService {
         String normalized = PhoneNormalizer.normalize(req.contactPhone());
         requireNoActiveDuplicateExcept(normalized, id);
         assignableUsers.require(req.assignedTo());
-        e.updateHeader(req.customerId(), req.contactName(), req.contactPhone(), normalized,
-            req.contactEmail(), req.source(), req.requirementText(),
-            req.assignedTo(), req.expectedValue());
+        e.updateHeader(
+                req.customerId(),
+                req.contactName(),
+                req.contactPhone(),
+                normalized,
+                req.contactEmail(),
+                req.source(),
+                req.requirementText(),
+                req.assignedTo(),
+                req.expectedValue());
         return EnquiryResponse.of(e);
     }
 
@@ -73,8 +85,7 @@ public class EnquiryService {
     @Transactional(readOnly = true)
     public PageResponse<EnquiryResponse> list(
             EnquiryStage stage, UUID assignedTo, EnquirySource source, Pageable pageable) {
-        return PageResponse.of(
-            finder.pageEnquiries(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
+        return PageResponse.of(finder.pageEnquiries(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
                 .map(EnquiryResponse::of));
     }
 
@@ -84,8 +95,7 @@ public class EnquiryService {
      * caller must not be able to tell them apart.
      */
     private Enquiry find(UUID id) {
-        return finder.findEnquiry(id)
-            .orElseThrow(() -> new NotFoundException("enquiry not found"));
+        return finder.findEnquiry(id).orElseThrow(() -> new NotFoundException("enquiry not found"));
     }
 
     /**
@@ -103,12 +113,12 @@ public class EnquiryService {
         // tenant, not just the caller's. Filtering it would let two reps each create an
         // active enquiry for the same phone. Spec 2026-08-29-record-visibility-design.md §6.
         enquiries.findByNormalizedPhone(normalizedPhone).stream()
-            .filter(e -> e.getStage().isActive())
-            .filter(e -> !e.getId().equals(selfId))
-            .findAny()
-            .ifPresent(e -> {
-                throw new ConflictException(
-                    "an active enquiry already exists for this phone (id " + e.getId() + ")");
-            });
+                .filter(e -> e.getStage().isActive())
+                .filter(e -> !e.getId().equals(selfId))
+                .findAny()
+                .ifPresent(e -> {
+                    throw new ConflictException(
+                            "an active enquiry already exists for this phone (id " + e.getId() + ")");
+                });
     }
 }

@@ -1,20 +1,23 @@
 package com.easycrm.catalog;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
+import java.math.BigDecimal;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.math.BigDecimal;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class PriceListItemRepositoryTest extends IntegrationTest {
-    @Autowired PriceListItemRepository items;
+    @Autowired
+    PriceListItemRepository items;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     @Test
     void savesAndFindsItemsByPriceList() {

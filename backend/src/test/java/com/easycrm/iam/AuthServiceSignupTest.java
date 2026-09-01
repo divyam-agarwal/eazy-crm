@@ -1,5 +1,7 @@
 package com.easycrm.iam;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.platform.error.ConflictException;
@@ -9,21 +11,28 @@ import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class AuthServiceSignupTest extends IntegrationTest {
-    @Autowired AuthService auth;
-    @Autowired TenantRepository tenants;
-    @Autowired UserRepository users;
-    @Autowired JwtService jwt;
+    @Autowired
+    AuthService auth;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    TenantRepository tenants;
+
+    @Autowired
+    UserRepository users;
+
+    @Autowired
+    JwtService jwt;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private SignupRequest req(String slug, String email) {
         return new SignupRequest(slug, "Acme Traders", "27", null, email, null, "hunter2pass");
@@ -58,8 +67,13 @@ class AuthServiceSignupTest extends IntegrationTest {
         // "39" passes @Pattern("\\d{2}") and is not a GST state code. It silently decides
         // CGST+SGST vs IGST on every quotation this tenant ever issues (MF1).
         SignupRequest req = new SignupRequest(
-            "bad-state-" + UUID.randomUUID(), "Acme Traders", "39", null,
-            "bad-state-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+                "bad-state-" + UUID.randomUUID(),
+                "Acme Traders",
+                "39",
+                null,
+                "bad-state-" + UUID.randomUUID() + "@example.com",
+                null,
+                "hunter2pass");
 
         ValidationException ex = assertThrows(ValidationException.class, () -> auth.signup(req));
         assertTrue(ex.getFields().containsKey("stateCode"));
@@ -68,8 +82,13 @@ class AuthServiceSignupTest extends IntegrationTest {
     @Test
     void rejectsAMalformedSellerGstin() {
         SignupRequest req = new SignupRequest(
-            "bad-gstin-" + UUID.randomUUID(), "Acme Traders", "27", "27AAPFU0939F1ZZ",
-            "bad-gstin-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+                "bad-gstin-" + UUID.randomUUID(),
+                "Acme Traders",
+                "27",
+                "27AAPFU0939F1ZZ",
+                "bad-gstin-" + UUID.randomUUID() + "@example.com",
+                null,
+                "hunter2pass");
 
         ValidationException ex = assertThrows(ValidationException.class, () -> auth.signup(req));
         assertTrue(ex.getFields().containsKey("gstin"));
@@ -81,8 +100,13 @@ class AuthServiceSignupTest extends IntegrationTest {
         // system must not pick silently — this is the same rule CustomerService already applies
         // to a buyer.
         SignupRequest req = new SignupRequest(
-            "mismatch-" + UUID.randomUUID(), "Acme Traders", "29", "27AAPFU0939F1ZV",
-            "mismatch-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+                "mismatch-" + UUID.randomUUID(),
+                "Acme Traders",
+                "29",
+                "27AAPFU0939F1ZV",
+                "mismatch-" + UUID.randomUUID() + "@example.com",
+                null,
+                "hunter2pass");
 
         ValidationException ex = assertThrows(ValidationException.class, () -> auth.signup(req));
         assertTrue(ex.getFields().containsKey("stateCode"));
@@ -91,8 +115,13 @@ class AuthServiceSignupTest extends IntegrationTest {
     @Test
     void acceptsAValidSellerGstin() {
         SignupRequest req = new SignupRequest(
-            "good-gstin-" + UUID.randomUUID(), "Acme Traders", "27", "27AAPFU0939F1ZV",
-            "good-gstin-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+                "good-gstin-" + UUID.randomUUID(),
+                "Acme Traders",
+                "27",
+                "27AAPFU0939F1ZV",
+                "good-gstin-" + UUID.randomUUID() + "@example.com",
+                null,
+                "hunter2pass");
 
         assertNotNull(auth.signup(req).tenantId());
     }
@@ -104,8 +133,13 @@ class AuthServiceSignupTest extends IntegrationTest {
         // the seller's was not — this is the test that would have caught that asymmetry.
         String slug = "lower-gstin-" + UUID.randomUUID();
         SignupRequest req = new SignupRequest(
-            slug, "Acme Traders", "27", "27aapfu0939f1zv",
-            "lower-gstin-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+                slug,
+                "Acme Traders",
+                "27",
+                "27aapfu0939f1zv",
+                "lower-gstin-" + UUID.randomUUID() + "@example.com",
+                null,
+                "hunter2pass");
 
         auth.signup(req);
 
@@ -120,8 +154,13 @@ class AuthServiceSignupTest extends IntegrationTest {
         // VARCHAR(15) and surfaces as a spurious 409 rather than succeeding.
         String slug = "padded-gstin-" + UUID.randomUUID();
         SignupRequest req = new SignupRequest(
-            slug, "Acme Traders", "27", " 27AAPFU0939F1ZV ",
-            "padded-gstin-" + UUID.randomUUID() + "@example.com", null, "hunter2pass");
+                slug,
+                "Acme Traders",
+                "27",
+                " 27AAPFU0939F1ZV ",
+                "padded-gstin-" + UUID.randomUUID() + "@example.com",
+                null,
+                "hunter2pass");
 
         auth.signup(req);
 

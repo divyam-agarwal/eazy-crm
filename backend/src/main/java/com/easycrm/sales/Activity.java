@@ -8,7 +8,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -65,12 +64,18 @@ public class Activity extends TenantScopedEntity {
 
     protected Activity() {}
 
-    private Activity(SubjectType subjectType, UUID subjectId, ActivityType type, String body,
-                     String outcome, Instant occurredAt, UUID loggedBy, ActivitySource source,
-                     Instant now) {
+    private Activity(
+            SubjectType subjectType,
+            UUID subjectId,
+            ActivityType type,
+            String body,
+            String outcome,
+            Instant occurredAt,
+            UUID loggedBy,
+            ActivitySource source,
+            Instant now) {
         if (occurredAt.isAfter(now)) {
-            throw new ValidationException("occurredAt",
-                "cannot log a contact that has not happened yet");
+            throw new ValidationException("occurredAt", "cannot log a contact that has not happened yet");
         }
         this.subjectType = subjectType;
         this.subjectId = subjectId;
@@ -83,21 +88,26 @@ public class Activity extends TenantScopedEntity {
     }
 
     /** A human logged this. {@code now} is passed in so the invariant is unit-testable. */
-    public static Activity manual(SubjectType subjectType, UUID subjectId, ActivityType type,
-                                  String body, String outcome, Instant occurredAt,
-                                  UUID loggedBy, Instant now) {
-        return new Activity(subjectType, subjectId, type, body, outcome, occurredAt,
-            loggedBy, ActivitySource.MANUAL, now);
+    public static Activity manual(
+            SubjectType subjectType,
+            UUID subjectId,
+            ActivityType type,
+            String body,
+            String outcome,
+            Instant occurredAt,
+            UUID loggedBy,
+            Instant now) {
+        return new Activity(
+                subjectType, subjectId, type, body, outcome, occurredAt, loggedBy, ActivitySource.MANUAL, now);
     }
 
     /**
      * The application logged this in response to something it observed. occurredAt is
      * always now — a system event happens when it happens.
      */
-    public static Activity system(SubjectType subjectType, UUID subjectId, ActivityType type,
-                                  String body, UUID actorUserId, Instant now) {
-        return new Activity(subjectType, subjectId, type, body, null, now,
-            actorUserId, ActivitySource.SYSTEM, now);
+    public static Activity system(
+            SubjectType subjectType, UUID subjectId, ActivityType type, String body, UUID actorUserId, Instant now) {
+        return new Activity(subjectType, subjectId, type, body, null, now, actorUserId, ActivitySource.SYSTEM, now);
     }
 
     /**
@@ -118,12 +128,35 @@ public class Activity extends TenantScopedEntity {
         this.outcome = outcome;
     }
 
-    public SubjectType getSubjectType() { return subjectType; }
-    public UUID getSubjectId() { return subjectId; }
-    public ActivityType getType() { return type; }
-    public String getBody() { return body; }
-    public String getOutcome() { return outcome; }
-    public Instant getOccurredAt() { return occurredAt; }
-    public UUID getLoggedBy() { return loggedBy; }
-    public ActivitySource getSource() { return source; }
+    public SubjectType getSubjectType() {
+        return subjectType;
+    }
+
+    public UUID getSubjectId() {
+        return subjectId;
+    }
+
+    public ActivityType getType() {
+        return type;
+    }
+
+    public String getBody() {
+        return body;
+    }
+
+    public String getOutcome() {
+        return outcome;
+    }
+
+    public Instant getOccurredAt() {
+        return occurredAt;
+    }
+
+    public UUID getLoggedBy() {
+        return loggedBy;
+    }
+
+    public ActivitySource getSource() {
+        return source;
+    }
 }

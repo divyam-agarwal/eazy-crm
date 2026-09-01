@@ -14,6 +14,8 @@ import com.easycrm.sales.web.dto.QuotationResponse;
 import com.easycrm.sales.web.dto.QuotationVersionResponse;
 import com.easycrm.sales.web.dto.ShareResponse;
 import jakarta.validation.Valid;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -29,9 +31,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/v1/quotations")
 public class QuotationController {
@@ -40,8 +39,7 @@ public class QuotationController {
     private final QuotationPdfService pdfService;
     private final ShareLinkService shareLinks;
 
-    public QuotationController(QuotationService service, QuotationPdfService pdfService,
-                               ShareLinkService shareLinks) {
+    public QuotationController(QuotationService service, QuotationPdfService pdfService, ShareLinkService shareLinks) {
         this.service = service;
         this.pdfService = pdfService;
         this.shareLinks = shareLinks;
@@ -53,7 +51,9 @@ public class QuotationController {
     }
 
     @GetMapping("/{id}")
-    public QuotationResponse get(@PathVariable UUID id) { return service.get(id); }
+    public QuotationResponse get(@PathVariable UUID id) {
+        return service.get(id);
+    }
 
     @GetMapping
     public PageResponse<QuotationResponse> list(
@@ -74,29 +74,28 @@ public class QuotationController {
     }
 
     @GetMapping("/{id}/pdf")
-    public ResponseEntity<byte[]> pdf(@PathVariable UUID id,
-                                      @RequestParam(required = false) Integer version) {
+    public ResponseEntity<byte[]> pdf(@PathVariable UUID id, @RequestParam(required = false) Integer version) {
         byte[] bytes = pdfService.renderByQuotation(id, version);
         return ResponseEntity.ok()
-            .contentType(MediaType.APPLICATION_PDF)
-            .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-            .body(bytes);
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(bytes);
     }
 
     @PatchMapping("/{id}")
-    public QuotationResponse patch(@PathVariable UUID id,
-                                   @Valid @RequestBody QuotationHeaderRequest req) {
+    public QuotationResponse patch(@PathVariable UUID id, @Valid @RequestBody QuotationHeaderRequest req) {
         return service.patchHeader(id, req);
     }
 
     @PutMapping("/{id}/items")
-    public QuotationResponse replaceItems(@PathVariable UUID id,
-                                          @Valid @RequestBody ItemsRequest req) {
+    public QuotationResponse replaceItems(@PathVariable UUID id, @Valid @RequestBody ItemsRequest req) {
         return service.replaceItems(id, req);
     }
 
     @PostMapping("/{id}/send")
-    public QuotationResponse send(@PathVariable UUID id) { return service.send(id); }
+    public QuotationResponse send(@PathVariable UUID id) {
+        return service.send(id);
+    }
 
     @PostMapping("/{id}/accept")
     public OrderResponse accept(@PathVariable UUID id, @RequestBody(required = false) AcceptRequest req) {
@@ -104,14 +103,22 @@ public class QuotationController {
     }
 
     @PostMapping("/{id}/revise")
-    public QuotationResponse revise(@PathVariable UUID id) { return service.revise(id); }
+    public QuotationResponse revise(@PathVariable UUID id) {
+        return service.revise(id);
+    }
 
     @PostMapping("/{id}/reject")
-    public QuotationResponse reject(@PathVariable UUID id) { return service.reject(id); }
+    public QuotationResponse reject(@PathVariable UUID id) {
+        return service.reject(id);
+    }
 
     @PostMapping("/{id}/expire")
-    public QuotationResponse expire(@PathVariable UUID id) { return service.expire(id); }
+    public QuotationResponse expire(@PathVariable UUID id) {
+        return service.expire(id);
+    }
 
     @PostMapping("/{id}/share")
-    public ShareResponse share(@PathVariable UUID id) { return shareLinks.share(id); }
+    public ShareResponse share(@PathVariable UUID id) {
+        return shareLinks.share(id);
+    }
 }

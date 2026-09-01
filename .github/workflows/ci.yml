@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# GITHUB_TOKEN only needs to read the repo checkout and let actions/upload-artifact write
+# the failure-report artifact -- both covered by the default `contents: read` scope.
+permissions:
+  contents: read
+
+# A newer push to the same ref supersedes an in-flight run -- but only for pull requests:
+# on push to main this would cancel a run for a merge that has already landed, which is
+# the one run you most want to finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        # The Gradle project root is backend/, not the repository root.
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # ubuntu-latest ships Docker preinstalled, so the Testcontainers singleton
+      # Postgres container the integration tests use needs no extra setup.
+      - name: Build, test and check
+        run: ./gradlew clean check --no-daemon --console=plain
+
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: |
+            backend/build/reports/
+            backend/platform/platform-primitives/build/reports/
+          retention-days: 7

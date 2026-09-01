@@ -5,6 +5,7 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.visibility.VisibleFinder;
+import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.AcceptRequest;
 import com.easycrm.sales.web.dto.ItemRequest;
 import com.easycrm.sales.web.dto.ItemsRequest;
@@ -13,15 +14,8 @@ import com.easycrm.sales.web.dto.QuotationCreateRequest;
 import com.easycrm.sales.web.dto.QuotationHeaderRequest;
 import com.easycrm.sales.web.dto.QuotationResponse;
 import com.easycrm.sales.web.dto.QuotationVersionResponse;
-import com.easycrm.platform.web.PageResponse;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,6 +24,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class QuotationService {
@@ -44,12 +43,16 @@ public class QuotationService {
     private final ApplicationEventPublisher events;
     private final VisibleFinder finder;
 
-    public QuotationService(QuotationRepository quotations, QuotationVersionRepository versions,
-                            QuotationItemRepository items,
-                            TenantRepository tenants, PriceResolver priceResolver,
-                            DocumentNumberService documentNumbers, OrderRepository orders,
-                            ApplicationEventPublisher events,
-                            VisibleFinder finder) {
+    public QuotationService(
+            QuotationRepository quotations,
+            QuotationVersionRepository versions,
+            QuotationItemRepository items,
+            TenantRepository tenants,
+            PriceResolver priceResolver,
+            DocumentNumberService documentNumbers,
+            OrderRepository orders,
+            ApplicationEventPublisher events,
+            VisibleFinder finder) {
         this.quotations = quotations;
         this.versions = versions;
         this.items = items;
@@ -65,19 +68,18 @@ public class QuotationService {
     public QuotationResponse create(QuotationCreateRequest req) {
         // An exec must not be able to raise a quote against a customer (or enquiry) they
         // cannot see, so both loads go through the finder rather than the raw repository.
-        Customer customer = finder.findCustomer(req.customerId())
-            .orElseThrow(() -> new NotFoundException("customer not found"));
+        Customer customer =
+                finder.findCustomer(req.customerId()).orElseThrow(() -> new NotFoundException("customer not found"));
         boolean interState = isInterState(customer.getStateCode());
 
         if (req.enquiryId() != null) {
-            Enquiry enquiry = finder.findEnquiry(req.enquiryId())
-                .orElseThrow(() -> new NotFoundException("enquiry not found"));
+            Enquiry enquiry =
+                    finder.findEnquiry(req.enquiryId()).orElseThrow(() -> new NotFoundException("enquiry not found"));
             enquiry.markConverted(); // 422 if the enquiry is already terminal
         }
 
         Quotation quotation = quotations.save(new Quotation(req.customerId(), req.enquiryId()));
-        QuotationVersion version = versions.save(
-            new QuotationVersion(quotation.getId(), 1, customer.getStateCode()));
+        QuotationVersion version = versions.save(new QuotationVersion(quotation.getId(), 1, customer.getStateCode()));
         version.setHeader(req.validUntil(), req.paymentTerms(), req.deliveryTerms(), req.notes());
         buildItems(version, req.customerId(), req.items(), interState);
         quotation.setCurrentVersionId(version.getId());
@@ -91,8 +93,7 @@ public class QuotationService {
 
     @Transactional(readOnly = true)
     public PageResponse<QuotationResponse> list(QuotationStatus status, UUID customerId, Pageable pageable) {
-        Page<Quotation> page = finder.pageQuotations(
-            QuotationSpecifications.filter(status, customerId), pageable);
+        Page<Quotation> page = finder.pageQuotations(QuotationSpecifications.filter(status, customerId), pageable);
         return PageResponse.of(page.map(this::toResponse));
     }
 
@@ -100,15 +101,15 @@ public class QuotationService {
     public List<QuotationVersionResponse> getVersions(UUID quotationId) {
         findQuotation(quotationId); // 404 if not visible
         return versions.findByQuotationIdOrderByVersionNoAsc(quotationId).stream()
-            .map(v -> QuotationVersionResponse.of(v, items.findByVersionId(v.getId())))
-            .toList();
+                .map(v -> QuotationVersionResponse.of(v, items.findByVersionId(v.getId())))
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public QuotationVersionResponse getVersion(UUID quotationId, int versionNo) {
         findQuotation(quotationId);
         QuotationVersion v = versions.findByQuotationIdAndVersionNo(quotationId, versionNo)
-            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+                .orElseThrow(() -> new NotFoundException("quotation version not found"));
         return QuotationVersionResponse.of(v, items.findByVersionId(v.getId()));
     }
 
@@ -128,8 +129,8 @@ public class QuotationService {
         // Reached only from an already-visible quotation, so this cannot change an
         // outcome -- routed through the finder anyway for guard consistency
         // (VisibilityScopingArchTest).
-        Customer customer = finder.findCustomer(q.getCustomerId())
-            .orElseThrow(() -> new NotFoundException("customer not found"));
+        Customer customer =
+                finder.findCustomer(q.getCustomerId()).orElseThrow(() -> new NotFoundException("customer not found"));
         buildItems(v, q.getCustomerId(), req.items(), isInterState(customer.getStateCode()));
         return toResponse(q);
     }
@@ -141,7 +142,7 @@ public class QuotationService {
             throw new ValidationException("status", "only a draft quotation can be sent");
         }
         QuotationVersion v = versions.findById(q.getCurrentVersionId())
-            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+                .orElseThrow(() -> new NotFoundException("quotation version not found"));
         if (q.getQuoteNo() == null) {
             q.assignQuoteNo(documentNumbers.nextQuoteNo(LocalDate.now()));
         }
@@ -158,11 +159,11 @@ public class QuotationService {
             // was cancelled, in which case there is no live order to hand back. Reopening
             // means a new quotation: UNIQUE(tenant_id, quotation_id) on sales_order makes
             // one-order-per-quotation structural, so a second order here is impossible.
-            Order existing = orders.findByQuotationId(q.getId())
-                .orElseThrow(() -> new NotFoundException("order not found"));
+            Order existing =
+                    orders.findByQuotationId(q.getId()).orElseThrow(() -> new NotFoundException("order not found"));
             if (existing.getStatus() == OrderStatus.CANCELLED) {
-                throw new ValidationException("status",
-                    "the order for this quotation was cancelled; raise a new quotation");
+                throw new ValidationException(
+                        "status", "the order for this quotation was cancelled; raise a new quotation");
             }
             return OrderResponse.of(existing);
         }
@@ -170,16 +171,22 @@ public class QuotationService {
             throw new ValidationException("status", "only a sent quotation can be accepted");
         }
         QuotationVersion v = versions.findById(q.getCurrentVersionId())
-            .orElseThrow(() -> new NotFoundException("quotation version not found"));
-        Order order = orders.save(new Order(q.getId(), v.getId(), q.getCustomerId(),
-            documentNumbers.nextOrderNo(LocalDate.now()),
-            v.getSubTotal(), v.getTotalTax(), v.getGrandTotal(),
-            req.poReference(), req.poDate()));
+                .orElseThrow(() -> new NotFoundException("quotation version not found"));
+        Order order = orders.save(new Order(
+                q.getId(),
+                v.getId(),
+                q.getCustomerId(),
+                documentNumbers.nextOrderNo(LocalDate.now()),
+                v.getSubTotal(),
+                v.getTotalTax(),
+                v.getGrandTotal(),
+                req.poReference(),
+                req.poDate()));
         q.markAccepted();
-        UUID actorUserId = TenantContext.get()
-            .map(TenantContext.TenantPrincipal::userId).orElse(null);
-        events.publishEvent(new QuotationAcceptedEvent(q.getId(), order.getId(), v.getId(),
-            order.getGrandTotal(), order.getOrderNo(), actorUserId));
+        UUID actorUserId =
+                TenantContext.get().map(TenantContext.TenantPrincipal::userId).orElse(null);
+        events.publishEvent(new QuotationAcceptedEvent(
+                q.getId(), order.getId(), v.getId(), order.getGrandTotal(), order.getOrderNo(), actorUserId));
         return OrderResponse.of(order);
     }
 
@@ -190,17 +197,29 @@ public class QuotationService {
             throw new ValidationException("status", "only a sent quotation can be revised");
         }
         QuotationVersion prev = versions.findById(q.getCurrentVersionId())
-            .orElseThrow(() -> new NotFoundException("quotation version not found"));
-        QuotationVersion next = versions.save(
-            new QuotationVersion(q.getId(), prev.getVersionNo() + 1, prev.getPlaceOfSupply()));
-        next.setHeader(prev.getValidUntil(), prev.getPaymentTerms(),
-                       prev.getDeliveryTerms(), prev.getNotes());
+                .orElseThrow(() -> new NotFoundException("quotation version not found"));
+        QuotationVersion next =
+                versions.save(new QuotationVersion(q.getId(), prev.getVersionNo() + 1, prev.getPlaceOfSupply()));
+        next.setHeader(
+                prev.getValidUntil(), prev.getPaymentTerms(),
+                prev.getDeliveryTerms(), prev.getNotes());
         // Copy the previous version's frozen items verbatim (already-computed values).
         for (QuotationItem s : items.findByVersionId(prev.getId())) {
-            items.save(new QuotationItem(next.getId(), s.getProductId(), s.getNameSnapshot(),
-                s.getHsnSnapshot(), s.getUomSnapshot(), s.getQty(), s.getRate(), s.getDiscountPct(),
-                s.getGstRate(), s.getTaxableValue(), s.getCgst(), s.getSgst(), s.getIgst(),
-                s.getLineTotal()));
+            items.save(new QuotationItem(
+                    next.getId(),
+                    s.getProductId(),
+                    s.getNameSnapshot(),
+                    s.getHsnSnapshot(),
+                    s.getUomSnapshot(),
+                    s.getQty(),
+                    s.getRate(),
+                    s.getDiscountPct(),
+                    s.getGstRate(),
+                    s.getTaxableValue(),
+                    s.getCgst(),
+                    s.getSgst(),
+                    s.getIgst(),
+                    s.getLineTotal()));
         }
         next.setTotals(prev.getSubTotal(), prev.getTotalTax(), prev.getGrandTotal());
         q.setCurrentVersionId(next.getId());
@@ -214,7 +233,7 @@ public class QuotationService {
             throw new ValidationException("status", "only a draft quotation can be edited");
         }
         return versions.findById(q.getCurrentVersionId())
-            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+                .orElseThrow(() -> new NotFoundException("quotation version not found"));
     }
 
     @Transactional
@@ -252,7 +271,7 @@ public class QuotationService {
             }
             if (ir.discountPct() != null
                     && (ir.discountPct().compareTo(BigDecimal.ZERO) < 0
-                        || ir.discountPct().compareTo(new BigDecimal("100")) > 0)) {
+                            || ir.discountPct().compareTo(new BigDecimal("100")) > 0)) {
                 errors.put("items[" + idx + "].discountPct", "discount must be between 0 and 100");
             }
             if (ir.rate() != null && ir.rate().compareTo(BigDecimal.ZERO) < 0) {
@@ -267,30 +286,41 @@ public class QuotationService {
             BigDecimal rate = ir.rate() != null ? ir.rate() : r.rate();
             BigDecimal discount = ir.discountPct() != null ? ir.discountPct() : BigDecimal.ZERO;
             GstCalculator.LineResult lr = GstCalculator.computeLine(
-                new GstCalculator.LineInput(ir.qty(), rate, discount, r.gstRate()), interState);
+                    new GstCalculator.LineInput(ir.qty(), rate, discount, r.gstRate()), interState);
             lineResults.add(lr);
-            items.save(new QuotationItem(version.getId(), ir.productId(), r.name(), r.hsn(), r.uom(),
-                ir.qty(), rate, discount, r.gstRate(), lr.taxableValue(), lr.cgst(), lr.sgst(),
-                lr.igst(), lr.lineTotal()));
+            items.save(new QuotationItem(
+                    version.getId(),
+                    ir.productId(),
+                    r.name(),
+                    r.hsn(),
+                    r.uom(),
+                    ir.qty(),
+                    rate,
+                    discount,
+                    r.gstRate(),
+                    lr.taxableValue(),
+                    lr.cgst(),
+                    lr.sgst(),
+                    lr.igst(),
+                    lr.lineTotal()));
         }
         GstCalculator.Totals t = GstCalculator.totals(lineResults);
         version.setTotals(t.subTotal(), t.totalTax(), t.grandTotal());
     }
 
     boolean isInterState(String customerStateCode) {
-        Tenant tenant = tenants.findById(TenantContext.tenantId())
-            .orElseThrow(() -> new NotFoundException("tenant not found"));
+        Tenant tenant =
+                tenants.findById(TenantContext.tenantId()).orElseThrow(() -> new NotFoundException("tenant not found"));
         return !tenant.getStateCode().equals(customerStateCode);
     }
 
     Quotation findQuotation(UUID id) {
-        return finder.findQuotation(id)
-            .orElseThrow(() -> new NotFoundException("quotation not found"));
+        return finder.findQuotation(id).orElseThrow(() -> new NotFoundException("quotation not found"));
     }
 
     QuotationResponse toResponse(Quotation q) {
         QuotationVersion v = versions.findById(q.getCurrentVersionId())
-            .orElseThrow(() -> new NotFoundException("quotation version not found"));
+                .orElseThrow(() -> new NotFoundException("quotation version not found"));
         var itemList = items.findByVersionId(v.getId());
         return QuotationResponse.of(q, QuotationVersionResponse.of(v, itemList));
     }

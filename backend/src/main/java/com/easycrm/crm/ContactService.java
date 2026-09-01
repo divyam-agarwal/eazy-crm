@@ -4,11 +4,10 @@ import com.easycrm.crm.web.dto.ContactRequest;
 import com.easycrm.crm.web.dto.ContactResponse;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.visibility.VisibleFinder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ContactService {
@@ -24,22 +23,35 @@ public class ContactService {
     @Transactional
     public ContactResponse add(UUID customerId, ContactRequest req) {
         requireCustomer(customerId);
-        Contact saved = contacts.save(new Contact(customerId, req.name(), req.phone(),
-            req.whatsappNumber(), req.email(), req.designation(), Boolean.TRUE.equals(req.isPrimary())));
+        Contact saved = contacts.save(new Contact(
+                customerId,
+                req.name(),
+                req.phone(),
+                req.whatsappNumber(),
+                req.email(),
+                req.designation(),
+                Boolean.TRUE.equals(req.isPrimary())));
         return ContactResponse.of(saved);
     }
 
     @Transactional(readOnly = true)
     public List<ContactResponse> list(UUID customerId) {
         requireCustomer(customerId);
-        return contacts.findByCustomerId(customerId).stream().map(ContactResponse::of).toList();
+        return contacts.findByCustomerId(customerId).stream()
+                .map(ContactResponse::of)
+                .toList();
     }
 
     @Transactional
     public ContactResponse update(UUID customerId, UUID contactId, ContactRequest req) {
         Contact c = find(customerId, contactId);
-        c.update(req.name(), req.phone(), req.whatsappNumber(), req.email(),
-                 req.designation(), Boolean.TRUE.equals(req.isPrimary()));
+        c.update(
+                req.name(),
+                req.phone(),
+                req.whatsappNumber(),
+                req.email(),
+                req.designation(),
+                Boolean.TRUE.equals(req.isPrimary()));
         return ContactResponse.of(c);
     }
 
@@ -49,14 +61,12 @@ public class ContactService {
     }
 
     private void requireCustomer(UUID customerId) {
-        finder.findCustomer(customerId)
-            .orElseThrow(() -> new NotFoundException("customer not found"));
+        finder.findCustomer(customerId).orElseThrow(() -> new NotFoundException("customer not found"));
     }
 
     private Contact find(UUID customerId, UUID contactId) {
-        requireCustomer(customerId);          // gate on the parent FIRST
-        Contact c = contacts.findById(contactId)
-            .orElseThrow(() -> new NotFoundException("contact not found"));
+        requireCustomer(customerId); // gate on the parent FIRST
+        Contact c = contacts.findById(contactId).orElseThrow(() -> new NotFoundException("contact not found"));
         if (!c.getCustomerId().equals(customerId)) {
             throw new NotFoundException("contact not found");
         }

@@ -1,14 +1,13 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.error.ValidationException;
-import com.easycrm.platform.visibility.SubjectType;
-import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.easycrm.platform.error.ValidationException;
+import com.easycrm.platform.visibility.SubjectType;
+import java.time.Instant;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 /** Pure aggregate invariants. See spec 2026-08-30-activity-follow-up-design.md §7.1. */
 class ActivityTest {
@@ -30,8 +29,7 @@ class ActivityTest {
 
     @Test
     void occurredAtMayBeInThePast() {
-        assertThat(manual(NOW.minusSeconds(86_400), ME).getOccurredAt())
-            .isEqualTo(NOW.minusSeconds(86_400));
+        assertThat(manual(NOW.minusSeconds(86_400), ME).getOccurredAt()).isEqualTo(NOW.minusSeconds(86_400));
     }
 
     @Test
@@ -42,9 +40,9 @@ class ActivityTest {
     @Test
     void occurredAtInTheFutureIsRejected() {
         assertThatThrownBy(() -> manual(NOW.plusSeconds(1), ME))
-            .isInstanceOf(ValidationException.class)
-            .satisfies(e -> assertThat(((ValidationException) e).getFields())
-                .containsKey("occurredAt"));
+                .isInstanceOf(ValidationException.class)
+                .satisfies(
+                        e -> assertThat(((ValidationException) e).getFields()).containsKey("occurredAt"));
     }
 
     @Test
@@ -60,8 +58,7 @@ class ActivityTest {
     void anotherUserCannotEditIt_andNothingIsMutated() {
         Activity a = manual(NOW, ME);
 
-        assertThatThrownBy(() -> a.edit("hijacked", "nope", SOMEONE_ELSE))
-            .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> a.edit("hijacked", "nope", SOMEONE_ELSE)).isInstanceOf(ValidationException.class);
 
         assertThat(a.getBody()).isEqualTo("rang them");
         assertThat(a.getOutcome()).isEqualTo("no answer");
@@ -69,18 +66,16 @@ class ActivityTest {
 
     @Test
     void aSystemActivityCannotBeEdited_andNothingIsMutated() {
-        Activity a = Activity.system(SubjectType.QUOTATION, SUBJECT, ActivityType.NOTE,
-            "Quotation accepted", ME, NOW);
+        Activity a = Activity.system(SubjectType.QUOTATION, SUBJECT, ActivityType.NOTE, "Quotation accepted", ME, NOW);
 
-        assertThatThrownBy(() -> a.edit("rewritten", null, ME))
-            .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> a.edit("rewritten", null, ME)).isInstanceOf(ValidationException.class);
 
         assertThat(a.getBody()).isEqualTo("Quotation accepted");
         assertThat(a.getSource()).isEqualTo(ActivitySource.SYSTEM);
     }
 
     private static Activity manual(Instant occurredAt, UUID loggedBy) {
-        return Activity.manual(SubjectType.ENQUIRY, SUBJECT, ActivityType.CALL,
-            "rang them", "no answer", occurredAt, loggedBy, NOW);
+        return Activity.manual(
+                SubjectType.ENQUIRY, SUBJECT, ActivityType.CALL, "rang them", "no answer", occurredAt, loggedBy, NOW);
     }
 }

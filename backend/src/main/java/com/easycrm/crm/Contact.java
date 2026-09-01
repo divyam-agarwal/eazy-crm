@@ -4,7 +4,6 @@ import com.easycrm.platform.persistence.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
-
 import java.util.UUID;
 
 @Entity
@@ -34,8 +33,14 @@ public class Contact extends TenantScopedEntity {
 
     protected Contact() {}
 
-    public Contact(UUID customerId, String name, String phone, String whatsappNumber,
-                   String email, String designation, boolean primary) {
+    public Contact(
+            UUID customerId,
+            String name,
+            String phone,
+            String whatsappNumber,
+            String email,
+            String designation,
+            boolean primary) {
         this.customerId = customerId;
         this.name = name;
         this.phone = phone;
@@ -45,8 +50,8 @@ public class Contact extends TenantScopedEntity {
         this.primary = primary;
     }
 
-    public void update(String name, String phone, String whatsappNumber,
-                       String email, String designation, boolean primary) {
+    public void update(
+            String name, String phone, String whatsappNumber, String email, String designation, boolean primary) {
         this.name = name;
         this.phone = phone;
         this.whatsappNumber = whatsappNumber;
@@ -55,11 +60,31 @@ public class Contact extends TenantScopedEntity {
         this.primary = primary;
     }
 
-    public UUID getCustomerId() { return customerId; }
-    public String getName() { return name; }
-    public String getPhone() { return phone; }
-    public String getWhatsappNumber() { return whatsappNumber; }
-    public String getEmail() { return email; }
-    public String getDesignation() { return designation; }
-    public boolean isPrimary() { return primary; }
+    public UUID getCustomerId() {
+        return customerId;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public String getWhatsappNumber() {
+        return whatsappNumber;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public String getDesignation() {
+        return designation;
+    }
+
+    public boolean isPrimary() {
+        return primary;
+    }
 }

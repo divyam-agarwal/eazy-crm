@@ -1,21 +1,27 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.error.ValidationException;
-import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.easycrm.platform.error.ValidationException;
+import java.math.BigDecimal;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 class OrderTest {
 
     /** A freshly accepted order: CONFIRMED, no cancel reason. */
     private Order newOrder() {
-        return new Order(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-            "ORD/2526/0001", new BigDecimal("100.00"), new BigDecimal("18.00"),
-            new BigDecimal("118.00"), null, null);
+        return new Order(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "ORD/2526/0001",
+                new BigDecimal("100.00"),
+                new BigDecimal("18.00"),
+                new BigDecimal("118.00"),
+                null,
+                null);
     }
 
     private Order dispatched() {
@@ -90,10 +96,8 @@ class OrderTest {
 
     @Test
     void cancelRejectedOnTerminalStates() {
-        assertThatThrownBy(() -> closed().cancel("too late"))
-            .isInstanceOf(ValidationException.class);
-        assertThatThrownBy(() -> cancelled().cancel("again"))
-            .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> closed().cancel("too late")).isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> cancelled().cancel("again")).isInstanceOf(ValidationException.class);
     }
 
     @Test

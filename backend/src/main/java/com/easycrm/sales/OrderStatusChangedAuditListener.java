@@ -1,18 +1,19 @@
 package com.easycrm.sales;
 
 import com.easycrm.iam.AuditService;
-import org.springframework.context.event.EventListener;
-import org.springframework.stereotype.Component;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Component;
 
 @Component
 public class OrderStatusChangedAuditListener {
 
     private final AuditService audit;
 
-    public OrderStatusChangedAuditListener(AuditService audit) { this.audit = audit; }
+    public OrderStatusChangedAuditListener(AuditService audit) {
+        this.audit = audit;
+    }
 
     // Synchronous, runs in the publisher's transaction (Spring default) — the audit row
     // commits or rolls back together with the status change (challenge #3 atomicity).

@@ -4,7 +4,6 @@ import com.easycrm.platform.persistence.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
-
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -56,10 +55,21 @@ public class QuotationItem extends TenantScopedEntity {
 
     protected QuotationItem() {}
 
-    public QuotationItem(UUID versionId, UUID productId, String nameSnapshot, String hsnSnapshot,
-                         String uomSnapshot, BigDecimal qty, BigDecimal rate, BigDecimal discountPct,
-                         BigDecimal gstRate, BigDecimal taxableValue, BigDecimal cgst, BigDecimal sgst,
-                         BigDecimal igst, BigDecimal lineTotal) {
+    public QuotationItem(
+            UUID versionId,
+            UUID productId,
+            String nameSnapshot,
+            String hsnSnapshot,
+            String uomSnapshot,
+            BigDecimal qty,
+            BigDecimal rate,
+            BigDecimal discountPct,
+            BigDecimal gstRate,
+            BigDecimal taxableValue,
+            BigDecimal cgst,
+            BigDecimal sgst,
+            BigDecimal igst,
+            BigDecimal lineTotal) {
         this.versionId = versionId;
         this.productId = productId;
         this.nameSnapshot = nameSnapshot;
@@ -76,18 +86,59 @@ public class QuotationItem extends TenantScopedEntity {
         this.lineTotal = lineTotal;
     }
 
-    public UUID getVersionId() { return versionId; }
-    public UUID getProductId() { return productId; }
-    public String getNameSnapshot() { return nameSnapshot; }
-    public String getHsnSnapshot() { return hsnSnapshot; }
-    public String getUomSnapshot() { return uomSnapshot; }
-    public BigDecimal getQty() { return qty; }
-    public BigDecimal getRate() { return rate; }
-    public BigDecimal getDiscountPct() { return discountPct; }
-    public BigDecimal getGstRate() { return gstRate; }
-    public BigDecimal getTaxableValue() { return taxableValue; }
-    public BigDecimal getCgst() { return cgst; }
-    public BigDecimal getSgst() { return sgst; }
-    public BigDecimal getIgst() { return igst; }
-    public BigDecimal getLineTotal() { return lineTotal; }
+    public UUID getVersionId() {
+        return versionId;
+    }
+
+    public UUID getProductId() {
+        return productId;
+    }
+
+    public String getNameSnapshot() {
+        return nameSnapshot;
+    }
+
+    public String getHsnSnapshot() {
+        return hsnSnapshot;
+    }
+
+    public String getUomSnapshot() {
+        return uomSnapshot;
+    }
+
+    public BigDecimal getQty() {
+        return qty;
+    }
+
+    public BigDecimal getRate() {
+        return rate;
+    }
+
+    public BigDecimal getDiscountPct() {
+        return discountPct;
+    }
+
+    public BigDecimal getGstRate() {
+        return gstRate;
+    }
+
+    public BigDecimal getTaxableValue() {
+        return taxableValue;
+    }
+
+    public BigDecimal getCgst() {
+        return cgst;
+    }
+
+    public BigDecimal getSgst() {
+        return sgst;
+    }
+
+    public BigDecimal getIgst() {
+        return igst;
+    }
+
+    public BigDecimal getLineTotal() {
+        return lineTotal;
+    }
 }

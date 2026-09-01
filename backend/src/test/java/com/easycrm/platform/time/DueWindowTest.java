@@ -1,11 +1,10 @@
 package com.easycrm.platform.time;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.time.LocalDate;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * Midnight correctness, proven with no Spring at all. This is why the Clock bean is never
@@ -59,7 +58,7 @@ class DueWindowTest {
         DueWindow.Window w = DueWindow.today(Instant.parse("2026-08-30T06:30:00Z"));
 
         assertThat(java.time.Duration.between(w.startOfToday(), w.endOfToday()))
-            .isEqualTo(java.time.Duration.ofHours(24));
+                .isEqualTo(java.time.Duration.ofHours(24));
     }
 
     @Test
@@ -67,20 +66,17 @@ class DueWindowTest {
         // Before 18:30Z the IST and UTC dates necessarily agree, so this pins the near side
         // of the offset (a zone further east would roll over here) rather than discriminating
         // IST from UTC. The two tests below are the ones that do that.
-        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T18:29:00Z")))
-            .isEqualTo(LocalDate.of(2026, 8, 31));
+        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T18:29:00Z"))).isEqualTo(LocalDate.of(2026, 8, 31));
     }
 
     @Test
     void todayDateRollsOverExactlyAtIstMidnight() {
-        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T18:30:00Z")))
-            .isEqualTo(LocalDate.of(2026, 9, 1));
+        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T18:30:00Z"))).isEqualTo(LocalDate.of(2026, 9, 1));
     }
 
     @Test
     void todayDateUsesIstNotUtcForAMiddayInstant() {
         // 2026-08-31T20:00Z is already 2026-09-01 01:30 IST.
-        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T20:00:00Z")))
-            .isEqualTo(LocalDate.of(2026, 9, 1));
+        assertThat(DueWindow.todayDate(Instant.parse("2026-08-31T20:00:00Z"))).isEqualTo(LocalDate.of(2026, 9, 1));
     }
 }

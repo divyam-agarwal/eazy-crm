@@ -8,10 +8,9 @@ import com.easycrm.sales.Order;
 import com.easycrm.sales.Quotation;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
+import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
-
-import java.util.UUID;
 
 /**
  * Intra-tenant record visibility — a PRODUCT rule, deliberately not the tenant wall.
@@ -33,18 +32,24 @@ public class VisibilityPolicy {
      * A new restricted role is an explicit edit to this method.
      */
     public boolean unrestricted() {
-        return TenantContext.get()
-            .map(p -> !"SALES_EXEC".equals(p.role()))
-            .orElse(true);
+        return TenantContext.get().map(p -> !"SALES_EXEC".equals(p.role())).orElse(true);
     }
 
-    public Specification<Customer> customers() { return ownedOrUnassigned(); }
+    public Specification<Customer> customers() {
+        return ownedOrUnassigned();
+    }
 
-    public Specification<Enquiry> enquiries() { return ownedOrUnassigned(); }
+    public Specification<Enquiry> enquiries() {
+        return ownedOrUnassigned();
+    }
 
-    public Specification<Quotation> quotations() { return viaCustomer("customerId"); }
+    public Specification<Quotation> quotations() {
+        return viaCustomer("customerId");
+    }
 
-    public Specification<Order> orders() { return viaCustomer("customerId"); }
+    public Specification<Order> orders() {
+        return viaCustomer("customerId");
+    }
 
     /**
      * A follow-up carries its own owner, so its visibility is intrinsic rather than
@@ -64,9 +69,7 @@ public class VisibilityPolicy {
     private <T> Specification<T> ownedOrUnassigned() {
         if (unrestricted()) return unrestrictedSpec();
         UUID me = currentUserId();
-        return (root, query, cb) -> cb.or(
-            cb.equal(root.get("assignedTo"), me),
-            cb.isNull(root.get("assignedTo")));
+        return (root, query, cb) -> cb.or(cb.equal(root.get("assignedTo"), me), cb.isNull(root.get("assignedTo")));
     }
 
     /**
@@ -82,8 +85,8 @@ public class VisibilityPolicy {
             Root<Customer> c = sub.from(Customer.class);
             sub.select(c.get("id"));
             sub.where(cb.and(
-                cb.equal(c.get("id"), root.get(customerIdAttribute)),
-                cb.or(cb.equal(c.get("assignedTo"), me), cb.isNull(c.get("assignedTo")))));
+                    cb.equal(c.get("id"), root.get(customerIdAttribute)),
+                    cb.or(cb.equal(c.get("assignedTo"), me), cb.isNull(c.get("assignedTo")))));
             return cb.exists(sub);
         };
     }

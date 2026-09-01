@@ -1,15 +1,16 @@
 package com.easycrm.sales;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 class GstCalculatorTest {
 
-    private static BigDecimal bd(String s) { return new BigDecimal(s); }
+    private static BigDecimal bd(String s) {
+        return new BigDecimal(s);
+    }
 
     @Test
     void intraStateSplitsCgstSgstEqually() {
@@ -54,9 +55,9 @@ class GstCalculatorTest {
         // Two lines each taxable 0.125 → rounds to 0.13 each; round-then-sum = 0.26.
         // Sum-then-round of 0.25 would give 0.25 (or 0.26 depending) — this pins the Tally rule.
         var a = GstCalculator.computeLine(
-            new GstCalculator.LineInput(bd("1"), bd("0.125"), BigDecimal.ZERO, bd("0")), false);
+                new GstCalculator.LineInput(bd("1"), bd("0.125"), BigDecimal.ZERO, bd("0")), false);
         var b = GstCalculator.computeLine(
-            new GstCalculator.LineInput(bd("1"), bd("0.125"), BigDecimal.ZERO, bd("0")), false);
+                new GstCalculator.LineInput(bd("1"), bd("0.125"), BigDecimal.ZERO, bd("0")), false);
         assertThat(a.taxableValue()).isEqualByComparingTo("0.13"); // 0.125 HALF_UP → 0.13
         var totals = GstCalculator.totals(List.of(a, b));
         assertThat(totals.subTotal()).isEqualByComparingTo("0.26");
@@ -66,12 +67,12 @@ class GstCalculatorTest {
     @Test
     void totalsSumRoundedLineValues() {
         var a = GstCalculator.computeLine(
-            new GstCalculator.LineInput(bd("2"), bd("100.00"), BigDecimal.ZERO, bd("18")), false);
+                new GstCalculator.LineInput(bd("2"), bd("100.00"), BigDecimal.ZERO, bd("18")), false);
         var b = GstCalculator.computeLine(
-            new GstCalculator.LineInput(bd("1"), bd("50.00"), BigDecimal.ZERO, bd("12")), true);
+                new GstCalculator.LineInput(bd("1"), bd("50.00"), BigDecimal.ZERO, bd("12")), true);
         var t = GstCalculator.totals(List.of(a, b));
-        assertThat(t.subTotal()).isEqualByComparingTo("250.00");   // 200 + 50
-        assertThat(t.totalTax()).isEqualByComparingTo("42.00");    // (18+18) + 6
+        assertThat(t.subTotal()).isEqualByComparingTo("250.00"); // 200 + 50
+        assertThat(t.totalTax()).isEqualByComparingTo("42.00"); // (18+18) + 6
         assertThat(t.grandTotal()).isEqualByComparingTo("292.00");
     }
 

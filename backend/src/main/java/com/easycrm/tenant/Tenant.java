@@ -12,13 +12,12 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
+import java.time.Instant;
+import java.util.UUID;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.domain.Persistable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.Instant;
-import java.util.UUID;
 
 /**
  * GLOBAL tenant registry (no @TenantId / no RLS — it IS the tenant list). Unlike every
@@ -88,8 +87,13 @@ public class Tenant implements Persistable<UUID> {
         this(slug, businessName, stateCode, null, TenantStatus.TRIAL, null);
     }
 
-    public Tenant(String slug, String businessName, String stateCode,
-                  String gstin, TenantStatus status, Instant trialEndsAt) {
+    public Tenant(
+            String slug,
+            String businessName,
+            String stateCode,
+            String gstin,
+            TenantStatus status,
+            Instant trialEndsAt) {
         this.id = UuidV7.generate();
         this.slug = slug;
         this.businessName = businessName;
@@ -100,28 +104,72 @@ public class Tenant implements Persistable<UUID> {
     }
 
     @Override
-    public UUID getId() { return id; }
+    public UUID getId() {
+        return id;
+    }
 
     @Override
-    public boolean isNew() { return isNew; }
+    public boolean isNew() {
+        return isNew;
+    }
 
     @PostPersist
     @PostLoad
-    void markPersisted() { this.isNew = false; }
+    void markPersisted() {
+        this.isNew = false;
+    }
 
-    public String getSlug() { return slug; }
-    public String getBusinessName() { return businessName; }
-    public String getStateCode() { return stateCode; }
-    public String getGstin() { return gstin; }
-    public String getAddress() { return address; }
-    public String getPhone() { return phone; }
-    public String getEmail() { return email; }
-    public TenantStatus getStatus() { return status; }
-    public Instant getTrialEndsAt() { return trialEndsAt; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public long getVersion() { return version; }
-    public void setStatus(TenantStatus status) { this.status = status; }
+    public String getSlug() {
+        return slug;
+    }
+
+    public String getBusinessName() {
+        return businessName;
+    }
+
+    public String getStateCode() {
+        return stateCode;
+    }
+
+    public String getGstin() {
+        return gstin;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public TenantStatus getStatus() {
+        return status;
+    }
+
+    public Instant getTrialEndsAt() {
+        return trialEndsAt;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public void setStatus(TenantStatus status) {
+        this.status = status;
+    }
 
     /** Full replace: an omitted field clears the stored value (house-wide PATCH semantics). */
     public void updateProfile(String address, String phone, String email) {

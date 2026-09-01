@@ -1,19 +1,22 @@
 package com.easycrm.iam;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class UserRepositoryTest extends IntegrationTest {
-    @Autowired UserRepository users;
+    @Autowired
+    UserRepository users;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private void asTenant(UUID t) {
         TenantContext.set(new TenantContext.TenantPrincipal(t, UUID.randomUUID(), "OWNER"));
@@ -35,7 +38,6 @@ class UserRepositoryTest extends IntegrationTest {
         users.save(new User("dup@x.test", null, "hash", Role.OWNER, UserStatus.ACTIVE));
 
         asTenant(b); // tenant B has no such user
-        assertTrue(users.findByEmail("dup@x.test").isEmpty(),
-            "email lookup must not cross tenants");
+        assertTrue(users.findByEmail("dup@x.test").isEmpty(), "email lookup must not cross tenants");
     }
 }

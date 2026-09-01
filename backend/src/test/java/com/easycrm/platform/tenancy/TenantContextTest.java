@@ -1,12 +1,16 @@
 package com.easycrm.platform.tenancy;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
 class TenantContextTest {
-    @AfterEach void tearDown() { TenantContext.clear(); }
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
+    }
 
     @Test
     void unsetByDefault() {
@@ -28,8 +32,9 @@ class TenantContextTest {
         UUID outer = UUID.randomUUID();
         TenantContext.set(new TenantContext.TenantPrincipal(outer, UUID.randomUUID(), "OWNER"));
         UUID inner = UUID.randomUUID();
-        TenantContext.runAs(new TenantContext.TenantPrincipal(inner, UUID.randomUUID(), "SALES_EXEC"),
-            () -> assertEquals(inner, TenantContext.tenantId()));
+        TenantContext.runAs(
+                new TenantContext.TenantPrincipal(inner, UUID.randomUUID(), "SALES_EXEC"),
+                () -> assertEquals(inner, TenantContext.tenantId()));
         assertEquals(outer, TenantContext.tenantId(), "previous context restored after runAs");
     }
 }

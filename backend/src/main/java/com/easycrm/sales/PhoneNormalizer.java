@@ -21,8 +21,7 @@ public final class PhoneNormalizer {
             digits = digits.substring(1);
         }
         if (digits.length() != 10) {
-            throw new ValidationException("contactPhone",
-                "must be a valid 10-digit Indian phone number");
+            throw new ValidationException("contactPhone", "must be a valid 10-digit Indian phone number");
         }
         return digits;
     }

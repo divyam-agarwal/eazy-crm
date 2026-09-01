@@ -1,13 +1,9 @@
 package com.easycrm.sales;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
-
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -16,16 +12,25 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 class DocumentNumberServiceTest extends IntegrationTest {
-    @Autowired DocumentNumberService service;
-    @Autowired PlatformTransactionManager txManager;
+    @Autowired
+    DocumentNumberService service;
+
+    @Autowired
+    PlatformTransactionManager txManager;
 
     private static final LocalDate FY_25_26 = LocalDate.of(2025, 6, 1);
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     private void asTenant(UUID t) {
         TenantContext.set(new TenantContext.TenantPrincipal(t, UUID.randomUUID(), "OWNER"));
@@ -37,9 +42,12 @@ class DocumentNumberServiceTest extends IntegrationTest {
 
     @Test
     void financialYearLabelsAprToMar() {
-        assertThat(DocumentNumberService.financialYear(LocalDate.of(2025, 6, 1))).isEqualTo("25-26");
-        assertThat(DocumentNumberService.financialYear(LocalDate.of(2026, 3, 31))).isEqualTo("25-26");
-        assertThat(DocumentNumberService.financialYear(LocalDate.of(2026, 4, 1))).isEqualTo("26-27");
+        assertThat(DocumentNumberService.financialYear(LocalDate.of(2025, 6, 1)))
+                .isEqualTo("25-26");
+        assertThat(DocumentNumberService.financialYear(LocalDate.of(2026, 3, 31)))
+                .isEqualTo("25-26");
+        assertThat(DocumentNumberService.financialYear(LocalDate.of(2026, 4, 1)))
+                .isEqualTo("26-27");
     }
 
     @Test

@@ -1,9 +1,14 @@
 package com.easycrm.sales.web;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
 import com.jayway.jsonpath.JsonPath;
+import java.util.UUID;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.AfterEach;
@@ -14,38 +19,54 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 class QuotationPdfEndpointTest extends IntegrationTest {
-    @Autowired MockMvc mvc;
-    @Autowired TestTokens tokens;
+    @Autowired
+    MockMvc mvc;
 
-    @AfterEach void clear() { TenantContext.clear(); }
+    @Autowired
+    TestTokens tokens;
+
+    @AfterEach
+    void clear() {
+        TenantContext.clear();
+    }
 
     /** Creates a DRAFT quotation for a customer in `customerState` and returns its id. */
     private String draftQuotation(String auth, String customerState) throws Exception {
-        String cId = JsonPath.read(mvc.perform(post("/api/v1/customers").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content("""
-                    {"businessName":"Bharat Industries","stateCode":"%s","source":"MANUAL"}"""
-                    .formatted(customerState)))
-            .andReturn().getResponse().getContentAsString(), "$.id");
-        String pId = JsonPath.read(mvc.perform(post("/api/v1/products").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content("""
+        String cId = JsonPath.read(
+                mvc.perform(post("/api/v1/customers")
+                                .header("Authorization", auth)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                    {"businessName":"Bharat Industries","stateCode":"%s","source":"MANUAL"}""".formatted(customerState)))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.id");
+        String pId = JsonPath.read(
+                mvc.perform(post("/api/v1/products")
+                                .header("Authorization", auth)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
                     {"sku":"SKU-%s","name":"Ball Bearing 6203","hsnCode":"84821011",
-                     "uom":"PCS","gstRate":"18","baseRate":"100.00"}"""
-                    .formatted(UUID.randomUUID().toString().substring(0, 8))))
-            .andReturn().getResponse().getContentAsString(), "$.id");
-        return JsonPath.read(mvc.perform(post("/api/v1/quotations").header("Authorization", auth)
-                .contentType(MediaType.APPLICATION_JSON).content(
-                    "{\"customerId\":\"%s\",\"items\":[{\"productId\":\"%s\",\"qty\":\"10\"}]}"
-                        .formatted(cId, pId)))
-            .andReturn().getResponse().getContentAsString(), "$.id");
+                     "uom":"PCS","gstRate":"18","baseRate":"100.00"}""".formatted(
+                                                UUID.randomUUID().toString().substring(0, 8))))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.id");
+        return JsonPath.read(
+                mvc.perform(post("/api/v1/quotations")
+                                .header("Authorization", auth)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"customerId\":\"%s\",\"items\":[{\"productId\":\"%s\",\"qty\":\"10\"}]}"
+                                        .formatted(cId, pId)))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.id");
     }
 
     private static String textOf(byte[] pdf) throws Exception {
@@ -58,16 +79,20 @@ class QuotationPdfEndpointTest extends IntegrationTest {
     void rendersASentQuotationWithBothPartiesAndTheHsnCode() throws Exception {
         var owner = tokens.provisionOwner("27");
         String auth = "Bearer " + owner.token();
-        mvc.perform(patch("/api/v1/tenant").header("Authorization", auth)
-            .contentType(MediaType.APPLICATION_JSON).content("""
+        mvc.perform(patch("/api/v1/tenant")
+                .header("Authorization", auth)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                 {"address":"12 MG Road, Pune 411001","phone":"+919876543210","email":null}"""));
         String qId = draftQuotation(auth, "27");
         mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth));
 
         byte[] pdf = mvc.perform(get("/api/v1/quotations/" + qId + "/pdf").header("Authorization", auth))
-            .andExpect(status().isOk())
-            .andExpect(header().string("Content-Type", "application/pdf"))
-            .andReturn().getResponse().getContentAsByteArray();
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
 
         String text = textOf(pdf);
         assertTrue(text.contains("Bharat Industries"), text);
@@ -85,34 +110,40 @@ class QuotationPdfEndpointTest extends IntegrationTest {
         // igst for what should be cgst/sgst, or subTotal for grandTotal — fails the
         // suite instead of shipping a wrong invoice to a customer.
         String authIntra = "Bearer " + tokens.provisionOwner("27").token();
-        String intra = draftQuotation(authIntra, "27");        // seller 27, buyer 27
+        String intra = draftQuotation(authIntra, "27"); // seller 27, buyer 27
         mvc.perform(post("/api/v1/quotations/" + intra + "/send").header("Authorization", authIntra));
-        String intraText = textOf(mvc.perform(get("/api/v1/quotations/" + intra + "/pdf")
-            .header("Authorization", authIntra)).andReturn().getResponse().getContentAsByteArray());
+        String intraText =
+                textOf(mvc.perform(get("/api/v1/quotations/" + intra + "/pdf").header("Authorization", authIntra))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsByteArray());
         assertTrue(intraText.contains("CGST") && !intraText.contains("IGST"), intraText);
-        assertTrue(intraText.contains("Rs. 1,000.00"), intraText);   // sub total / taxable
-        assertTrue(intraText.contains("Rs. 90.00"), intraText);      // CGST and SGST both
-        assertTrue(intraText.contains("Rs. 180.00"), intraText);     // total tax
-        assertTrue(intraText.contains("Rs. 1,180.00"), intraText);   // grand total
+        assertTrue(intraText.contains("Rs. 1,000.00"), intraText); // sub total / taxable
+        assertTrue(intraText.contains("Rs. 90.00"), intraText); // CGST and SGST both
+        assertTrue(intraText.contains("Rs. 180.00"), intraText); // total tax
+        assertTrue(intraText.contains("Rs. 1,180.00"), intraText); // grand total
 
         String authInter = "Bearer " + tokens.provisionOwner("27").token();
-        String inter = draftQuotation(authInter, "29");        // seller 27, buyer 29
+        String inter = draftQuotation(authInter, "29"); // seller 27, buyer 29
         mvc.perform(post("/api/v1/quotations/" + inter + "/send").header("Authorization", authInter));
-        String interText = textOf(mvc.perform(get("/api/v1/quotations/" + inter + "/pdf")
-            .header("Authorization", authInter)).andReturn().getResponse().getContentAsByteArray());
+        String interText =
+                textOf(mvc.perform(get("/api/v1/quotations/" + inter + "/pdf").header("Authorization", authInter))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsByteArray());
         assertTrue(interText.contains("IGST") && !interText.contains("CGST"), interText);
-        assertTrue(interText.contains("Rs. 1,000.00"), interText);   // sub total / taxable
-        assertTrue(interText.contains("Rs. 180.00"), interText);     // IGST and total tax both
-        assertTrue(interText.contains("Rs. 1,180.00"), interText);   // grand total
+        assertTrue(interText.contains("Rs. 1,000.00"), interText); // sub total / taxable
+        assertTrue(interText.contains("Rs. 180.00"), interText); // IGST and total tax both
+        assertTrue(interText.contains("Rs. 1,180.00"), interText); // grand total
     }
 
     @Test
     void aDraftHasNoDocumentToRender() throws Exception {
         String auth = "Bearer " + tokens.provisionOwner("27").token();
-        String qId = draftQuotation(auth, "27");   // never sent
+        String qId = draftQuotation(auth, "27"); // never sent
 
         mvc.perform(get("/api/v1/quotations/" + qId + "/pdf").header("Authorization", auth))
-            .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableEntity());
     }
 
     @Test
@@ -124,13 +155,18 @@ class QuotationPdfEndpointTest extends IntegrationTest {
         mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth));
 
         // v2 is the default; v1 is still reachable and still says "v1".
-        String v2 = textOf(mvc.perform(get("/api/v1/quotations/" + qId + "/pdf")
-            .header("Authorization", auth)).andReturn().getResponse().getContentAsByteArray());
+        String v2 = textOf(mvc.perform(get("/api/v1/quotations/" + qId + "/pdf").header("Authorization", auth))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray());
         assertTrue(v2.contains("(v2)"), v2);
 
-        String v1 = textOf(mvc.perform(get("/api/v1/quotations/" + qId + "/pdf?version=1")
-                .header("Authorization", auth))
-            .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray());
+        String v1 = textOf(
+                mvc.perform(get("/api/v1/quotations/" + qId + "/pdf?version=1").header("Authorization", auth))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsByteArray());
         assertTrue(v1.contains("(v1)"), v1);
     }
 
@@ -142,6 +178,6 @@ class QuotationPdfEndpointTest extends IntegrationTest {
 
         String authB = "Bearer " + tokens.provisionOwner("29").token();
         mvc.perform(get("/api/v1/quotations/" + qId + "/pdf").header("Authorization", authB))
-            .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound());
     }
 }

@@ -3,11 +3,10 @@ package com.easycrm.demo;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
+import java.util.UUID;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
-
-import java.util.UUID;
 
 /** SYNTHETIC demo data only. GSTINs (if added later) are checksum-valid but fabricated. */
 @Component
@@ -23,7 +22,9 @@ public class DemoSeeder implements CommandLineRunner {
     }
 
     @Override
-    public void run(String... args) { seed(); }
+    public void run(String... args) {
+        seed();
+    }
 
     public void seed() {
         if (tenants.findBySlug("alpha-traders").isPresent()) return; // idempotent
@@ -36,10 +37,9 @@ public class DemoSeeder implements CommandLineRunner {
     private void seedRecordsFor(UUID tenantId, String prefix) {
         // Each save runs in its own transaction where TenantAwareTransactionManager sets
         // app.current_tenant from this context, so RLS WITH CHECK passes on insert.
-        TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"),
-            () -> {
-                records.save(new DemoRecord(prefix + " confidential record 1"));
-                records.save(new DemoRecord(prefix + " confidential record 2"));
-            });
+        TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, UUID.randomUUID(), "OWNER"), () -> {
+            records.save(new DemoRecord(prefix + " confidential record 1"));
+            records.save(new DemoRecord(prefix + " confidential record 2"));
+        });
     }
 }

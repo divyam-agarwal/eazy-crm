@@ -20,6 +20,11 @@ public class LoggingEmailSender implements EmailSender {
         log.info("[email:stub] to={} subject={}", to, subject);
     }
 
-    public String lastTo() { return lastTo; }
-    public String lastSubject() { return lastSubject; }
+    public String lastTo() {
+        return lastTo;
+    }
+
+    public String lastSubject() {
+        return lastSubject;
+    }
 }

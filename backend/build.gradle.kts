@@ -1,7 +1,8 @@
 plugins {
     java
-    id("org.springframework.boot") version "4.1.0"
-    id("io.spring.dependency-management") version "1.1.7"
+    id("easycrm.quality-conventions")
+    alias(libs.plugins.springBoot)
+    alias(libs.plugins.springDependencyManagement)
 }
 
 group = "com.easycrm"
@@ -34,15 +35,15 @@ dependencies {
     // Testcontainers need nothing extra installed.
     // As of 2026-07-28, 1.1.x was never cut upstream (latest on Maven Central: 1.0.10,
     // dev branch pom.xml reads 1.0.11-SNAPSHOT) -- 1.0.10 is the actual latest.
-    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
+    implementation(libs.openhtmltopdf.pdfbox)
 
-    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+    implementation(libs.jjwt.api)
+    runtimeOnly(libs.jjwt.impl)
+    runtimeOnly(libs.jjwt.jackson)
 
     // Token-bucket rate limiting. The artifact id is JDK-qualified as of 8.10:
     // com.bucket4j:bucket4j-core is a stale coordinate that resolves to 8.1.x.
-    implementation("com.bucket4j:bucket4j_jdk17-core:8.19.0")
+    implementation(libs.bucket4j.core)
     // Bounded bucket storage. The key is a client IP — attacker-controlled — so an
     // unbounded map would make the rate limiter its own memory-exhaustion vector.
     // Version comes from the Boot BOM; do not pin it here.
@@ -55,11 +56,11 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-webmvc-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     // Spring Boot 4.1 BOM does not manage Testcontainers module versions here — pin the BOM.
-    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
+    testImplementation(platform(libs.testcontainers.bom))
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     // 1.4.x supports parsing Java 25 bytecode; 1.3.0 silently skips it (imports 0 classes).
-    testImplementation("com.tngtech.archunit:archunit-junit5:1.4.1")
+    testImplementation(libs.archunit.junit5)
 }
 
 tasks.withType<Test> { useJUnitPlatform() }

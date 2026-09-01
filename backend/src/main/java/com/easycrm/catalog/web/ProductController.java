@@ -6,12 +6,11 @@ import com.easycrm.catalog.web.dto.ProductResponse;
 import com.easycrm.catalog.web.dto.ProductUpdateRequest;
 import com.easycrm.platform.web.PageResponse;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/products")
@@ -19,7 +18,9 @@ public class ProductController {
 
     private final ProductService service;
 
-    public ProductController(ProductService service) { this.service = service; }
+    public ProductController(ProductService service) {
+        this.service = service;
+    }
 
     @PostMapping
     public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductCreateRequest req) {
@@ -27,23 +28,27 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    public ProductResponse get(@PathVariable UUID id) { return service.get(id); }
+    public ProductResponse get(@PathVariable UUID id) {
+        return service.get(id);
+    }
 
     @GetMapping
-    public PageResponse<ProductResponse> list(@RequestParam(required = false) Boolean active,
-                                              Pageable pageable) {
+    public PageResponse<ProductResponse> list(@RequestParam(required = false) Boolean active, Pageable pageable) {
         return service.list(active, pageable);
     }
 
     @PutMapping("/{id}")
-    public ProductResponse update(@PathVariable UUID id,
-                                  @Valid @RequestBody ProductUpdateRequest req) {
+    public ProductResponse update(@PathVariable UUID id, @Valid @RequestBody ProductUpdateRequest req) {
         return service.update(id, req);
     }
 
     @PostMapping("/{id}/deactivate")
-    public ProductResponse deactivate(@PathVariable UUID id) { return service.deactivate(id); }
+    public ProductResponse deactivate(@PathVariable UUID id) {
+        return service.deactivate(id);
+    }
 
     @PostMapping("/{id}/activate")
-    public ProductResponse activate(@PathVariable UUID id) { return service.activate(id); }
+    public ProductResponse activate(@PathVariable UUID id) {
+        return service.activate(id);
+    }
 }

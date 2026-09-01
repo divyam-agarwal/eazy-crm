@@ -1,14 +1,14 @@
 package com.easycrm.platform;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
-
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * R2 — platform-primitives is the bottom of the DAG. A dependency edge out of it means something
@@ -24,8 +24,8 @@ class PrimitivesModuleArchTest {
 
     private static JavaClasses moduleClasses() {
         return new ClassFileImporter()
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages("com.easycrm");
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("com.easycrm");
     }
 
     @Test
@@ -65,19 +65,21 @@ class PrimitivesModuleArchTest {
         // exists to police dependencies leaving the module, not incidental gaps in its current
         // internal call graph.
         ArchRule rule = classes()
-            .should().onlyDependOnClassesThat().resideInAnyPackage(
-                "java..",
-                "tools.jackson..",
-                "com.fasterxml.jackson.annotation..",
-                "com.easycrm.platform.error..",
-                "com.easycrm.platform.money..",
-                "com.easycrm.platform.gst..",
-                "org.springframework..")
-            .because("platform-primitives is the bottom of the DAG. An edge out of the allowed "
-                   + "set is how P4's error happened — Gstin importing ValidationException out of "
-                   + "platform-web would have dragged the servlet stack into notification-svc — "
-                   + "and an enumeration of forbidden packages can't catch an edge nobody thought "
-                   + "to list, only a closure can");
+                .should()
+                .onlyDependOnClassesThat()
+                .resideInAnyPackage(
+                        "java..",
+                        "tools.jackson..",
+                        "com.fasterxml.jackson.annotation..",
+                        "com.easycrm.platform.error..",
+                        "com.easycrm.platform.money..",
+                        "com.easycrm.platform.gst..",
+                        "org.springframework..")
+                .because("platform-primitives is the bottom of the DAG. An edge out of the allowed "
+                        + "set is how P4's error happened — Gstin importing ValidationException out of "
+                        + "platform-web would have dragged the servlet stack into notification-svc — "
+                        + "and an enumeration of forbidden packages can't catch an edge nobody thought "
+                        + "to list, only a closure can");
 
         rule.check(moduleClasses());
     }
@@ -88,9 +90,12 @@ class PrimitivesModuleArchTest {
         // take this jar without inheriting a servlet stack. Only the auto-configuration may name
         // Spring at all, and it is inert when Spring is absent.
         ArchRule rule = noClasses()
-            .that().haveSimpleNameNotEndingWith("AutoConfiguration")
-            .should().dependOnClassesThat().resideInAnyPackage("org.springframework..")
-            .because("every type here must work with no Spring on the classpath");
+                .that()
+                .haveSimpleNameNotEndingWith("AutoConfiguration")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage("org.springframework..")
+                .because("every type here must work with no Spring on the classpath");
 
         rule.check(moduleClasses());
     }

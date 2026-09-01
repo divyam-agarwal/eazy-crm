@@ -24,9 +24,11 @@ public class QuotationExpiredActivityListener {
 
     @EventListener
     public void on(QuotationExpiredEvent e) {
-        activities.logSystem(SubjectType.QUOTATION, e.quotationId(), ActivityType.NOTE,
-            "Quotation " + e.quoteNo() + " expired — it was valid until "
-                + IndianFormats.date(e.validUntil()),
-            null);
+        activities.logSystem(
+                SubjectType.QUOTATION,
+                e.quotationId(),
+                ActivityType.NOTE,
+                "Quotation " + e.quoteNo() + " expired — it was valid until " + IndianFormats.date(e.validUntil()),
+                null);
     }
 }
