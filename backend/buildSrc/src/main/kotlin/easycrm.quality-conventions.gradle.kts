@@ -12,6 +12,39 @@
 
 plugins {
     java
+    id("com.diffplug.spotless")
 }
 
-// Spotless config arrives in Task 2, SpotBugs in Task 4, JaCoCo in Task 5.
+spotless {
+    java {
+        // Only this project's own sources. target must be explicit: the default sourceSet
+        // scan would also reach generated output under build/.
+        target("src/**/*.java")
+        // 4-space, 120-col -- the closest match to the style already in the tree, chosen
+        // to keep the one-time reformat diff as small as a whole-tree reformat can be.
+        //
+        // Pinned to the same value as libs.versions.palantirJavaFormat in the TOML
+        // (2.97.0). Type-safe `libs.` accessors don't work inside a precompiled script
+        // plugin (see the known-limitation comment at the top of this file), so this is a
+        // literal that must be kept in sync with the catalog by hand.
+        palantirJavaFormat("2.97.0")
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    kotlinGradle {
+        target("*.gradle.kts")
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    format("yaml") {
+        // NOTE the exclusions this does NOT need: only src/main/resources/*.yml is matched,
+        // so db/migration/*.sql and templates/quotation.xhtml are out of scope by construction
+        // rather than by an exclude rule someone could later delete. See plan Global Constraints.
+        target("src/**/*.yml")
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+// SpotBugs config arrives in Task 4, JaCoCo in Task 5.
