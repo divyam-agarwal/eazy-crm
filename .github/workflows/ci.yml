@@ -2,9 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, build-hygiene] # TEMP: build-hygiene added only to test this workflow pre-merge; remove before finishing Task 6
   pull_request:
-  workflow_dispatch: # TEMP: manual trigger for pre-merge verification on this branch; remove before finishing Task 6
 
 # A newer push to the same ref supersedes an in-flight run.
 concurrency:
