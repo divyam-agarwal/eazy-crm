@@ -917,6 +917,37 @@ because that is the dashboard's every-login query, and `activity` shipped
 `(tenant_id, subject_type, subject_id, occurred_at DESC)` to cover the timeline read. Adding the
 index when the table is created costs one line; retrofitting it costs a migration on a live table.
 
+### TODO — assert runtime behaviour, not just outcomes (raised 2026-09-01)
+
+Every test in this repo asserts what came *out* of a call. Nothing asserts **how** it got there — how
+many SQL statements a transaction issued, how the connection pool behaved, or how many outbound HTTP
+calls a method made. Three tools close that, and they belong with the Wave 2 observability slice
+rather than in build hygiene:
+
+- **`datasource-proxy` + `hypersistence-utils` — assert the SQL statement count per transaction or
+  method.** `SQLStatementCountValidator` (hypersistence-utils) wraps a call and asserts exactly how
+  many selects/inserts/updates/deletes it issued; `datasource-proxy` is the JDBC interception layer
+  underneath that makes the counting possible. **This is the highest-value item of the three here,
+  because this codebase already has a known N+1 and no way to detect the next one.** The
+  quotation-expiry sweep does one `findById` per candidate version (deferred-minor #47–49's area),
+  the visibility predicate `assigned_to = :me OR assigned_to IS NULL` runs unindexed, and
+  `VisibleFinder` puts a correlated subquery behind four aggregates — all places where an innocuous
+  refactor turns one query into N with no failing test. A statement-count assertion is the only
+  cheap, structural guard against that, and it fails loudly rather than getting slower quietly.
+- **`flexy-pool` — size and monitor the connection pool.** It adds adaptive sizing plus metrics
+  (acquisition time, timeouts, overflow) on top of HikariCP, which is what turns pool tuning into a
+  measurement rather than a guess. Note the interaction with what already exists: `open-in-view` is
+  **false** and load-bearing (challenge #29), and `TenantJobRunner` opens a `REQUIRES_NEW`
+  transaction *per tenant* in a loop, so the nightly sweep's pool demand scales with tenant count in
+  a way nothing currently observes.
+- **Count client-side REST calls by asserting on `RestTemplate`.** Worth recording, but be honest
+  about the trigger: **there are zero outbound HTTP calls in `src/` today** — no `RestTemplate`,
+  `WebClient`, `RestClient` or `HttpClient` anywhere, which is also why Pact and Spring Cloud
+  Contract are deferred. This becomes real the moment the first one lands: a real `EmailSender`
+  (today's is a logging stub), a payment or GST-validation integration, or the AWS service split.
+  `MockRestServiceServer` covers the assertion side; a counting `ClientHttpRequestInterceptor`
+  covers it in integration tests.
+
 ### Smaller deferred-Minor backlog
 
 Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
