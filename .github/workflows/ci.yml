@@ -5,10 +5,17 @@ on:
     branches: [main]
   pull_request:
 
-# A newer push to the same ref supersedes an in-flight run.
+# GITHUB_TOKEN only needs to read the repo checkout and let actions/upload-artifact write
+# the failure-report artifact -- both covered by the default `contents: read` scope.
+permissions:
+  contents: read
+
+# A newer push to the same ref supersedes an in-flight run -- but only for pull requests:
+# on push to main this would cancel a run for a merge that has already landed, which is
+# the one run you most want to finish.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
