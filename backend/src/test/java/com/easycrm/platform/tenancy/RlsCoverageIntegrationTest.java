@@ -48,7 +48,8 @@ class RlsCoverageIntegrationTest extends IntegrationTest {
      */
     private static final Set<String> GLOBAL_TABLES = Set.of(
         "refresh_token",   // pre-auth session table, looked up by hash
-        "share_link"       // pre-auth share table: resolves the tenant itself
+        "share_link",      // pre-auth share table: resolves the tenant itself
+        "invitation"       // pre-auth invite table: resolves the tenant itself
     );
 
     /**
