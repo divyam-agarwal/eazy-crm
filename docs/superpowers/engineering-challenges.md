@@ -3235,3 +3235,312 @@ day-boundary bug is timezone-dependent, write (or at least reason through) the t
 at the actual rollover instant, not merely at a convenient time during your own working
 day — a test that only runs correctly during a specific window of the clock is not
 exercising the property it claims to.
+
+---
+
+## Challenge 54 — Revoking an invitation needs the one hand-written tenant filter in the codebase
+
+**Phase:** Implementation (user-invitations slice, pending list and revoke)
+
+### The problem
+
+`CLAUDE.md` states a hard rule: never hand-write `WHERE tenant_id = ?`; tenant isolation
+is structural, via Hibernate `@TenantId` plus Postgres RLS. `InvitationService.revoke(UUID
+id)` does exactly the thing the rule forbids:
+
+```java
+Invitation inv = invitations.findById(id)
+    .filter(i -> i.getTenantId().equals(TenantContext.tenantId()))
+    .orElseThrow(() -> new NotFoundException("invitation not found"));
+```
+
+`invitation` is a deliberately GLOBAL table (like `refresh_token` and `share_link`):
+accepting an invite is pre-auth and has to resolve *which* tenant the opaque token
+belongs to before any tenant context exists, so neither `@TenantId` nor an RLS policy can
+apply to it — there is no tenant to filter by until the row has already been read. That
+means the structural mechanism the rest of the codebase relies on is simply absent here,
+and the tenant check has to be written by hand or not exist at all. Without it, any
+authenticated owner could revoke any tenant's invitation just by guessing or enumerating
+UUIDs, since `findById` alone has no tenant awareness whatsoever.
+
+### The solution
+
+Treat the global table as the deliberate, narrow exception the structural rule already
+anticipates, and defend it in the two ways a `@TenantId` column would otherwise give for
+free:
+
+1. Filter in code, immediately after `findById`, before the id is trusted for anything —
+   `.filter(i -> i.getTenantId().equals(TenantContext.tenantId()))`. This is the only
+   hand-written tenant comparison in the codebase, and it is load-bearing precisely
+   because it is the *only* mechanism, not a redundant belt-and-braces check.
+2. Collapse "wrong tenant" and "does not exist" into the same response: both fall through
+   to `NotFoundException` (404), never `ForbiddenException` (403). A 403 would leak that
+   the id is valid *somewhere*, just not in the caller's tenant — turning `DELETE
+   /invitations/{id}` into an oracle for enumerating other tenants' invitation ids.
+
+### Lesson
+
+A blanket rule like "never hand-write a tenant filter" is shorthand for "tenant isolation
+should be structural wherever a structural mechanism can apply" — it is not a claim that
+every table has such a mechanism available. A table that must be readable before a tenant
+is known (pre-auth acceptance, password reset, anything resolved from an opaque token)
+sits outside `@TenantId`/RLS by construction, and the right response is to name the
+exception explicitly and give it the same rigor a missed structural check would have had,
+not to bend the table into looking tenant-scoped or to skip the check because "the rule
+says not to." And once a check exists only to keep one tenant's data invisible to
+another, its failure mode must not distinguish "belongs to someone else" from "does not
+exist" — any status code that does is itself a small cross-tenant information leak.
+
+## Challenge 55 — A defensive entity invariant became the enumeration oracle it was meant to prevent
+
+**Phase:** Implementation (user-invitations slice, pre-auth accept)
+
+### The problem
+
+`Invitation.accept(userId, when)` carries its own precondition — it re-asserts `PENDING`
+and throws `ConflictException` otherwise — for the same reason `Quotation.expire()`
+re-asserts `SENT`: an entity should not trust the caller to have checked. That is good
+design in isolation, and it is exactly what makes the naive `accept` wrong.
+
+The naive service method reads the invitation by token hash, builds the user, and calls
+`inv.accept(...)`, leaving the entity's guard as the only state check. The four ways an
+accept can be rejected then split by construction:
+
+- unknown token → `NotFoundException` → **404**
+- revoked or already accepted → the entity's `ConflictException` → **409**
+- expired → whatever an explicit expiry check throws, typically its own status
+
+Those distinct responses are a token-enumeration oracle for an unauthenticated caller.
+A 409 says "this token is real, you are just late"; a 404 says "this token never
+existed." Since the accept endpoint is `permitAll` and the token is the entire credential,
+that difference tells a prober which of their guesses are worth attacking further — and it
+confirms that a particular workspace has been issuing invitations at all. The leak arrives
+precisely *because* the invariant is well-placed: the entity is right to refuse, and its
+refusal is a different refusal from "no such row."
+
+### The solution
+
+Give the service one rejection point that all four states funnel into, and demote the
+entity's guard to what it should be — a concurrency backstop, not the primary check:
+
+```java
+Invitation inv = invitations.findByTokenHash(hasher.sha256Hex(rawToken))
+    .filter(i -> i.getStatus() == InvitationStatus.PENDING)
+    .filter(i -> !i.isExpired(Instant.now()))
+    .orElseThrow(() -> new NotFoundException("invitation not found"));
+```
+
+Because `filter` on an `Optional` collapses "absent" and "present but wrong state" into
+the same empty `Optional`, unknown / revoked / accepted / expired all reach the *same*
+`orElseThrow`, and therefore the same status code and the same body bytes. No per-state
+message, no per-state status — a helpful "this invitation has expired" would undo the
+whole thing.
+
+**Two things the branch review corrected here, both worth carrying.** First, that chain
+existed *twice* — once in `accept`, once in `preview` — which made the codebase's most
+leak-sensitive property a remember-to-update-both convention. It is now a single
+`requireLive(rawToken)` both public methods call. Second, a **fifth** state joined the four:
+a valid invitation whose *tenant* is `SUSPENDED`. `AuthService.login` refuses a suspended
+tenant explicitly, and `accept` is the only other entry point that resolves a tenant from
+something other than an existing JWT, so it has to refuse one too — but through the same
+`throw`, because a distinct status there would reopen the oracle from a new direction.
+`preview` refuses it as well: a preview that succeeded where the accept fails would name
+the workspace and confirm the token, which is exactly the asymmetry the shared endpoint
+contract exists to prevent.
+
+`Invitation.accept()`'s `ConflictException` still exists, but be precise about what it is
+now for: it is a defensive entity precondition, **not** the mechanism that stops a double
+accept. Under Postgres READ COMMITTED the loser of a race on one live token normally
+re-reads a snapshot in which the row is still `PENDING` — the winner has not committed yet
+— so the entity's guard does not fire at all. What actually stops the second accept is
+**`@Version` optimistic locking at commit**, inherited from `BaseEntity` on the claim the
+transaction writes back: the loser's update matches no row at its expected version, and
+the resulting `OptimisticLockingFailureException` becomes a 409 through the global handler.
+Behind that sits the **uniqueness of `(tenant_id, email)` on `app_user`**, which is the
+layer that catches the case optimistic locking cannot see — two *different* invitations to
+one address racing to accept, where each transaction claims its own row and neither
+conflicts with the other. Two indexes now enforce it: `uq_user_tenant_email` on the raw
+column (V6) and `uq_user_tenant_email_lower` on `(tenant_id, lower(email))` (V32). The
+second is not redundant — the raw constraint reads `ravi@shop.in` and `Ravi@shop.in` as
+different strings, so without it the same race spelled two ways produced two `ACTIVE` users
+for one human, possibly with different roles. `InvitationService.accept`'s inline comment states this
+correctly; the entity guard's job is to stop a future caller that bypasses the service from
+writing a nonsense state, not to win the race. Either way the loser is someone who already
+holds a valid token, so a distinguishable 409 on that path leaks nothing.
+
+The property is asserted rather than described: each rejection state gets a test that
+compares its response body byte-for-byte against the response for a token that never
+existed, on **both** public endpoints. A future "helpful" message fails that test rather
+than shipping quietly.
+
+That last sentence is also where this entry originally over-claimed. Only the *consumed*
+state was compared as bytes; revoked and expired asserted `isNotFound()` and stopped there,
+which is precisely the assertion a per-state message survives. Writing "assert it as bytes"
+in a lesson does not assert it — the branch review is what caught the gap. If a property is
+worth a challenge entry, check that the tests pin every case the entry claims, not the one
+that was convenient to write first.
+
+### Lesson
+
+Two individually correct decisions — an entity that defends its own invariants, and a
+handler that maps each exception type to its most accurate status — compose into an
+information leak on any endpoint where the request itself is the credential. On a pre-auth
+route, "the most accurate error" and "the safe error" are different goals, and accuracy
+is the one that has to give: the caller who legitimately holds a good token never sees any
+of these responses, so precision buys nothing and costs enumeration. Prefer collapsing at
+the point of *lookup* (`Optional.filter` before a single `orElseThrow`) over catching and
+rewriting several exceptions downstream — the first shape makes indistinguishability
+structural and leaves the entity's invariant intact as a backstop; the second is
+a list someone must remember to extend. And assert it as bytes, not as intent: response
+bodies are exactly the thing a prober diffs.
+
+## Challenge 56 — Two pre-auth tokens in one codebase, with opposite storage rules
+
+**Phase:** Design (user-invitations slice)
+
+### The problem
+
+By the time invitations were designed, this codebase already minted two kinds of opaque
+pre-auth token, and they are stored in **opposite** ways:
+
+- `refresh_token.token_hash` — SHA-256 at rest, single-use, rotated on every refresh.
+- `share_link.token` — **plaintext**, permanent, deliberately so. Its javadoc defends the
+  choice, and the defence is correct: the token only renders a frozen quotation from rows
+  in this same database, and storing it plaintext is exactly what makes
+  `ShareLinkService.share()` idempotent — resharing a version hands back the *same* link,
+  so a URL already sitting in a customer's WhatsApp thread keeps working.
+
+The invitation token needed a rule, and both precedents were sitting right there. Reaching
+for the nearer one is the natural move: `share_link` is the most recent token this codebase
+added, it is also a global pre-auth table resolved from an opaque string, and its plaintext
+storage comes with a written justification rather than looking like an oversight. Copying it
+would have been a real vulnerability — a database read, a leaked backup, or a log line
+containing a `SELECT *` would hand the reader a working credential that **creates an
+authenticated principal with a role inside a tenant**.
+
+### Why it's hard
+
+The hazard is that the wrong precedent is the *better-documented* one. A reasoned
+justification attached to an existing decision reads as a house rule, and house rules are
+what a new slice is supposed to follow. Nothing structural distinguishes the two cases:
+both tables are global, both are `permitAll`, both hold a random opaque string, both are
+pasted into WhatsApp by a human. Neither an ArchUnit rule nor a schema constraint can tell
+them apart, because the difference is not in the shape of the data at all.
+
+Worse, the second half of `share_link`'s argument actively points the wrong way. Plaintext
+buys idempotency, and idempotency sounds like an unambiguous good — until you notice that
+for an invitation, "the same link keeps working" is precisely the failure mode. A resend
+must invalidate the old link, not reissue it.
+
+### The solution
+
+Derive the storage rule from what the token **grants**, not from what the codebase already
+does with a superficially similar token:
+
+| Token | Grants | Stored | Consumable |
+|---|---|---|---|
+| `share_link` | a read of one frozen document | plaintext | repeatedly, forever |
+| `refresh_token` | an authenticated principal | SHA-256 | once, rotated |
+| `invitation` | an authenticated principal **with a role in a tenant** | SHA-256 | once |
+
+So `invitation` follows `refresh_token`: 256 bits from `SecureRandom`, base64url-encoded,
+stored as `TokenHasher.sha256Hex`, returned exactly once in the 201 body and never
+retrievable again. "Resend" is therefore not an endpoint — it is revoke + re-invite, which
+mints a new token and kills the old one, which is the semantic that was wanted anyway. The
+plaintext value is treated as the bearer credential it is: never logged, and the entity gets
+no `toString()`, matching `ShareLink`.
+
+### Lesson
+
+When a codebase already contains two contradictory precedents, the question to ask is not
+"which one is nearer to what I am building" but "which invariant made each one correct".
+`share_link`'s plaintext storage is not a house style; it is a conclusion that depends
+entirely on the token granting a **read** of already-persisted data, and it stops being
+correct the moment a token grants **capability**. A well-argued precedent is the most
+dangerous kind to copy, because its reasoning travels with it and gives borrowed authority
+to a case it was never about. Write the *criterion* down next to the decision, not just the
+decision — the next token-shaped feature (password reset is the obvious one, and is named
+out of scope in this slice's spec §10) will face this exact fork, and the criterion is the
+only part that transfers.
+
+## Challenge 57 — Two tables disagreed about what an email address *is*
+
+**Phase:** Implementation (user-invitations slice, whole-branch review fix wave)
+
+### The problem
+
+Two uniqueness rules, written a year apart, quietly disagreed about identity.
+
+`app_user` has carried `uq_user_tenant_email UNIQUE (tenant_id, email)` since V6 — a
+constraint on the **raw** column, so `ravi@shop.in` and `Ravi@shop.in` are two different
+users. `invitation` (V31) folds case: its partial unique index is on
+`(tenant_id, lower(email))`, and the service's duplicate pre-check folded too, because an
+invitation to a case variant of a live invitation is obviously the same invitation.
+
+Both decisions are defensible in isolation. Together they open a hole that neither table
+can see, because it only exists on the path *between* them:
+
+1. `ravi@shop.in` is already an `ACTIVE` member.
+2. The owner invites `Ravi@shop.in`. The membership check was `findByEmail` — exact —
+   so it misses. The pending pre-check folds case but finds no pending row. The partial
+   index sees no clash. **201.**
+3. The invitee accepts. `accept` inserts `User("Ravi@shop.in", ...)`, and
+   `uq_user_tenant_email` compares raw strings, sees something new, and allows it.
+
+The tenant now has two `ACTIVE` users for one human — plausibly with *different roles*,
+since the invitation names the role — and `AuthService.login`'s exact-match lookup returns
+whichever spelling you happen to type. Nothing throws. Nothing is logged. The only symptom
+is a permissions bug that appears to depend on how someone capitalised their own email.
+
+What makes this hard to catch is that no single component is wrong. Each table's rule is
+internally consistent; the bug lives in the *seam*, and a test of either table alone
+passes.
+
+### The solution
+
+Fix both layers, because they fail differently.
+
+**The service check** becomes `users.findByEmailIgnoreCase(...)`. That is what produces the
+readable 409 for the ordinary case, and it is also a check-then-act window — it cannot
+help the case where two *different* invitations, spelled differently, are accepted
+concurrently. Neither accept is an invite, so no pre-check runs at all.
+
+**The database** closes that window: `V32` adds
+`CREATE UNIQUE INDEX uq_user_tenant_email_lower ON app_user (tenant_id, lower(email))`,
+deliberately **in addition to** `uq_user_tenant_email` rather than replacing it. A
+functional unique index is the only artifact that can enforce "one address, one member"
+against writers that never see each other.
+
+One implementation trap surfaced while fixing the sibling finding in the same block, and it
+is worth its own paragraph because the symptom impersonates the bug. Expiry is lazy by
+design, so an expired invitation stays `PENDING` forever and blocks its own address from
+being re-invited; the fix is for `invite` to revoke the dead row and carry on, freeing the
+partial index inside the same transaction. Written the obvious way — `existing.revoke()`,
+`save`, then `save` the new invitation — it fails with a unique-violation on the index it
+was supposed to have freed. **Hibernate's `ActionQueue` executes every `EntityInsertAction`
+before any `EntityUpdateAction`**, regardless of the order the code called `save` in, so
+the new `PENDING` row reaches the database while the old one is still `PENDING` on disk.
+The index is a plain `CREATE UNIQUE INDEX`, not a constraint, so it is not deferrable and
+there is nothing to postpone the check to commit. `saveAndFlush` on the revoke forces the
+`UPDATE` out first. The failing form was confirmed by reverting the flush and watching the
+test go red, not by reasoning alone.
+
+### Lesson
+
+Uniqueness is a statement about **identity**, and identity has to be defined once for the
+whole system, not per table. When two tables key on the same real-world thing — an email
+address, a phone number, a GSTIN — and normalise it differently, the gap between them is
+reachable by any flow that reads one and writes the other, and it is invisible to tests
+that exercise either table alone. The tell is a `lower()`, `trim()` or `ignoreCase` that
+appears on one side of a boundary and not the other.
+
+And when the fix is "compare it case-insensitively", a service-level check is only the
+error-message half. Anything that must hold across concurrent writers belongs in a
+constraint or index; Postgres will index an expression, so a functional unique index costs
+one line and turns a convention into a fact. Keep the older raw constraint alongside it —
+it is subsumed, not contradicted, and dropping it widens what a future migration may
+silently do to the column.
+
+Finally: Hibernate's flush order is not your call order. Any transaction that frees a
+unique index by an `UPDATE` and then re-fills it with an `INSERT` needs an explicit flush
+between the two, or it will fail with the exact error the change was meant to prevent.

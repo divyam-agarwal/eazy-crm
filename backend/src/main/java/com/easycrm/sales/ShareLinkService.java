@@ -49,7 +49,10 @@ public class ShareLinkService {
         this.publicBaseUrl = publicBaseUrl;
     }
 
-    /** Token -> the tenant and version it points at. The only pre-auth read in the app. */
+    /**
+     * Token -> the tenant and version it points at. One of the app's pre-auth reads —
+     * InvitationService.preview is the other, and resolves its tenant the same way.
+     */
     public record Resolved(UUID tenantId, UUID quotationVersionId) {}
 
     @Transactional

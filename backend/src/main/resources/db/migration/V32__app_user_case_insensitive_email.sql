@@ -1,0 +1,14 @@
+-- One human, one login. uq_user_tenant_email (V6) compares the RAW column, so
+-- "ravi@shop.in" and "Ravi@shop.in" are two different strings to it and a tenant could end
+-- up with two ACTIVE users — possibly with different roles — for one address. The
+-- invitation table already folds case (V31's partial index is on lower(email)), so the
+-- membership rule has to fold too or the two layers disagree about what "already a member"
+-- means and the invite flow leaks a duplicate through the gap.
+--
+-- This is the STRUCTURAL half of that fix: InvitationService's findByEmailIgnoreCase
+-- pre-check is a check-then-act window, and only the database can close it.
+--
+-- Deliberately IN ADDITION TO uq_user_tenant_email, not instead of it: dropping the raw
+-- constraint would buy nothing (this index subsumes it) and would silently widen what a
+-- future migration is allowed to do to the email column.
+CREATE UNIQUE INDEX uq_user_tenant_email_lower ON app_user (tenant_id, lower(email));
