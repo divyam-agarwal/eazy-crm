@@ -55,10 +55,10 @@ entities in `revoke` and `accept` (identical in both, so remove both or neither)
 has the same suspended-tenant hole; it predates this branch and was left alone on purpose.
 
 The suite is **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
-464-test `main` baseline (+55). **It has not been merged to `main`** — run
-`finishing-a-development-branch` on it before starting anything new, unless you are picking this
-session up specifically to review or merge it. See §3 for what it delivered and §8 for what that
-closes.
+464-test `main` baseline (+55). **It is merged.** The branch went into `main` `--no-ff` as
+**`f265cfe`** on 2026-09-01 and was deleted; the merged result was verified green (519 tests, 0
+failures, 0 errors) before the branch went away. Nothing is in flight — `main` is the baseline for
+new work. See §3 for what it delivered and §8 for what that closes.
 
 Before it, `quotation-auto-expiry` ran to completion and was merged `--no-ff` as **`2fb2b85`** on
 2026-09-01, then deleted; the merged result was verified green (464 tests) before the branch went
