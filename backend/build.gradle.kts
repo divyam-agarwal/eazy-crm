@@ -12,6 +12,13 @@ java {
     toolchain { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+// Generates META-INF/build-info.properties from the Gradle project version, exposed at
+// runtime as the actuator's BuildProperties bean. OpenApiConfig reads the API document's
+// info.version from it, so the Gradle version is the single source of truth -- a literal in
+// application.yml would be a second copy to keep in sync by hand, which is exactly what the
+// version catalog's comments exist to prevent.
+springBoot { buildInfo() }
+
 repositories { mavenCentral() }
 
 dependencies {
@@ -48,6 +55,15 @@ dependencies {
     // unbounded map would make the rate limiter its own memory-exhaustion vector.
     // Version comes from the Boot BOM; do not pin it here.
     implementation("com.github.ben-manes.caffeine:caffeine")
+
+    // OpenAPI generation. The generator ships; the browsable UI does not.
+    // springdoc 3.x is the Spring Boot 4 line -- see the catalog comment. 2.x is Boot 3.
+    implementation(libs.springdoc.webmvc.api)
+    // developmentOnly is Spring Boot's own configuration: on the bootRun classpath,
+    // excluded from bootJar. The swagger-ui webjar therefore never reaches a production
+    // artefact even if someone later flips springdoc.swagger-ui.enabled by mistake --
+    // structural absence rather than a configured one.
+    developmentOnly(libs.springdoc.webmvc.ui)
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
