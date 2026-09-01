@@ -4,17 +4,17 @@
 `worktree-members-management`, off `main` at `e9d694e`, not yet merged.** Eight task commits
 (`0d80e9b`..`f0ce72c`, one per task) plus two intermediate fix-ups folded in along the way
 (`2a11fa7` a Spotless reformat, `1577d50` a defensive copy for a new SpotBugs finding —
-challenge #64 is about how those two came to be needed), every task reviewed clean. A tenant's
+challenge #67 is about how those two came to be needed), every task reviewed clean. A tenant's
 owner can now do the four things invitations deliberately stopped short of: **list** every
 member, **change** a role, **disable** a member without deleting their history, and **enable**
 one again. Two decisions carry the slice. The reassign-first gate on disable needs an
 unfiltered, tenant-wide count of open work from `crm`/`sales` repositories that `iam` must not
 depend on, so `iam` declares an `AssignedWorkload` port and `crm`/`sales` implement it —
 reusing the dependency edge those packages already have on `iam`, so the graph stays acyclic
-(challenge #63). And two owners demoting each other at once is **write skew**, not a lost
+(challenge #66). And two owners demoting each other at once is **write skew**, not a lost
 update — nothing already in the codebase (`@Version`, a unique index, `REPEATABLE READ`) catches
 it, so every member-admin write now takes a `PESSIMISTIC_WRITE` lock on the tenant row first
-(challenge #62). See §3 for the full inventory: the four routes, the port, the lock, the
+(challenge #65). See §3 for the full inventory: the four routes, the port, the lock, the
 `AuthService.refresh` fix that makes `disable` actually revoke access rather than just look like
 it, the `ConflictException` structured-fields addition, and migration `V33`. **561 tests, 0
 failures, 0 errors**, up from the 519-test baseline, via `./gradlew clean check` from a clean
@@ -24,12 +24,14 @@ state.
 version of this line claimed.** It read "Nothing is in flight; `main` is the baseline for new
 work" — false already on the day this slice started, because an `openapi-contract` slice
 (springdoc 3.1.0, a typed error envelope, controller annotations) was mid-execution on its own
-branch at that time, roughly 2 of its planned 7 tasks committed. That slice is not this one's to
-finish or narrate further — its own SDD ledger has the detail — but a handoff that asserts
-nothing is in flight when something plainly is stops being useful the moment it's read
-literally, so this stands as the correction rather than a repeat of the error. Two branches are
-live off `main` at once as of this writing: `worktree-members-management` (this slice) and
-`openapi-contract`.
+branch at that time. As of this writing that slice appears **complete and unmerged** — all seven
+planned tasks committed plus its own whole-branch-review fix wave and docs wrap-up
+(`b14c92a`..`36abac3`) — but it is still not this one's to finish or narrate further: its own SDD
+ledger has the detail, and this file does not track its status going forward. A handoff that
+asserts nothing is in flight when something plainly is stops being useful the moment it's read
+literally, so this stands as the correction rather than a repeat of the error. Two branches sit
+off `main` at once as of this writing: `worktree-members-management` (this slice, not yet merged)
+and `openapi-contract` (complete, also not yet merged).
 
 **Before it, build hygiene was built and merged to `main` as `83e6880`.** This repo now has
 automated quality gates for the first time: one `./gradlew clean check` runs the tests **plus**
@@ -76,15 +78,20 @@ the first thing to do when the frontend lands.
 **Two branches sit ahead of `main`, and neither has landed.** This handoff's own slice — members
 management, on `worktree-members-management`, off `main` at `e9d694e` — is code-complete and
 reviewed clean (eight task commits, `0d80e9b`..`f0ce72c`) but not yet merged; this file, the
-design spec, and challenges #62–#64 are the record of it until it does. Separately, an
-`openapi-contract` slice (springdoc 3.1.0, a typed error envelope, controller annotations) has
-been mid-execution on its own branch since before this slice started — roughly 2 of its 7 planned
-tasks committed as of this writing. **The previous version of this section claimed "Nothing is in
-flight; `main` is the baseline for new work," which was already false the day it was written** —
-this replaces that claim rather than repeating it. Whoever picks up next should check with the
-user which of the two branches lands first and in what order: the design spec's §4.4 already
-flags that both slices touch `ApiExceptionHandler.conflict(...)`, so merging one after the other
-is expected to produce one mechanical conflict there, not a surprise.
+design spec, and challenges #65–#67 are the record of it until it does. Separately, an
+`openapi-contract` slice (springdoc 3.1.0, a typed error envelope, controller annotations) began
+mid-execution on its own branch before this slice started and, as of this writing, **appears
+complete and unmerged** — all seven of its planned tasks committed, plus its own
+whole-branch-review fix wave and docs wrap-up. Verify its current state directly
+(`git log --all --oneline`, and `docs/superpowers/plans/2026-09-01-openapi-contract.md` on that
+branch) rather than trusting this line the way an earlier draft of this file trusted a stale
+report of "roughly 2 of 7 tasks" — that stale claim is exactly the mistake this paragraph exists
+to not repeat. **The previous version of this section claimed "Nothing is in flight; `main` is
+the baseline for new work," which was already false the day it was written** — this replaces
+that claim rather than repeating it. Whoever picks up next should check with the user which of
+the two branches lands first and in what order: the design spec's §4.4 already flags that both
+slices touch `ApiExceptionHandler.conflict(...)`, so merging one after the other is expected to
+produce one mechanical conflict there, not a surprise.
 
 **`main` itself is still clean at the last thing that actually landed on it — `build-hygiene`.**
 That slice — seven tasks plus a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba`
@@ -386,7 +393,7 @@ All under `docs/superpowers/`:
 - **Latest code work: members management** — built on branch `worktree-members-management`, off
   `main` at `e9d694e`, **not yet merged** (see §0). Eight task commits (`0d80e9b`..`f0ce72c`) plus
   two intermediate fix-up commits folded in along the way (`2a11fa7` a Spotless reformat,
-  `1577d50` a defensive copy for a new SpotBugs finding — challenge #64), every task reviewed
+  `1577d50` a defensive copy for a new SpotBugs finding — challenge #67), every task reviewed
   clean. Closes the gap `user-invitations` deliberately left open (below): a workspace with more
   than one user is now *administrable*, not just creatable.
 
@@ -420,7 +427,7 @@ All under `docs/superpowers/`:
   (`crm`/`sales` → `iam`) already existed, so `iam` gains zero new imports and the package graph
   stays acyclic. Three new entries on `VisibilityScopingArchTest.ALLOWED_METHODS` are the accepted
   cost — the same allowlist that already carries `findByGstin`/`findByNormalizedPhone` for the
-  identical reason: *must see the whole tenant or the invariant breaks*. Challenge #63 is the
+  identical reason: *must see the whole tenant or the invariant breaks*. Challenge #66 is the
   write-up; `V33__assigned_to_indexes.sql` adds the two `(tenant_id, assigned_to)` indexes this
   slice's three new count queries actually run against, on `customer` and `enquiry` (`follow_up`
   already had its equivalent).
@@ -439,7 +446,7 @@ All under `docs/superpowers/`:
   (`TenantRepository.findForUpdate`), serialising the second writer behind the first so its
   re-count under the lock sees the truth. `MemberOwnerRaceTest` proves the anomaly is real by
   failing when the lock is removed (`expected: <1> but was: <2>`) before proving the fix closes
-  it. Challenge #62 is the write-up, including why this is a different use of the
+  it. Challenge #65 is the write-up, including why this is a different use of the
   `@Lock(PESSIMISTIC_WRITE)` idiom than challenge #16's gapless-numbering precedent: #16 locks the
   row it is about to write; this locks a row **neither** transaction would otherwise touch, purely
   to manufacture the contention point the invariant needs.
@@ -475,9 +482,9 @@ All under `docs/superpowers/`:
     modified the very same method for a different reason, and the fix is one condition away.
 
   **561 tests, 0 failures, 0 errors**, up from the 519-test baseline — `./gradlew clean check`
-  green from a clean state, Spotless clean, SpotBugs 0 findings. New challenges **#62–#64** (#62
-  the last-owner write-skew and the tenant-row lock, #63 the invariant-check-must-not-filter
-  tension that produced `AssignedWorkload`, #64 the build-process lesson about running the full
+  green from a clean state, Spotless clean, SpotBugs 0 findings. New challenges **#65–#67** (#65
+  the last-owner write-skew and the tenant-row lock, #66 the invariant-check-must-not-filter
+  tension that produced `AssignedWorkload`, #67 the build-process lesson about running the full
   gate only at milestones instead of every task); the annotations reference needed one addition —
   a second use site on the existing `@Lock`/`LockModeType` row for
   `TenantRepository.findForUpdate`.

@@ -3788,7 +3788,7 @@ concluding a catalog is unreachable from a given file.
 
 ---
 
-## Challenge 62 — The last-owner invariant is write skew, not a lost update
+## Challenge 65 — The last-owner invariant is write skew, not a lost update
 
 **Phase:** Implementation (members-management slice, Task 6/8)
 
@@ -3854,7 +3854,7 @@ contending transaction must touch," even one that itself is written to by neithe
 
 ---
 
-## Challenge 63 — An invariant check and a user-facing read want opposite things from visibility filtering
+## Challenge 66 — An invariant check and a user-facing read want opposite things from visibility filtering
 
 **Phase:** Implementation (members-management slice, Task 3)
 
@@ -3909,7 +3909,7 @@ masters.
 
 ---
 
-## Challenge 64 — A slice that runs targeted tests between full-gate runs accumulates invisible violations
+## Challenge 67 — A slice that runs targeted tests between full-gate runs accumulates invisible violations
 
 **Phase:** Implementation (members-management slice)
 
