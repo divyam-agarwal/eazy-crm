@@ -53,8 +53,8 @@ plaintext. The reasoning that justified plaintext there does not survive here �
   owner can paste it into WhatsApp exactly as `ShareLinkService` intends its share URL to be
   pasted, so the feature works on day one against the `LoggingEmailSender` stub; a real
   sender later needs no API change.
-- **D5 — `requireOwner` is extracted to a shared `RoleGuard`** and `TenantService` switches to
-  it in the same change.
+- **D5 — `requireOwner` is extracted to a shared `RoleGuard`** in `platform/security`, and
+  `TenantService` switches to it in the same change. §5.1 says why not `iam`.
 - **D6 — expiry is evaluated lazily on read, with no scheduled job.** §7.
 - **D7 — accept returns a full `AuthResponse`** (access + refresh + ids). Not a convenience:
   `LoginRequest` requires the tenant **slug**, which an invitee has never seen, so without
@@ -104,13 +104,18 @@ The plaintext token is a bearer credential: it must never be logged, and the ent
 | `tenant_id` | `uuid not null` | **plain column** — no `@TenantId`, no RLS |
 | `email` | `text not null` | the invited address |
 | `role` | `varchar(16) not null` | `Role` enum, `@Enumerated(STRING)` |
-| `token_hash` | `char(64) not null` | SHA-256 hex, unique |
+| `token_hash` | `varchar(64) not null` | SHA-256 hex, unique |
 | `status` | `varchar(16) not null` | `PENDING` / `ACCEPTED` / `REVOKED` |
 | `expires_at` | `timestamptz not null` | issue + 7 days (D9) |
 | `invited_by` | `uuid not null` | the owner's `app_user` id |
 | `accepted_at` | `timestamptz` | null until accepted |
 | `accepted_user_id` | `uuid` | the `app_user` created on accept |
-| `created_at`, `updated_at`, `created_by`, `version` | | from `BaseEntity` |
+| `created_at`, `updated_at`, `version` | | from `BaseEntity` |
+
+`token_hash` is `varchar`, not `char`: Hibernate maps `String` to `varchar` and
+`ddl-auto: validate` would reject a `bpchar` column. `refresh_token.token_hash` is
+`VARCHAR(64)` for the same reason. `BaseEntity` carries no `created_by` — `invited_by` is
+this table's actor column.
 
 Three indexes, all in the creating migration — the standing agreement from §8 of the handoff
 (adding an index at creation costs one line; retrofitting it costs a migration on a live
@@ -150,7 +155,7 @@ the whole reason D3 chose create-on-accept over a `PENDING` user row.
 
 ## 5. Components
 
-### 5.1 `iam/RoleGuard` (new)
+### 5.1 `platform/security/RoleGuard` (new)
 
 ```java
 @Component
@@ -166,6 +171,16 @@ unchanged. `InvitationService` is the second caller.
 
 The `message` parameter is deliberate: a caller-supplied reason keeps the 403 bodies as
 specific as the hand-rolled ones were, so extraction costs no message quality.
+
+**It lives in `platform/security`, not `iam`, to avoid a package cycle.** `iam` already
+depends on `tenant` (`AuthService` imports `Tenant` and `TenantRepository`), so putting the
+guard in `iam` and calling it from `TenantService` would make the two packages mutually
+dependent. `RoleGuard` needs neither: it reads `TenantContext` and throws
+`ForbiddenException`, both in `platform`, which `iam` and `tenant` already depend on. It
+therefore compares against the literal `"OWNER"` rather than `Role.OWNER.name()` — `Role`
+lives in `iam` and `platform` must not depend on it. That is exactly what
+`TenantService.requireOwner()` does today, and `TenantPrincipal.role` is a `String` anyway,
+so nothing is lost.
 
 ### 5.2 `iam/Invitation`, `InvitationStatus`, `InvitationRepository` (new)
 
