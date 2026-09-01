@@ -4,3 +4,11 @@ spring:
       on-profile: dev
   jpa:
     show-sql: true
+springdoc:
+  # Dev only. The browsable UI is the point of the dev profile here -- it is what the frontend
+  # will be explored against. The swagger-ui webjar itself is on the developmentOnly
+  # configuration (build.gradle.kts), so in production it is not merely disabled, it is absent.
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
