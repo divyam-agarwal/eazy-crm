@@ -28,6 +28,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The oasdiff step below reads the previous commit's copy of the OpenAPI snapshot.
+          # The default shallow clone (depth 1) has no HEAD~1, so that read would fail --
+          # useful-looking config that silently does nothing.
+          fetch-depth: 2
 
       - name: Set up JDK 25
         uses: actions/setup-java@v6
@@ -52,3 +57,38 @@ jobs:
             backend/build/reports/
             backend/platform/platform-primitives/build/reports/
           retention-days: 7
+
+      # The API changelog, reported and not enforced. CI here is a post-merge smoke alarm
+      # (push: [main], and this repo has never opened a pull request), so a blocking gate would
+      # fail after the breaking change had already landed -- a notification with extra steps.
+      # There is also no consumer yet: members management, cursor pagination and the frontend's
+      # own needs will all legitimately change endpoints, so a blocking gate would fire
+      # regularly, at nobody, on correct work. That is how gates get ignored.
+      #
+      # Flip continue-on-error to false when the frontend exists and consumes this spec. At
+      # that point there is a real party to break.
+      - name: API changelog (oasdiff)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        working-directory: .
+        run: |
+          set -u
+          SNAPSHOT=docs/api/openapi.yaml
+          if ! git cat-file -e "HEAD~1:$SNAPSHOT" 2>/dev/null; then
+            echo "No previous version of $SNAPSHOT - nothing to compare." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git show "HEAD~1:$SNAPSHOT" > /tmp/openapi-base.yaml
+          echo "## API changelog" >> "$GITHUB_STEP_SUMMARY"
+          docker run --rm \
+            -v /tmp/openapi-base.yaml:/base.yaml:ro \
+            -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
+            tufin/oasdiff:latest changelog /base.yaml /head.yaml \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Breaking changes" >> "$GITHUB_STEP_SUMMARY"
+          docker run --rm \
+            -v /tmp/openapi-base.yaml:/base.yaml:ro \
+            -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
+            tufin/oasdiff:latest breaking /base.yaml /head.yaml \
+            | tee -a "$GITHUB_STEP_SUMMARY"
