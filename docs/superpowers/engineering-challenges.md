@@ -3918,3 +3918,79 @@ same code rather than two implementations of one idea — otherwise the interest
 looks exactly like a broken build. And a determinism flag you have set but not verified is a
 scheduled intermittent failure: check the property exists on the version you actually resolved, and
 run the generator twice and diff, before letting a text-equality assertion into the build.
+
+---
+
+## Challenge 64 — Every guard on a generated contract compared the document to itself, so it was consistent, deterministic, drift-proof and wrong
+
+**Phase:** Implementation (openapi-contract, whole-branch review fix wave)
+
+### The problem
+
+`docs/api/openapi.yaml` shipped with `type: number` on all 31 monetary and quantity fields —
+`grandTotal`, `subTotal`, `totalTax`, `rate`, `lineTotal`, `taxableValue`, `cgst`, `sgst`, `igst`,
+`discountPct`, `qty`, `expectedValue`, `overrideRate`. The server has never sent a number for any
+of them. `BigDecimalStringModule`, registered globally by `MoneyAutoConfiguration`, serializes
+every `BigDecimal` with `gen.writeString(value.toPlainString())`, and existing tests pin exactly
+that: `QuotationControllerTest` asserts `jsonPath("$.currentVersion.subTotal").value("200.00")`,
+and `QuotationAcceptTest` reads `$.currentVersion.grandTotal` into a `String`.
+
+The cause is mundane — springdoc derives schemas from the **Java** type (`BigDecimal` → `number`)
+and has no visibility into a runtime Jackson module. What makes it worth writing down is that the
+branch had four guards over this document and **not one of them could see it**:
+
+- the drift guard (challenge #63) compares the generated document to the committed snapshot — both
+  sides come from the same generator, so a wrong document is simply a stably wrong document;
+- byte-stability across two regenerations proves determinism, which a wrong document also has;
+- the `EasyCRM API` / not-blank assertions prove the generator ran;
+- the oasdiff CI step compares this document to its own previous revision.
+
+Every one of them is a *self*-comparison. The document was internally consistent, reproducible and
+protected against drift, and it told a frontend to send and parse JSON numbers for money — the one
+thing `CLAUDE.md` forbids, in the artefact whose entire job is to be believed. It even contradicted
+itself in plain text: `info.description` said "Money is carried as a JSON string, never a number"
+twenty lines above the first schema saying `number`. A client generated from it would have parsed
+`"1234.50"` into an IEEE double and reintroduced, at the boundary, exactly the money-as-`double`
+bug challenge #2 exists to prevent.
+
+### The solution
+
+One global model replacement, in a static block in `OpenApiConfig`, and verified against the jar
+rather than against memory (`javap` on `springdoc-openapi-starter-common-3.1.0` to confirm the
+method exists and what it delegates to):
+
+```java
+SpringDocUtils.getConfig().replaceWithSchema(BigDecimal.class, new StringSchema().format("decimal"));
+```
+
+It writes into `AdditionalModelsConverter`, a static registry the model-converter chain consults at
+generation time, so a static block is the right home — it only has to have happened before the
+first document is rendered, and class loading of a `@Configuration` during context refresh is
+comfortably earlier. Global, not per-field: 31 annotations are 31 chances to miss one, and the next
+DTO would not have any. Request bodies (`rate`, `qty`, `discountPct`) become `string` too, which is
+correct — Jackson parses a JSON string into a `BigDecimal` without complaint, and string is the
+canonical form everywhere else in this system.
+
+The fix is the easy half. The half that matters is the assertion that now sits beside the drift
+guard:
+
+```java
+mvc.perform(get("/v3/api-docs"))
+   .andExpect(jsonPath("$.components.schemas.QuotationVersionResponse.properties.grandTotal.type")
+       .value("string"))
+```
+
+It is the only assertion in that class that compares the document against a fact about the
+**server** rather than against another copy of the document, and it was proven able to fail: the
+`replaceWithSchema` line was commented out, the assertion went red with `expected:<string> but
+was:<number>`, and the line was restored.
+
+### Lesson
+
+Drift guards, determinism checks and diff tooling all answer "did this artefact change?" — none of
+them answers "is this artefact true?" A generated contract can pass every self-referential guard
+you own and still describe a server you do not have, because the generator infers from types and
+the wire format is decided by runtime serialization. So for any generated document, add at least
+one assertion that crosses the gap: pin a field the runtime demonstrably emits in a particular
+shape, and watch it fail with the fix removed. Otherwise the guards are only proving the generator
+is repeatable.

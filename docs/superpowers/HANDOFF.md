@@ -49,19 +49,30 @@ the first thing to do when the frontend lands.
 
 ### `openapi-contract` is in flight — complete, green, and pending merge
 
-**Seven tasks off `main` at `e9d694e`, every one reviewed, on branch `openapi-contract`. Nothing
-has been merged and nothing has been pushed — the branch exists only locally.** The commit range is
-`4a1848b`..`2d681fc`: two docs commits (`4a1848b` the design spec, `e0d0dfb` the plan) then the task
-commits from `b14c92a` (springdoc plus the OpenAPI metadata bean) to `2d681fc` (the oasdiff
-misreport fix). See `docs/superpowers/specs/2026-09-01-openapi-contract-design.md` and
+**Seven tasks plus a whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, on
+branch `openapi-contract`. Nothing has been merged and nothing has been pushed — the branch exists
+only locally.** The commit range starts at `4a1848b`: two docs commits (`4a1848b` the design spec,
+`e0d0dfb` the plan), then the task commits from `b14c92a` (springdoc plus the OpenAPI metadata bean)
+to `2d681fc` (the oasdiff misreport fix), then the final review wave (six items — the money-schema
+fix, the dev-profile chain's first test, per-operation `security: []`, an explicit `servers` block,
+a path-count floor on the snapshot guard, and fenced oasdiff output). See `docs/superpowers/specs/2026-09-01-openapi-contract-design.md` and
 `docs/superpowers/plans/2026-09-01-openapi-contract.md`, and the SDD ledger at
 `.superpowers/sdd/2026-09-01-openapi-contract/` while it still exists — it is deleted with the
 workspace at merge, as `build-hygiene`'s was, so anything in it worth keeping has to be copied out
 into this file, the spec, or a challenge entry first.
 
-**Verified green on the branch tip: 530 tests, 0 failures, 0 errors** (507 root + 23
+**Verified green on the branch tip: 534 tests, 0 failures, 0 errors** (511 root + 23
 `platform-primitives`), up from `main`'s 519 — a full `./gradlew clean check`, which now includes
 the OpenAPI drift guard. **Merge is the user's call and has deliberately not been taken.**
+
+**The most important thing the review wave found: the document said money was a JSON `number`.**
+All 31 monetary and quantity fields did, while the server has never sent anything but a string
+(`BigDecimalStringModule`). Every guard on this branch — drift, byte-stability, oasdiff — compares
+the document to *itself*, so none of them could see it. Fixed with one global
+`SpringDocUtils.replaceWithSchema(BigDecimal.class, …)` in `OpenApiConfig` and, more to the point,
+guarded by `OpenApiSnapshotTest.moneyFieldsAreDocumentedAsStrings`, the only assertion in the suite
+that checks the contract against a fact about the server. It was watched failing with the override
+removed. **Read challenge #64 before adding any further guard to this document.**
 
 **`clean check` now asserts something new: that the committed API document still matches the
 code.** `OpenApiSnapshotTest` generates the document from the live controllers and compares it byte
@@ -83,7 +94,10 @@ deliberately broken `docker run` producing the explicit "failed to run" line rat
 empty summary section, which is what the `pipefail` and the `if !` wrappers exist for. So the logic
 is exercised; the step is not. It will first run on the merge to `main`. Treat it as the same
 untested-config category as the `pull_request` trigger below and challenge #33 — dormant and
-reasoned, not proven.
+reasoned, not proven. (The review wave did fix one thing about it that only a first run would have
+exposed: oasdiff emits plain text one finding per line, and `$GITHUB_STEP_SUMMARY` is Markdown,
+which joins consecutive lines — so both blocks are now wrapped in fenced code blocks, written
+separately from the tool output so a tool failure still closes its fence.)
 
 ### `docs/api/openapi.yaml` is generated output, not a document
 
@@ -413,9 +427,9 @@ All under `docs/superpowers/`:
 ## 3. Current state
 
 - **Latest code work: the OpenAPI contract** — **on branch `openapi-contract`, off `main` at
-  `e9d694e`, seven tasks done and reviewed, NOT merged and NOT pushed.** Commits `4a1848b`
-  (design spec) through `2d681fc`. **530 tests, 0 failures, 0 errors** (507 root + 23
-  `platform-primitives`), up 11 from `main`'s 519. What it delivers:
+  `e9d694e`, seven tasks plus a whole-branch-review fix wave, done and reviewed, NOT merged and NOT
+  pushed.** Commits from `4a1848b` (design spec) through the review wave. **534 tests, 0 failures,
+  0 errors** (511 root + 23 `platform-primitives`), up 15 from `main`'s 519. What it delivers:
 
   **springdoc 3.1.0, split across two Gradle configurations on purpose.**
   `springdoc-openapi-starter-webmvc-api` is on `implementation` — the generator ships;
@@ -426,9 +440,31 @@ All under `docs/superpowers/`:
   than by reading the Gradle docs. **3.x is the Spring Boot 4 line** (its POM parent is
   `spring-boot-starter-parent` 4.1.0); the 2.x line is Boot 3 and does not work here, which matters
   because every pre-2026 tutorial names 2.x. `OpenApiConfig` supplies only what springdoc cannot
-  infer — title, description, the `bearer-jwt` security scheme — and takes `info.version` from
-  `BuildProperties`, i.e. from the Gradle project version via `springBoot { buildInfo() }`, so
-  there is one copy of that number rather than a literal in `application.yml` to keep in sync.
+  infer — title, description, the `bearer-jwt` security scheme, the `servers` entry — and takes
+  `info.version` from `BuildProperties`, i.e. from the Gradle project version via
+  `springBoot { buildInfo() }`, so there is one copy of that number rather than a literal in
+  `application.yml` to keep in sync. `servers` is taken from `easycrm.public-base-url`, the one
+  property this app already treats as its canonical external origin (share and invitation links
+  are both built from it); left implicit, springdoc synthesized the entry from whatever request
+  fetched the document and published `url: http://localhost` — the MockMvc origin, wrong rather
+  than merely vague, in the artefact a frontend reads.
+
+  **Money is documented as a string, and that is enforced, not just fixed.** springdoc infers
+  schemas from the Java type, so `BigDecimal` came out as `type: number` on all 31 monetary and
+  quantity fields while `BigDecimalStringModule` has always serialized them as JSON strings. One
+  static `SpringDocUtils.getConfig().replaceWithSchema(BigDecimal.class, new
+  StringSchema().format("decimal"))` in `OpenApiConfig` fixes every occurrence — global, because 31
+  per-field annotations are 31 chances to miss one and the next DTO would have none. Request-body
+  fields (`rate`, `qty`, `discountPct`) become `string` too, which is intended. The guard is
+  `OpenApiSnapshotTest.moneyFieldsAreDocumentedAsStrings`; it was proven able to fail. See
+  challenge **#64** — every other guard on this document compares it to itself.
+
+  **The genuinely public operations carry an empty `@SecurityRequirements`.** The document-level
+  `bearer-jwt` requirement applied to *everything*, including `POST /api/v1/auth/login` — the first
+  call a frontend writes and the one call that by definition has no token. Seven operations now
+  emit `security: []`, mirroring `SecurityConfig`'s `permitAll` list exactly: auth
+  signup/login/refresh/logout, the invitation preview/accept pair, and `GET /public/q/{token}`.
+  **`GET /api/v1/auth/me` is deliberately not among them** — it is `authenticated()`.
 
   **The error envelope is typed.** `ApiErrorResponse(ApiError error)` and
   `ApiError(String code, String message, Map<String, Object> fields)` replaced
@@ -449,9 +485,14 @@ All under `docs/superpowers/`:
   authenticated in every profile. Whether that controller should exist in production at all is a
   separate decision that was deliberately not taken here.
 
-  **`docs/api/openapi.yaml`, 5231 lines, committed and guarded.** `OpenApiSnapshotTest` fails
+  **`docs/api/openapi.yaml`, committed and guarded.** `OpenApiSnapshotTest` fails
   `clean check` whenever the generated document and the snapshot disagree; `./gradlew
-  updateOpenApiSnapshot` regenerates it. **The guard and the regenerator are one test in two modes,
+  updateOpenApiSnapshot` regenerates it. The guard also asserts a **floor**: at least 45 `/api/v1/`
+  paths, against the 54 the app publishes today. Without it, a misconfigured
+  `springdoc.paths-to-match`, a stray `@Hidden` or a narrowed scan base-package would leave `info`
+  intact while `paths` came back empty — and *both* modes would pass, write mode by overwriting the
+  contract with a gutted document and read mode by then comparing gutted against gutted. The
+  threshold is deliberately loose: pinning the exact count is the snapshot's job. **The guard and the regenerator are one test in two modes,
   not two tools** — see §0's standing note and challenge #63. Determinism is pinned with
   `springdoc.writer-with-order-by-keys: true`, confirmed present on 3.1.0 before being depended on,
   and the output proven byte-stable across two regenerations. The guard was watched going red on a
@@ -465,7 +506,16 @@ All under `docs/superpowers/`:
   `securityMatcher` names exactly five springdoc paths. **`SecurityConfig` was not modified** —
   `git diff main -- …/SecurityConfig.java` is empty, and deleting the new file restores today's
   behaviour exactly, with no conditional hole left in the real chain to reason about later. Verified
-  live, not only in tests: `bootRun` under the dev profile served both routes with 200.
+  live, not only in tests: `bootRun` under the dev profile served both routes with 200. It is now
+  also verified *in* tests: `DevApiDocsSecurityConfigTest` is the **only** class in this suite with
+  `@ActiveProfiles("dev")`, and therefore the only place that bean exists in a test context at all.
+  Two assertions — `/v3/api-docs` returns 200 (nothing had ever demonstrated the dev chain works),
+  and an unauthenticated `/api/v1/customers` still returns 401 (an `@Order(0)` chain with a widened
+  `securityMatcher` would silently make the whole API public in dev). **Deliberately one class**: an
+  `@ActiveProfiles` value is a distinct context cache key, so this costs the suite its second Spring
+  context; do not spread dev-profile assertions across more classes. `ApiDocsExposureTest` runs
+  *without* the dev profile and its `healthIsStillReachable` never guarded this — the comment
+  claiming it did has been corrected.
 
   **CI reports an API changelog and does not block on it.** A `continue-on-error` oasdiff step
   (`tufin/oasdiff:latest`, `changelog` then `breaking`) writes into the job summary on every push,
@@ -478,9 +528,15 @@ All under `docs/superpowers/`:
   was verified locally, the step itself has not been exercised by a real CI run.
 
   New challenges **#62** (a new record with a `Map` component fails SpotBugs on the first build,
-  and byte-identical is a stricter bar than immutable) and **#63** (one generator, two modes).
-  `annotations-reference.md` gained rows for `@ParameterObject`, `@Hidden` and `@Order`, and the
-  `@Profile`, `@JsonInclude`, `@TestPropertySource` and `@AutoConfigureMockMvc` rows were extended.
+  and byte-identical is a stricter bar than immutable), **#63** (one generator, two modes) and
+  **#64** (every guard compared the document to itself, so it was consistent, deterministic,
+  drift-proof and wrong about money). `annotations-reference.md` gained rows for `@ParameterObject`,
+  `@Hidden`, `@Order`, `@SecurityRequirements` and `@ActiveProfiles`, and the `@Profile`,
+  `@JsonInclude`, `@TestPropertySource` and `@AutoConfigureMockMvc` rows were extended.
+
+  **Carried, not done:** operations are still tagged with springdoc's default internal class names
+  (`activity-controller`, `public-share-controller`). Cosmetic, and fixing it means `@Tag` on 16
+  controllers; ruled out at the end of this branch rather than forgotten.
 
 - **Previous code work: build hygiene** — **merged to `main` as `83e6880`** (branch deleted). 25
   commits off `main` at `2dc50ba`: seven tasks, every one reviewed clean on its first pass with no
