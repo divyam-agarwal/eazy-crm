@@ -1,8 +1,7 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-01 — **User invitations are built on branch `user-invitations`, all eight
-tasks plus the whole-branch review's fix wave complete and green, pending merge (not yet on
-`main`).**
+**Last updated:** 2026-09-01 — **User invitations are built and merged to `main` as `f265cfe`.
+Nothing is in flight; `main` is the baseline for new work.**
 A tenant can finally have more than one user. An owner invites an email and a role, the invitee
 follows a link, sets a password, and becomes an `ACTIVE` user of that tenant — which is what makes
 `assigned_to`, the record-visibility slice and the `SALES_EXEC` role stop being notional. The
@@ -31,15 +30,15 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### One thing is in flight
+### Nothing is in flight
 
-**`user-invitations` is complete but not merged.** Eight tasks (the `RoleGuard` extraction, the
+**`main` is clean and is the baseline for new work.** Eight tasks (the `RoleGuard` extraction, the
 `invitation` table/entity/repository plus both isolation-guard allowlists, the owner invite
 endpoint, the pending-list + revoke endpoints, the pre-auth accept endpoint, the pre-auth preview
-endpoint, the expiry and concurrency tests, and this docs wrap-up) are done on branch
+endpoint, the expiry and concurrency tests, and the docs wrap-up) were done on branch
 `user-invitations`, off `main` at `830f4bd` — three design/plan commits (`639bb23` the spec,
 `532e38a` two corrections to it, `3c5b91a` the plan), then the task commits from `42d20e2` to the
-docs wrap-up `d919242`. Every task reviewed clean.
+docs wrap-up `d919242`. Every task reviewed clean on its first pass.
 
 **The whole-branch review then found four Important issues and two Minor ones, all fixed in
 the four commits from `3903030` to the tip** (invite-path correctness, the pre-auth path,
@@ -54,16 +53,15 @@ pre-auth half a second client), and the redundant `invitations.save(...)` on alr
 entities in `revoke` and `accept` (identical in both, so remove both or neither). `AuthService.refresh`
 has the same suspended-tenant hole; it predates this branch and was left alone on purpose.
 
-The suite is **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
-464-test `main` baseline (+55). **It is merged.** The branch went into `main` `--no-ff` as
-**`f265cfe`** on 2026-09-01 and was deleted; the merged result was verified green (519 tests, 0
-failures, 0 errors) before the branch went away. Nothing is in flight — `main` is the baseline for
-new work. See §3 for what it delivered and §8 for what that closes.
+The branch was merged `--no-ff` as **`f265cfe`** on 2026-09-01 and deleted. The merged result was
+verified green — **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from
+the 464-test baseline (+55) — before the branch went away. See §3 for what it delivered and §8 for
+what that closes.
 
 Before it, `quotation-auto-expiry` ran to completion and was merged `--no-ff` as **`2fb2b85`** on
 2026-09-01, then deleted; the merged result was verified green (464 tests) before the branch went
-away. `main` is therefore clean at `830f4bd`, and every commit above it belongs to this one
-unmerged branch.
+away. There is no unmerged feature branch to settle — start at item 1 below, then go to §8 and pick
+the next chunk with the user.
 
 **One loose end that is not code, carried forward from before this slice:** the Bucket4j entry
 written for `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that
@@ -77,9 +75,9 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On `main` this is
-   **464 tests, 0 failures, 0 errors** (441 root + 23 `platform-primitives`); on the unmerged
-   `user-invitations` branch it is **519** (496 root + 23 `platform-primitives`). Gradle prints no total for a
+   then `cd backend && ./gradlew clean test`. On `main` this is now
+   **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
+   **464-test** baseline before the invitations slice. Gradle prints no total for a
    multi-project build, so count it yourself:
 
    ```bash
@@ -92,7 +90,7 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 441, not 464, and this tripped an
+   -path './build/test-results/test/*.xml'` alone reports 496, not 519, and this tripped an
    implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
@@ -797,8 +795,8 @@ the workflow from §0 step 4.
    stays open below. Record-level visibility landed in the `record-visibility` slice (merged as
    `c81f59f`; §3): every read and write on `Customer`, `Enquiry`, `Quotation`, and `Order` is now
    filtered by `assigned_to` through a single `VisibleFinder`, guarded by
-   `VisibilityScopingArchTest`. **User invitations landed in the `user-invitations` slice** (branch
-   complete and green, pending merge — §0, §3): an owner invites an email + role, the invitee
+   `VisibilityScopingArchTest`. **User invitations landed in the `user-invitations` slice** (merged as
+   `f265cfe` — §0, §3): an owner invites an email + role, the invitee
    accepts pre-auth and becomes an `ACTIVE` user of that tenant, plus a pending list and revoke.
    **Because this was the last open piece, the whole P0-auth follow-up is now done — the ranking
    below is written on that basis.**
@@ -922,32 +920,27 @@ index when the table is created costs one line; retrofitting it costs a migratio
 ### Smaller deferred-Minor backlog
 
 Open and non-blocking. This list is the complete record of every `minor (deferred)` line the SDD
-ledgers of **six** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
+ledgers of **seven** slices accumulated — items 1–22 from the quotation PDF/share slice (ten tasks),
 items 23–24 from the `platform-primitives` slice (eight tasks), items 25–32 from
 `public-rate-limiting` (seven tasks), items 33–41 from `record-visibility` (nine tasks plus a
-whole-branch fix wave), items 42–46 from `activity-follow-up` (fourteen tasks), and items 47–49 from
-`quotation-auto-expiry` (seven tasks plus a whole-branch fix wave) — each cross-checked
+whole-branch fix wave), items 42–46 from `activity-follow-up` (fourteen tasks), items 47–49 from
+`quotation-auto-expiry` (seven tasks plus a whole-branch fix wave), and items 50–51 from
+`user-invitations` (eight tasks plus a whole-branch fix wave) — each cross-checked
 line-by-line against its ledger before that workspace was deleted at merge. Every one of those
 workspaces is now gone, so this list is the durable copy. So it really is **self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
 
 **The `user-invitations` slice's deferred minors were triaged by the whole-branch review, and
-most are now closed.** Its ledger (`.superpowers/sdd/2026-09-01-user-invitations/progress.md`)
-carried ten `minor (deferred)` lines; the review's fix wave (`3903030` onward, and its report
-at `.superpowers/sdd/2026-09-01-user-invitations/fix-wave-report.md`) closed the two that were
-flagged to it — the duplicated filter chain, now the single `InvitationService.requireLive`, and
+most are now closed.** Its SDD ledger (since deleted with the workspace at merge)
+carried ten `minor (deferred)` lines; the review's fix wave (`3903030` onward) closed the two that
+were flagged to it — the duplicated filter chain, now the single `InvitationService.requireLive`, and
 the barrier-less accept race, now a `CyclicBarrier(2)` — along with the in-memory scan of a
 tenant's `PENDING` rows (replaced by a derived query) and the unused imports.
 
-**Exactly two are deliberately still open, and both are deferrals rather than oversights:**
-(a) splitting `InvitationService` by authentication posture — the pre-auth half (`accept`,
-`preview`, `requireLive`) reads nothing like the owner-authenticated half, but it has only one
-client today; revisit when password reset gives it a second. (b) The redundant
-`invitations.save(...)` on an already-managed entity, which appears **identically** in both
-`revoke` and `accept` — removing one alone would make two identical paths look deliberately
-different, so remove both or neither. Carry these two into the list below at merge time; the
-workspace is the only copy until then.
+**Exactly two are deliberately still open, and both are deferrals rather than oversights.** They
+are now items **50** and **51** below — that workspace was deleted at merge, so the list is the
+only copy.
 
 1. ~~**`QuotationService.list` has the dropped-filter bug**~~ — **DONE.** Closed by the quotation
    PDF/share slice's Task 9: `QuotationSpecifications.filter` mirrors `OrderSpecifications`,
@@ -1245,3 +1238,19 @@ tenant, not after, for the reason its own entry gives.
     Javadoc ("the subquery cannot reach another tenant's versions") is untested but practically
     unfalsifiable, since version ids are UUIDs. Noted because the spec singled the test out as
     load-bearing, not because the isolation is in doubt.
+50. **`InvitationService` is two services sharing a constructor, and the split is deferred, not
+    missed.** The owner-authenticated half (`invite`, `listPending`, `revoke`) and the pre-auth
+    half (`accept`, `preview`, `requireLive`) have different callers, different security postures
+    and almost different dependency sets — the constructor takes twelve collaborators, against
+    `AuthService`'s eight, and only five are shared. The controllers are *already* split this way
+    (`InvitationController` vs `PublicInvitationController`), so the seam is visible; the service
+    just has not followed. The whole-branch review deferred it on the grounds that the split buys
+    posture clarity rather than fewer parameters, and the pre-auth half has exactly one client
+    today. **Revisit when password reset lands** — that is the moment the pre-auth half gets a
+    second client and the boundary starts paying for itself. The sanctioned shape is an
+    `InvitationAcceptService` owning `accept`, `preview` and `requireLive`.
+51. **`invitations.save(...)` is redundant in both `revoke` and `accept`.** Both call it on an
+    entity already managed inside the same transaction, where Hibernate's dirty checking would
+    flush the change anyway. It is harmless. It is listed only because the redundancy is
+    **identical in both places**: removing it from one alone would make two structurally identical
+    paths look deliberately different, which is worse than leaving both. Remove both or neither.
