@@ -31,6 +31,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/auth/signup", "/api/v1/auth/login",
                     "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
+                // Accepting an invitation is pre-auth by definition: the invitee has no
+                // JWT and no tenant until this call creates them. The tenant is resolved
+                // from the invitation row, and the User insert behind it still goes
+                // through @TenantId + RLS. Under /api/v1/auth/** so it inherits that
+                // prefix's rate-limit policy — an unmatched path would be unlimited.
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/invitations/*/accept").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             // Unauthenticated request -> 401 (not authenticated), not Spring's default 403.

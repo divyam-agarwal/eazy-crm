@@ -1,14 +1,18 @@
 package com.easycrm.iam;
 
 import com.easycrm.iam.email.EmailSender;
+import com.easycrm.iam.web.dto.AcceptInvitationRequest;
+import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.InvitationResponse;
 import com.easycrm.iam.web.dto.InviteRequest;
 import com.easycrm.iam.web.dto.PendingInvitationResponse;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
+import com.easycrm.platform.security.JwtService;
 import com.easycrm.platform.security.RoleGuard;
 import com.easycrm.platform.tenancy.TenantContext;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -36,12 +40,16 @@ public class InvitationService {
     private final RoleGuard roleGuard;
     private final AuditService audit;
     private final EmailSender emailSender;
+    private final PasswordEncoder encoder;
+    private final JwtService jwt;
+    private final RefreshTokenService refreshTokens;
     private final TransactionTemplate tx;
     private final String publicBaseUrl;
 
     public InvitationService(InvitationRepository invitations, UserRepository users,
                              TokenHasher hasher, RoleGuard roleGuard, AuditService audit,
-                             EmailSender emailSender, TransactionTemplate tx,
+                             EmailSender emailSender, PasswordEncoder encoder, JwtService jwt,
+                             RefreshTokenService refreshTokens, TransactionTemplate tx,
                              @Value("${easycrm.public-base-url}") String publicBaseUrl) {
         this.invitations = invitations;
         this.users = users;
@@ -49,6 +57,9 @@ public class InvitationService {
         this.roleGuard = roleGuard;
         this.audit = audit;
         this.emailSender = emailSender;
+        this.encoder = encoder;
+        this.jwt = jwt;
+        this.refreshTokens = refreshTokens;
         this.tx = tx;
         this.publicBaseUrl = publicBaseUrl;
     }
@@ -134,6 +145,49 @@ public class InvitationService {
         audit.record("INVITE_REVOKED",
             TenantContext.get().map(TenantContext.TenantPrincipal::userId).orElse(null),
             Map.of("email", inv.getEmail()));
+    }
+
+    /**
+     * Pre-auth. NOT @Transactional: the tenant context must be set BEFORE the transaction
+     * (and its Hibernate session) opens, because a session resolves its tenant only at
+     * open and TenantAwareTransactionManager reads it in doBegin to set the RLS GUC. The
+     * User insert below is @TenantId + RLS, so getting this order wrong does not throw —
+     * it silently writes an unbound row. Same trap as challenge #9 and #52.
+     */
+    public AuthResponse accept(String rawToken, AcceptInvitationRequest req) {
+        // Global table: no tenant context needed, and none exists yet.
+        Invitation inv = invitations.findByTokenHash(hasher.sha256Hex(rawToken))
+            .filter(i -> i.getStatus() == InvitationStatus.PENDING)
+            .filter(i -> !i.isExpired(Instant.now()))
+            .orElseThrow(() -> new NotFoundException("invitation not found"));
+
+        TenantContext.set(new TenantContext.TenantPrincipal(inv.getTenantId(), null, "SYSTEM"));
+        try {
+            return tx.execute(status -> {
+                // Re-read inside the transaction and claim it. @Version means a concurrent
+                // second accept of this same token loses here and gets a 409.
+                Invitation claimed = invitations.findById(inv.getId())
+                    .orElseThrow(() -> new NotFoundException("invitation not found"));
+
+                User user = users.save(new User(
+                    claimed.getEmail(), req.phone(), encoder.encode(req.password()),
+                    claimed.getRole(), UserStatus.ACTIVE));
+
+                claimed.accept(user.getId(), Instant.now());
+                invitations.save(claimed);
+
+                audit.record("INVITE_ACCEPTED", user.getId(),
+                    Map.of("email", claimed.getEmail(), "role", claimed.getRole().name()));
+
+                String access = jwt.mint(claimed.getTenantId(), user.getId(),
+                    claimed.getRole().name());
+                String refresh = refreshTokens.issue(user.getId(), claimed.getTenantId());
+                return new AuthResponse(access, refresh, claimed.getTenantId(),
+                    user.getId(), claimed.getRole().name());
+            });
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     private String randomToken() {

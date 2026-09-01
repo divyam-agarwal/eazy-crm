@@ -3290,3 +3290,71 @@ not to bend the table into looking tenant-scoped or to skip the check because "t
 says not to." And once a check exists only to keep one tenant's data invisible to
 another, its failure mode must not distinguish "belongs to someone else" from "does not
 exist" — any status code that does is itself a small cross-tenant information leak.
+
+## Challenge 55 — A defensive entity invariant became the enumeration oracle it was meant to prevent
+
+**Phase:** Implementation (user-invitations slice, pre-auth accept)
+
+### The problem
+
+`Invitation.accept(userId, when)` carries its own precondition — it re-asserts `PENDING`
+and throws `ConflictException` otherwise — for the same reason `Quotation.expire()`
+re-asserts `SENT`: an entity should not trust the caller to have checked. That is good
+design in isolation, and it is exactly what makes the naive `accept` wrong.
+
+The naive service method reads the invitation by token hash, builds the user, and calls
+`inv.accept(...)`, leaving the entity's guard as the only state check. The four ways an
+accept can be rejected then split by construction:
+
+- unknown token → `NotFoundException` → **404**
+- revoked or already accepted → the entity's `ConflictException` → **409**
+- expired → whatever an explicit expiry check throws, typically its own status
+
+Those distinct responses are a token-enumeration oracle for an unauthenticated caller.
+A 409 says "this token is real, you are just late"; a 404 says "this token never
+existed." Since the accept endpoint is `permitAll` and the token is the entire credential,
+that difference tells a prober which of their guesses are worth attacking further — and it
+confirms that a particular workspace has been issuing invitations at all. The leak arrives
+precisely *because* the invariant is well-placed: the entity is right to refuse, and its
+refusal is a different refusal from "no such row."
+
+### The solution
+
+Give the service one rejection point that all four states funnel into, and demote the
+entity's guard to what it should be — a concurrency backstop, not the primary check:
+
+```java
+Invitation inv = invitations.findByTokenHash(hasher.sha256Hex(rawToken))
+    .filter(i -> i.getStatus() == InvitationStatus.PENDING)
+    .filter(i -> !i.isExpired(Instant.now()))
+    .orElseThrow(() -> new NotFoundException("invitation not found"));
+```
+
+Because `filter` on an `Optional` collapses "absent" and "present but wrong state" into
+the same empty `Optional`, unknown / revoked / accepted / expired all reach the *same*
+`orElseThrow`, and therefore the same status code and the same body bytes. No per-state
+message, no per-state status — a helpful "this invitation has expired" would undo the
+whole thing.
+
+`Invitation.accept()`'s `ConflictException` still exists and still fires, but now only in
+the case it is actually for: two accepts of the same live token racing, where both pass
+the pre-filter and the loser re-reads a row the winner already consumed. That path
+requires already holding the token, so its distinguishable 409 leaks nothing.
+
+The property is asserted rather than described: one test accepts a token, replays it, and
+compares the replay's response body byte-for-byte against the response for a token that
+never existed. A future "helpful" message fails that test rather than shipping quietly.
+
+### Lesson
+
+Two individually correct decisions — an entity that defends its own invariants, and a
+handler that maps each exception type to its most accurate status — compose into an
+information leak on any endpoint where the request itself is the credential. On a pre-auth
+route, "the most accurate error" and "the safe error" are different goals, and accuracy
+is the one that has to give: the caller who legitimately holds a good token never sees any
+of these responses, so precision buys nothing and costs enumeration. Prefer collapsing at
+the point of *lookup* (`Optional.filter` before a single `orElseThrow`) over catching and
+rewriting several exceptions downstream — the first shape makes indistinguishability
+structural and leaves the entity's invariant intact for the concurrent case; the second is
+a list someone must remember to extend. And assert it as bytes, not as intent: response
+bodies are exactly the thing a prober diffs.
