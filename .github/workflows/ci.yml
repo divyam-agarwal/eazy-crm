@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # TEMPORARY (Task 7): widened to build-hygiene to prove a failing gate produces a
+    # FAILED CI run pre-merge. Reverted in the following commit.
+    branches: [main, build-hygiene]
   pull_request:
 
 # A newer push to the same ref supersedes an in-flight run.
