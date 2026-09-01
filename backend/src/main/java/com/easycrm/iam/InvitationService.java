@@ -3,17 +3,21 @@ package com.easycrm.iam;
 import com.easycrm.iam.email.EmailSender;
 import com.easycrm.iam.web.dto.InvitationResponse;
 import com.easycrm.iam.web.dto.InviteRequest;
+import com.easycrm.iam.web.dto.PendingInvitationResponse;
 import com.easycrm.platform.error.ConflictException;
+import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.security.RoleGuard;
 import com.easycrm.platform.tenancy.TenantContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -105,6 +109,31 @@ public class InvitationService {
             Map.of("email", req.email(), "role", req.role()));
 
         return new Minted(inv.getId(), inv.getEmail(), inv.getExpiresAt());
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingInvitationResponse> listPending() {
+        roleGuard.requireOwner("only an owner may view invitations");
+        Instant now = Instant.now();
+        return invitations
+            .findByTenantIdAndStatus(TenantContext.tenantId(), InvitationStatus.PENDING)
+            .stream()
+            .map(i -> new PendingInvitationResponse(i.getId(), i.getEmail(),
+                i.getRole().name(), i.getExpiresAt(), i.isExpired(now)))
+            .toList();
+    }
+
+    @Transactional
+    public void revoke(UUID id) {
+        roleGuard.requireOwner("only an owner may revoke an invitation");
+        Invitation inv = invitations.findById(id)
+            .filter(i -> i.getTenantId().equals(TenantContext.tenantId()))
+            .orElseThrow(() -> new NotFoundException("invitation not found"));
+        inv.revoke();                 // throws ConflictException unless PENDING
+        invitations.save(inv);
+        audit.record("INVITE_REVOKED",
+            TenantContext.get().map(TenantContext.TenantPrincipal::userId).orElse(null),
+            Map.of("email", inv.getEmail()));
     }
 
     private String randomToken() {
