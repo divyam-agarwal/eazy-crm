@@ -3336,10 +3336,21 @@ the same empty `Optional`, unknown / revoked / accepted / expired all reach the 
 message, no per-state status — a helpful "this invitation has expired" would undo the
 whole thing.
 
-`Invitation.accept()`'s `ConflictException` still exists and still fires, but now only in
-the case it is actually for: two accepts of the same live token racing, where both pass
-the pre-filter and the loser re-reads a row the winner already consumed. That path
-requires already holding the token, so its distinguishable 409 leaks nothing.
+`Invitation.accept()`'s `ConflictException` still exists, but be precise about what it is
+now for: it is a defensive entity precondition, **not** the mechanism that stops a double
+accept. Under Postgres READ COMMITTED the loser of a race on one live token normally
+re-reads a snapshot in which the row is still `PENDING` — the winner has not committed yet
+— so the entity's guard does not fire at all. What actually stops the second accept is
+**`@Version` optimistic locking at commit**, inherited from `BaseEntity` on the claim the
+transaction writes back: the loser's update matches no row at its expected version, and
+the resulting `OptimisticLockingFailureException` becomes a 409 through the global handler.
+Behind that sits **`UNIQUE (tenant_id, email)` on `app_user`** (`uq_user_tenant_email`),
+which is the layer that catches the case optimistic locking cannot see — two *different*
+invitations to one address racing to accept, where each transaction claims its own row and
+neither conflicts with the other. `InvitationService.accept`'s inline comment states this
+correctly; the entity guard's job is to stop a future caller that bypasses the service from
+writing a nonsense state, not to win the race. Either way the loser is someone who already
+holds a valid token, so a distinguishable 409 on that path leaks nothing.
 
 The property is asserted rather than described: one test accepts a token, replays it, and
 compares the replay's response body byte-for-byte against the response for a token that
@@ -3355,6 +3366,75 @@ is the one that has to give: the caller who legitimately holds a good token neve
 of these responses, so precision buys nothing and costs enumeration. Prefer collapsing at
 the point of *lookup* (`Optional.filter` before a single `orElseThrow`) over catching and
 rewriting several exceptions downstream — the first shape makes indistinguishability
-structural and leaves the entity's invariant intact for the concurrent case; the second is
+structural and leaves the entity's invariant intact as a backstop; the second is
 a list someone must remember to extend. And assert it as bytes, not as intent: response
 bodies are exactly the thing a prober diffs.
+
+## Challenge 56 — Two pre-auth tokens in one codebase, with opposite storage rules
+
+**Phase:** Design (user-invitations slice)
+
+### The problem
+
+By the time invitations were designed, this codebase already minted two kinds of opaque
+pre-auth token, and they are stored in **opposite** ways:
+
+- `refresh_token.token_hash` — SHA-256 at rest, single-use, rotated on every refresh.
+- `share_link.token` — **plaintext**, permanent, deliberately so. Its javadoc defends the
+  choice, and the defence is correct: the token only renders a frozen quotation from rows
+  in this same database, and storing it plaintext is exactly what makes
+  `ShareLinkService.share()` idempotent — resharing a version hands back the *same* link,
+  so a URL already sitting in a customer's WhatsApp thread keeps working.
+
+The invitation token needed a rule, and both precedents were sitting right there. Reaching
+for the nearer one is the natural move: `share_link` is the most recent token this codebase
+added, it is also a global pre-auth table resolved from an opaque string, and its plaintext
+storage comes with a written justification rather than looking like an oversight. Copying it
+would have been a real vulnerability — a database read, a leaked backup, or a log line
+containing a `SELECT *` would hand the reader a working credential that **creates an
+authenticated principal with a role inside a tenant**.
+
+### Why it's hard
+
+The hazard is that the wrong precedent is the *better-documented* one. A reasoned
+justification attached to an existing decision reads as a house rule, and house rules are
+what a new slice is supposed to follow. Nothing structural distinguishes the two cases:
+both tables are global, both are `permitAll`, both hold a random opaque string, both are
+pasted into WhatsApp by a human. Neither an ArchUnit rule nor a schema constraint can tell
+them apart, because the difference is not in the shape of the data at all.
+
+Worse, the second half of `share_link`'s argument actively points the wrong way. Plaintext
+buys idempotency, and idempotency sounds like an unambiguous good — until you notice that
+for an invitation, "the same link keeps working" is precisely the failure mode. A resend
+must invalidate the old link, not reissue it.
+
+### The solution
+
+Derive the storage rule from what the token **grants**, not from what the codebase already
+does with a superficially similar token:
+
+| Token | Grants | Stored | Consumable |
+|---|---|---|---|
+| `share_link` | a read of one frozen document | plaintext | repeatedly, forever |
+| `refresh_token` | an authenticated principal | SHA-256 | once, rotated |
+| `invitation` | an authenticated principal **with a role in a tenant** | SHA-256 | once |
+
+So `invitation` follows `refresh_token`: 256 bits from `SecureRandom`, base64url-encoded,
+stored as `TokenHasher.sha256Hex`, returned exactly once in the 201 body and never
+retrievable again. "Resend" is therefore not an endpoint — it is revoke + re-invite, which
+mints a new token and kills the old one, which is the semantic that was wanted anyway. The
+plaintext value is treated as the bearer credential it is: never logged, and the entity gets
+no `toString()`, matching `ShareLink`.
+
+### Lesson
+
+When a codebase already contains two contradictory precedents, the question to ask is not
+"which one is nearer to what I am building" but "which invariant made each one correct".
+`share_link`'s plaintext storage is not a house style; it is a conclusion that depends
+entirely on the token granting a **read** of already-persisted data, and it stops being
+correct the moment a token grants **capability**. A well-argued precedent is the most
+dangerous kind to copy, because its reasoning travels with it and gives borrowed authority
+to a case it was never about. Write the *criterion* down next to the decision, not just the
+decision — the next token-shaped feature (password reset is the obvious one, and is named
+out of scope in this slice's spec §10) will face this exact fork, and the criterion is the
+only part that transfers.

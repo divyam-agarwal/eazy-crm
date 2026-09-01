@@ -133,8 +133,9 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
     /**
      * Two DIFFERENT invitations to one address, both accepted. The partial unique index
      * does not cover this (it only stops a second PENDING row existing at once — here the
-     * first was revoked, freeing the address, then re-invited). UNIQUE(tenant_id, email)
-     * on app_user is the only thing standing between this and two users. Spec §6.4.
+     * first is ACCEPTED, which leaves PENDING and so frees the index for a second invite
+     * to the same address). UNIQUE(tenant_id, email) on app_user is the only thing
+     * standing between this and two users. Spec §6.4.
      */
     @Test
     void twoInvitationsToOneAddressCannotBothBecomeUsers() throws Exception {

@@ -1,38 +1,54 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-01 — **Scheduled quotation auto-expiry is built and merged to `main` as
-`2fb2b85`. Nothing is in flight; `main` is the baseline for new work.**
-The codebase's first non-request execution path now exists: a nightly job iterates every
-job-eligible tenant with no JWT behind it, and the reusable seam it landed —
-`platform/job/TenantJobRunner` — is what every future scheduled job should build on rather than
-growing its own tenant loop. `TenantJobRunner` owns the ordering that makes tenant-scoped reads
-work at all outside a request (`TenantContext.runAs` wraps its own `PROPAGATION_REQUIRES_NEW`
-transaction, never the reverse — challenge #52) so that ordering is structural, not something each
-job author has to remember. A `Quotation` past `validUntil` and still `SENT` is now expired
-automatically at 00:30 IST, with an audit row and a timeline activity, using the same IST
-calendar-date arithmetic `DueWindow` already had for follow-ups (challenge #53 covers the
-UTC-vs-IST trap this raises for a `LocalDate` column). Backlog item #2 (scheduled auto-expiry) is
-now **DONE** — see §8. The previous slice (activity log and follow-ups) is **merged to `main` as
-`f97c62c`**; see §3's "Previous code work" for its detail.
+**Last updated:** 2026-09-01 — **User invitations are built on branch `user-invitations`, all eight
+tasks complete and green, pending the whole-branch review and merge (not yet on `main`).**
+A tenant can finally have more than one user. An owner invites an email and a role, the invitee
+follows a link, sets a password, and becomes an `ACTIVE` user of that tenant — which is what makes
+`assigned_to`, the record-visibility slice and the `SALES_EXEC` role stop being notional. The
+`invitation` table is the codebase's **third global, RLS-exempt table** after `refresh_token` and
+`share_link`, because accepting is pre-auth: the tenant has to be resolved from the token before
+any context exists. Two consequences are worth knowing before touching this area — the only
+hand-written `tenant_id` comparison in the entire codebase lives in `InvitationService.revoke`
+(challenge #54 says why the structural rule cannot apply and why the miss must 404, not 403), and
+every failed accept or preview returns a byte-identical 404 so a `permitAll` route cannot be used
+as a token-enumeration oracle (challenge #55). Challenge #56 records why this token is hashed at
+rest when `share_link`'s is deliberately plaintext. Backlog item #3 (P0-auth follow-up) is now
+**DONE in full** — see §8. The previous slice (scheduled quotation auto-expiry) is **merged to
+`main` as `2fb2b85`**; see §3's "Previous code work" for its detail.
+
+**One caveat travels with this slice, and it qualifies the "usable on day one" claim:** the
+`acceptUrl` handed back by `POST /api/v1/invitations` is
+`{easycrm.public-base-url}/invite/{token}` — a **frontend route that does not exist yet** (design
+spec D10). The *token* works and both public endpoints consume it directly, which is how the
+integration tests drive the whole flow; the *page* is not browsable. Wiring `/invite/{token}` is
+the first thing to do when the frontend lands.
+
 **Purpose:** Everything a fresh agent needs to pick up this project and continue. Read this first, then the linked docs.
 
 ---
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### One thing is in flight
 
-**`main` is clean and is the baseline for new work.** Seven tasks (`DueWindow.todayDate` for
-IST-vs-UTC calendar-date comparisons, `Quotation.expire()`'s own `SENT` precondition,
-`QuotationSpecifications.expirableAsOf` + `VisibleFinder.listQuotations`, `TenantJobRunner` +
-`TenantRepository.findByStatusIn`, the `QuotationExpiredEvent` sweep with its audit and activity
-listeners, `SchedulingConfig`/`QuotationExpiryJob`/the cron property/the test-suite cron disable,
-and the docs wrap-up) were done on branch `quotation-auto-expiry`, commits `63a2865`..`d843550` off
-`main` at `d7eae98`, every task reviewed clean. The whole-branch review returned MERGE after one
-fix wave, and the branch was merged `--no-ff` as **`2fb2b85`** on 2026-09-01 and deleted. The merged
-result was verified green (**464 tests, 0 failures, 0 errors**) before the branch went away. There
-is no unmerged feature branch to settle — start at item 1 below, then go to §8 and pick the next
-chunk with the user.
+**`user-invitations` is complete but not merged.** Eight tasks (the `RoleGuard` extraction, the
+`invitation` table/entity/repository plus both isolation-guard allowlists, the owner invite
+endpoint, the pending-list + revoke endpoints, the pre-auth accept endpoint, the pre-auth preview
+endpoint, the expiry and concurrency tests, and this docs wrap-up) are done on branch
+`user-invitations`, off `main` at `830f4bd` — three design/plan commits (`639bb23` the spec,
+`532e38a` two corrections to it, `3c5b91a` the plan), then the task commits from `42d20e2` to this
+docs wrap-up. Every task reviewed clean.
+
+The suite is **513 tests, 0 failures, 0 errors** (490 root + 23 `platform-primitives`), up from the
+464-test `main` baseline (+49). **It has not been merged to `main`** — run
+`finishing-a-development-branch` on it before starting anything new, unless you are picking this
+session up specifically to review or merge it. See §3 for what it delivered and §8 for what that
+closes.
+
+Before it, `quotation-auto-expiry` ran to completion and was merged `--no-ff` as **`2fb2b85`** on
+2026-09-01, then deleted; the merged result was verified green (464 tests) before the branch went
+away. `main` is therefore clean at `830f4bd`, and every commit above it belongs to this one
+unmerged branch.
 
 **One loose end that is not code, carried forward from before this slice:** the Bucket4j entry
 written for `/Users/divyam/Documents/dsa/good-repos/CATALOG.md` is **on disk but unversioned** — that
@@ -40,15 +56,15 @@ directory is not a git repository, so nothing was committed there. The rate-limi
 asked for the entry; it exists; it is just untracked. Decide with the user whether that repo should
 be `git init`ed. Do not init it unilaterally.
 
-Before it, `activity-follow-up` ran to completion and **merged to `main` as `f97c62c`**; that
+Before that, `activity-follow-up` ran to completion and **merged to `main` as `f97c62c`**; that
 feature branch is deleted, as was `record-visibility` before it (merged as `c81f59f`),
 `public-rate-limiting` before that (merged as `d7725b0`), `rls-force-and-guard` before that
 (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean test`. On `main` this is now
-   **464 tests, 0 failures, 0 errors** (441 root + 23 `platform-primitives`), up from the
-   **432 tests** baseline (409 root + 23 `platform-primitives`). Gradle prints no total for a
+   then `cd backend && ./gradlew clean test`. On `main` this is
+   **464 tests, 0 failures, 0 errors** (441 root + 23 `platform-primitives`); on the unmerged
+   `user-invitations` branch it is **513** (490 root + 23 `platform-primitives`). Gradle prints no total for a
    multi-project build, so count it yourself:
 
    ```bash
@@ -128,7 +144,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (53 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (56 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -219,10 +235,103 @@ All under `docs/superpowers/`:
     audit + activity event pair on expiry). Source of truth for *what* this slice built.
 36. **`plans/2026-08-31-quotation-auto-expiry.md`** — the seven-task implementation plan for it.
     Executed in full, every task reviewed clean; **merged to `main` as `2fb2b85`** — see §0 and §3.
+37. **`specs/2026-09-01-user-invitations-design.md`** — user-invitations design spec (why
+    `invitation` is the third global table, why its token is hashed when `share_link`'s is
+    plaintext (§3), the `RoleGuard` extraction, the accept ordering (§6.2), the consistent-404
+    error contract (§8), why expiry is lazy with no job (§7), and what `acceptUrl` points at
+    (§6.3/D10)). Source of truth for *what* this slice built.
+38. **`plans/2026-09-01-user-invitations.md`** — the eight-task implementation plan for it.
+    Executed in full, every task reviewed clean; **on branch `user-invitations`, not yet merged**
+    — see §0 and §3.
 
 ## 3. Current state
 
-- **Latest code work: quotation auto-expiry** — **merged to `main` as `2fb2b85`** (branch deleted).
+- **Latest code work: user invitations** — **on branch `user-invitations`, complete and green but
+  NOT yet merged.** Off `main` at `830f4bd`; the task commits run from `42d20e2` (the `RoleGuard`
+  extraction) through `4f8cc7f` (the expiry and race tests) to this docs wrap-up, with challenge #54
+  logged in `0840c38` and #55 in `fb30786`. Eight tasks closing the last
+  open piece of the P0-auth follow-up (§8 item 3), and the first thing in this codebase that lets a
+  tenant have more than one user.
+
+  **`invitation` (migration `V31__invitation.sql`) is the third GLOBAL, RLS-exempt table**, after
+  `refresh_token` and `share_link`, for the reason all three share: accepting is **pre-auth**, so
+  the tenant must be resolved *from the token* before any context exists. It carries a plain
+  `tenant_id` column with no `@TenantId` and no RLS policy, and is therefore allowlisted in **both**
+  isolation guards: `TenantScopingArchTest.GLOBAL_TABLES` (layer 2, now **four** entries — `Tenant`,
+  `RefreshToken`, `ShareLink`, `Invitation`) and `RlsCoverageIntegrationTest.GLOBAL_TABLES` (layer 3,
+  now **three** — `refresh_token`, `share_link`, `invitation`). **The two counts differ on purpose
+  and always will:** `tenant` has no `tenant_id` column at all, so the RLS guard's query never sees
+  it and it needs no exemption there. Any *further* global table must be added to both lists in the
+  same change; the RLS guard fails on a *stale* exemption as well as a missing one, so they cannot
+  quietly drift apart.
+
+  **Three indexes ship in the creating migration** (the standing agreement in §8): `UNIQUE
+  (token_hash)`; a **partial** `UNIQUE (tenant_id, lower(email)) WHERE status = 'PENDING'`, which
+  makes at-most-one-live-invitation-per-address a database fact rather than a check-then-act race
+  while letting accepted/revoked rows accumulate as history; and `(tenant_id, status, expires_at)`
+  for the owner's pending list.
+
+  **Five endpoints, split across two controllers by authentication posture** (mirroring
+  `AuthController` / `PublicShareController`, which is what keeps the `permitAll` matchers a
+  whole-controller statement rather than a per-method one):
+  `POST /api/v1/invitations` (OWNER → 201 with the token embedded in `acceptUrl`, returned exactly
+  once), `GET /api/v1/invitations` (OWNER → pending list, **no tokens**, `expired` derived at read
+  time), `DELETE /api/v1/invitations/{id}` (OWNER → 204),
+  `GET /api/v1/auth/invitations/{token}` (public preview → business name, email, role), and
+  `POST /api/v1/auth/invitations/{token}/accept` (public → 201 `AuthResponse`). The two public
+  routes sit under `/api/v1/auth/**` deliberately: that prefix already carries a rate-limit policy,
+  so they inherit per-IP capping, whereas an unmatched path is *unlimited* by
+  `RateLimitProperties.policyFor`.
+
+  **`platform/security/RoleGuard` is the codebase's first shared authorization primitive.**
+  `TenantService.requireOwner()` was the only role check that existed; `RoleGuard.requireOwner(
+  message)` replaces it and `TenantService` switches over in the same change, so the extraction is
+  a refactor with `TenantServiceTest` unchanged as the proof. It lives in `platform/security`, not
+  `iam`, to avoid a package cycle (`iam` already depends on `tenant`), and so it compares against
+  the literal `"OWNER"` rather than `Role.OWNER.name()` — `Role` lives in `iam` and `platform` must
+  not depend on it. The caller-supplied `message` keeps each 403 body as specific as the
+  hand-rolled one was.
+
+  **Three things to know before touching this area.** (1) `InvitationService.revoke` contains the
+  **only hand-written `tenant_id` comparison in the codebase** — a global table has no structural
+  mechanism to lean on, so the filter is load-bearing rather than belt-and-braces, and a miss falls
+  through to 404 (never 403, which would leak that the id is valid *somewhere*): challenge #54.
+  (2) Every failed accept **and** every failed preview — unknown, revoked, already accepted,
+  expired — returns a **byte-identical 404**, asserted as bytes, so a `permitAll` route cannot be
+  used as a token-enumeration oracle: challenge #55, which also spells out that the entity's own
+  `ConflictException` is a backstop and that `@Version` plus `UNIQUE (tenant_id, email)` on
+  `app_user` are what actually stop concurrent accepts. (3) `accept` is deliberately **not**
+  `@Transactional`: it binds `TenantContext` *before* opening its own `TransactionTemplate`
+  transaction, because a Hibernate session resolves its tenant when it opens and the `User` insert
+  is `@TenantId` + RLS. Inverting those two lines does not throw — it silently writes an unbound
+  row. Third arrival at the trap challenges #9 and #52 already record.
+
+  **Expiry is lazy, and that is a decision, not an oversight (design spec §7).** `expires_at` is
+  checked when a token is presented and the pending list *derives* `expired` for display; there is
+  no `TenantJobRunner` job, unlike the quotation slice immediately before this one. The difference
+  is who observes the state: a quotation's `EXPIRED` is business-visible (list views, pipeline
+  totals, audit, the shared link a customer sees) so it must be materialised; an invitation's
+  expiry is observable only by whoever presents the token, and the lazy check is authoritative at
+  exactly that moment.
+
+  **513 tests, 0 failures, 0 errors** — 490 in the root project, 23 in `platform-primitives`, up
+  from the 464-test `main` baseline (+49). New challenges **#54–#56** (#56 is why this token is
+  hashed when `share_link`'s is plaintext, and the criterion that decides it); the annotations
+  reference needed **no new rows** — every annotation this slice uses (`@Email`, `@Pattern`,
+  `@Size`, `@NotBlank`, `@Enumerated`, `@GetMapping`, `@DeleteMapping`, `@PathVariable`,
+  `@Component`, `@Value`, and the rest) was already documented by earlier slices.
+
+  **What this slice does *not* do:** members management (no listing existing users, no role change,
+  no disable/re-enable); any narrowing of `SALES_MANAGER`, which is now *invitable* but still
+  collapsed into the unrestricted visibility tier — **do not read an invitation to that role as
+  evidence the parent spec §6 three-tier rule is built, because it is not**; a real `EmailSender`
+  (the stub logs; the owner delivers the link, D4); a resend endpoint (revoke + re-invite is the
+  correct semantic — a resend must not leave two live links); or password reset, which is adjacent
+  and token-shaped and genuinely reusable from this design, but has its own decisions. **And it
+  does not ship the page the invite link points at** — see the `acceptUrl` caveat in the header
+  block and in §8.
+
+- **Previous code work: quotation auto-expiry** — **merged to `main` as `2fb2b85`** (branch deleted).
   Commits `63a2865`..`d843550` off `main` at `d7eae98`.
   Seven tasks delivering the codebase's first non-request execution path and a reusable seam for
   every scheduled job after it.
@@ -275,7 +384,7 @@ All under `docs/superpowers/`:
   candidate — see the deferred-Minor backlog); or touch `QuotationService`, `Quotation`'s other
   transitions, or any existing REST endpoint.
 
-- **Previous code work: activity log and follow-ups** — **merged to `main` as `f97c62c`**; the
+- **Before that: activity log and follow-ups** — **merged to `main` as `f97c62c`**; the
   branch is deleted. Commits `212099f`..`48d35a6` off `main` at `830fd47`.
   Fourteen tasks delivering the two aggregates the design spec's §data-model names and nothing else
   (§2's out-of-scope recap: no scheduler, no notification table, no `OVERDUE` column, no attachments,
@@ -336,7 +445,7 @@ All under `docs/superpowers/`:
   `SALES_MANAGER`, unchanged from the visibility slice; any change to the four existing aggregates'
   own tables.
 
-- **Before that: intra-tenant record-level visibility filtering** — **merged to `main` as
+- **And before that: intra-tenant record-level visibility filtering** — **merged to `main` as
   `c81f59f`.** Branch `record-visibility`, off `main` at `29b59ca`, now deleted. Nine tasks: `VisibilityPolicy` (role → `Specification`
   per aggregate, `unrestricted()` fail-open for every role but `SALES_EXEC`), `VisibleFinder` (the
   single permitted reader of the four guarded repositories), customer and enquiry reads/writes
@@ -354,7 +463,8 @@ All under `docs/superpowers/`:
   narrowing it later is a schema-plus-admin-surface slice of its own. It also does not make
   unassigned records confidential: `assigned_to IS NULL` is visible to every `SALES_EXEC`, the
   standard CRM shared-pool idiom — confidentiality begins at assignment, not at record creation.
-  Backlog item #3 (§8) is now fully closed except for user invitations.
+  Backlog item #3 (§8) was left fully closed except for user invitations at the time; the
+  `user-invitations` slice above has since closed that last piece too.
 
   **If you add a new tenant-scoped aggregate, read this.** The visibility layer does *not* extend
   itself, and its guard will not tell you so. `VisibilityScopingArchTest.GUARDED_REPOSITORIES` is a
@@ -587,7 +697,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
 - **JDK 25** installed (`~/Library/Java/JavaVirtualMachines/openjdk-25.0.1`). Shell default is JDK 21, but the **Gradle toolchain uses 25** — do NOT change the shell default.
 - **Gradle 9.6.1** (via Homebrew) — but always use the wrapper: `cd backend && ./gradlew ...`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 296 tests run in ~13s once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew test` (or `clean test` for a full run). Integration tests spin up one shared Postgres container (singleton pattern) — 513 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -616,14 +726,16 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Keep the annotations reference current:** add a row when a new annotation appears.
 - **TDD:** failing test → run-to-confirm-fail → minimal code → run-to-pass → commit. One task per commit.
 - **Money is never `double`** (BigDecimal / NUMERIC / JSON string). P1a got the Java/Postgres side right (`NUMERIC`, `compareTo` not `equals`) but still shipped `BigDecimal` fields on the wire as plain JSON numbers; **P1b closed that gap globally** with `platform.money.BigDecimalStringModule` (challenge #17) — every `BigDecimal`, including P1a's already-shipped fields, now serializes as a JSON string. **Since 2026-08-27** that class lives in the `platform-primitives` Gradle module (same package, `com.easycrm.platform.money`) and is registered by `MoneyAutoConfiguration` through `AutoConfiguration.imports`, not component scan. **The event wire is a separate mapper on purpose:** use `EventJson.mapper()` for anything persisted or published, and inject Boot's `ObjectMapper` for HTTP — an ArchUnit rule fails the build if you construct your own anywhere else (challenge #32).
-- **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces).
+- **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces). **There is exactly one deliberate exception in the codebase** — `InvitationService.revoke` filters `invitation` by tenant in code, because a global pre-auth table has no structural mechanism to lean on. Challenge #54 states the rule that governs it: name the exception explicitly, give it the rigor the missing structural check would have had, and make its failure a 404 rather than a 403. Do not treat it as licence to hand-write a filter on a tenant-scoped table.
 
 ## 8. The next chunk — pick one with the user
 
 The wedge (**enquiry → quotation → order**) is functionally complete end-to-end and hardened,
-including the order aggregate's own lifecycle, and quotations can now be rendered as a PDF and
-shared over WhatsApp. All four candidates below are scoped in the design spec
-(`specs/2026-07-22-easycrm-design.md`). Present them, take the user's choice, and only then start
+including the order aggregate's own lifecycle; quotations can be rendered as a PDF and shared over
+WhatsApp; and a tenant can now have more than one user. All four candidates below are scoped in the
+design spec (`specs/2026-07-22-easycrm-design.md`), and **three of the four are now done** — read
+the ranking paragraphs after the list before proposing anything, because what is left is thinner
+than a four-item list looks. Present them, take the user's choice, and only then start
 the workflow from §0 step 4.
 
 1. ~~**`activity` / `follow_up` entities**~~ — **DONE**, merged as `f97c62c` (§0, §3). CALL/WHATSAPP/EMAIL/VISIT/NOTE logs against any of the four visibility-scoped
@@ -642,17 +754,35 @@ the workflow from §0 step 4.
    loop (challenge #52 is why getting that ordering wrong is silent rather than loud). The IST
    day-boundary trap this raised for comparing a `LocalDate` column against the server's UTC clock
    is challenge #53.
-3. **P0-auth follow-up** — **fully closed except for user invitations.** This item started as three
-   things: rate limiting, record-level visibility, and user invitations. Rate limiting landed in the
-   `public-rate-limiting` slice (`d7725b0`; §3): `/public/q/{token}` and the auth routes are capped
-   per-IP with a 429 + `Retry-After` contract — that closed the *abuse-of-rate* half of PF19 and
-   **not** the *entitlement-metering* half, which stays open below. Record-level visibility landed in
-   the `record-visibility` slice (merged as `c81f59f`; §3): every read and
-   write on `Customer`, `Enquiry`, `Quotation`, and `Order` is now filtered by `assigned_to` through
-   a single `VisibleFinder`, guarded by `VisibilityScopingArchTest`. **User invitations are now the
-   sole remaining P0-auth follow-up.**
-   Note what visibility filtering did *not* ship, in §3's slice detail: `SALES_MANAGER` is collapsed
-   into the unrestricted tier, so the parent spec §6's three-tier rule is not yet built.
+3. ~~**P0-auth follow-up**~~ — **DONE. This item is now closed entirely; nothing of it remains.**
+   It started as three things: rate limiting, record-level visibility, and user invitations, and all
+   three have landed. Rate limiting landed in the `public-rate-limiting` slice (`d7725b0`; §3):
+   `/public/q/{token}` and the auth routes are capped per-IP with a 429 + `Retry-After` contract —
+   that closed the *abuse-of-rate* half of PF19 and **not** the *entitlement-metering* half, which
+   stays open below. Record-level visibility landed in the `record-visibility` slice (merged as
+   `c81f59f`; §3): every read and write on `Customer`, `Enquiry`, `Quotation`, and `Order` is now
+   filtered by `assigned_to` through a single `VisibleFinder`, guarded by
+   `VisibilityScopingArchTest`. **User invitations landed in the `user-invitations` slice** (branch
+   complete and green, pending merge — §0, §3): an owner invites an email + role, the invitee
+   accepts pre-auth and becomes an `ACTIVE` user of that tenant, plus a pending list and revoke.
+   **Because this was the last open piece, the whole P0-auth follow-up is now done — the ranking
+   below is written on that basis.**
+
+   Three qualifications to carry forward, none of which reopen the item:
+   - **The invite link's `acceptUrl` points at a frontend route that does not exist yet** —
+     `{easycrm.public-base-url}/invite/{token}` (design spec D10). The durable form was reserved
+     deliberately, because these links are pasted into WhatsApp and must still resolve on the day
+     the frontend lands rather than stranding or forcing a permanent redirect out of an API
+     namespace. The consequence is honest and qualifies the "works on day one" claim: the **token**
+     works and both public endpoints consume it, but the **page is not browsable**. Wiring
+     `/invite/{token}` is the first thing to do when the frontend starts.
+   - **`SALES_MANAGER` is now *invitable* but is still collapsed into the unrestricted visibility
+     tier**, exactly as the record-visibility slice left it. The parent spec §6's three-tier rule
+     remains **unbuilt**, and inviting a `SALES_MANAGER` must not be read as evidence otherwise —
+     narrowing that tier is still a schema-plus-admin-surface slice of its own.
+   - **Members management is out of scope and unbuilt:** there is no way to list existing users,
+     change a member's role, or disable one. Invite + accept + revoke + pending list is the whole
+     surface.
 4. **Cursor pagination** — quotation/order/enquiry lists are all offset-based `Pageable`/
    `PageResponse`; large tenants will need cursor pagination. Cross-cutting, lower urgency.
 
@@ -695,25 +825,36 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested default — read this before proposing anything.** Six slices in a row have now been
-either hardening or moving the product (RLS forcing, rate limiting, record-level visibility,
-activity/follow-up, then scheduled auto-expiry). **Backlog items #1 and #2 are now both done** —
-see §3's `activity-follow-up` and `quotation-auto-expiry` entries — so the honest ranking has
-changed again:
+**Suggested default — read this before proposing anything.** **Items #1, #2 and #3 are now all
+closed** (§3's `activity-follow-up`, `quotation-auto-expiry` and `user-invitations` entries), which
+is a real change in kind: the numbered backlog above is down to a single open item, and the
+correctness backlog is empty. Seven slices in a row have been hardening or moving the backend (RLS
+forcing, rate limiting, record-level visibility, activity/follow-up, scheduled auto-expiry, then
+user invitations). The honest ranking is now:
 
-- **#3 (user invitations) is now the largest genuinely-open product item, and the strongest
-  remaining claim.** It is the sole surviving piece of the P0-auth follow-up, and unlike PF19 it is
-  blocked on nothing — no design thread, no missing channel. With #1 and #2 both closed, nothing
-  else on the board is a bigger open piece of product.
-- **#4 (cursor pagination)** — cross-cutting, lower urgency, unchanged by this slice.
+- **#4 (cursor pagination) is the only open item left on the numbered list.** It is cross-cutting
+  and blocked on nothing, but it is also *not* urgent: no tenant is large enough for offset paging
+  to hurt, and the "before the first large tenant" note below is a better description of when it
+  starts to matter. It leads the board by elimination, not on merit — do not present it as an
+  obvious next step.
 - **PF19's entitlement-metering half stays blocked on design, not effort.** The public route has no
-  JWT, so there is nowhere to hang a per-tenant check; it needs the billing thread's decisions before
-  code, same as before this slice.
-- **`platform-web` stays the weakest claim.** Next by dependency order only; unchanged by this
-  slice.
+  JWT, so there is nowhere to hang a per-tenant check; it needs the billing thread's decisions
+  before code, same as before this slice. If the user wants to move it, the unblocking work is a
+  *design* thread, not an implementation slice.
+- **`platform-web` is next by dependency order only, and dependency order is not priority order.**
+  Nothing has made the module queue more urgent; it is still the weakest claim of the three.
 
-A reasonable reading is: **#3 by default now that #1, #2, and the correctness backlog are all
-empty.** Confirm with the user rather than assuming.
+**With #1–#3 gone, the most honest thing to say is that the backend backlog no longer contains an
+obviously-strongest next item, and the strongest candidate may not be on this list at all.** Two
+things not currently numbered here now deserve to be raised with the user alongside #4:
+**the frontend** — nothing has ever been built, and the invitation slice just shipped a link
+(`/invite/{token}`) that has no page behind it, which is the first concrete piece of product that a
+backend slice cannot finish — and **members management** (list users, change a role, disable one),
+the natural sequel to invitations and the point at which a multi-user tenant becomes administrable
+rather than merely creatable. Neither is scoped anywhere yet, so both would start at brainstorming.
+
+Present the options and take the user's choice; do not default into #4 just because it is the last
+number standing.
 
 **Before any second app instance:** the rate limiter's store is in-process (§3) — running N
 instances behind a load balancer multiplies every configured limit by N, silently. Build the
@@ -755,6 +896,22 @@ line-by-line against its ledger before that workspace was deleted at merge. Ever
 workspaces is now gone, so this list is the durable copy. So it really is **self-contained**:
 don't go looking for an SDD ledger to corroborate it, there won't be one. Roughly highest-value
 first *within* each slice's block; 23–24 are not lower-value than 22, they are just newer.
+
+**The `user-invitations` slice's deferred minors are NOT yet in this list, and must be triaged into
+it before its workspace is deleted.** Its ledger
+(`.superpowers/sdd/2026-09-01-user-invitations/progress.md`) carries ten `minor (deferred)` lines,
+**two of them flagged to the final review** and therefore possibly fixed rather than carried: (a)
+the security-critical filter chain (`findByTokenHash` → filter `PENDING` → filter `!isExpired` →
+one `orElseThrow`) is duplicated verbatim between `InvitationService.accept` and `preview`, so
+editing one copy's state checks without the other silently reopens the token-existence oracle
+challenge #55 closed — a shared private helper would make that structural rather than
+conventional; and (b) the two-thread accept race test has no latch or barrier, so genuine overlap
+is likely but not guaranteed, and on accidental serialization it would pass through the pre-transaction
+`PENDING` filter or the entity precondition without ever exercising `@Version`. The other eight are
+cosmetic or scale-related (an in-memory scan of a tenant's `PENDING` rows in the duplicate-invite
+pre-check, a redundant `save()` after `revoke()` inside a transactional method, unused imports).
+Do this in the same pass as the merge, the way `quotation-auto-expiry`'s two findings were recorded
+in `d843550`; the workspace is the only copy until then.
 
 1. ~~**`QuotationService.list` has the dropped-filter bug**~~ — **DONE.** Closed by the quotation
    PDF/share slice's Task 9: `QuotationSpecifications.filter` mirrors `OrderSpecifications`,
