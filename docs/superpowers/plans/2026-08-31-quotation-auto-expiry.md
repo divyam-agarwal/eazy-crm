@@ -122,8 +122,10 @@ In `DueWindow`, add below the existing `today(Instant)` method:
      * Today's date in IST. Distinct from {@link #today(Instant)}, which returns the day's
      * instant boundaries; this returns the calendar date itself, for comparison against a
      * {@code LocalDate} column such as {@code quotation_version.valid_until} that a user
-     * entered in IST. Comparing such a column against a UTC date would expire quotations
-     * 5½ hours early every day.
+     * entered in IST. Comparing such a column against a UTC date gets the error's
+     * direction backwards from the obvious guess: a UTC date is never later than the IST
+     * one, so too-early an asOf matches FEWER rows and DELAYS expiry -- a quotation due to
+     * expire at IST midnight is skipped until the next night's run.
      */
     public static LocalDate todayDate(Instant now) {
         return now.atZone(IST).toLocalDate();
@@ -206,9 +208,14 @@ class QuotationTest {
     @Test
     void refusesToExpireADraftAndLeavesTheStatusUnmutated() {
         Quotation q = new Quotation(UUID.randomUUID(), null); // starts DRAFT
+        // Assert on getFields(), NOT on getMessage(): ValidationException carries its
+        // detail in the field map and its message is a fixed string. A
+        // hasMessageContaining assertion here would tempt someone to change the shared
+        // exception class -- which is used by 29 throw sites -- to satisfy one test.
         assertThatThrownBy(q::expire)
-            .isInstanceOf(ValidationException.class)
-            .hasMessageContaining("only a sent quotation can be expired");
+            .isInstanceOfSatisfying(ValidationException.class, ex ->
+                assertThat(ex.getFields())
+                    .containsEntry("status", "only a sent quotation can be expired"));
         assertThat(q.getStatus()).isEqualTo(QuotationStatus.DRAFT);
     }
 
@@ -531,7 +538,7 @@ git commit -m "feat: add the auto-expiry candidate query behind VisibleFinder"
 Three traps, each of which fails *silently* if you get it wrong:
 
 1. **`runAs` must wrap `tx.execute`, never the reverse.** `TenantAwareTransactionManager.doBegin` reads `TenantContext` to set the `app.current_tenant` GUC, and Hibernate resolves a session's tenant once at session-open and never re-reads it (challenge #9). Context set *after* the transaction opens binds to nothing — and `doBegin` returns early with the GUC unset, so scoped tables return **zero rows** rather than raising. Step 6 proves this is actually tested.
-2. **Use `TransactionTemplate`, not `@Transactional`.** A `@Transactional` method invoked from this class's own loop is a self-invocation: Spring's proxy is bypassed entirely and the "per-tenant transaction" silently joins whatever transaction the caller already had, collapsing the per-tenant boundary. Programmatic transaction management removes the trap rather than documenting it.
+2. **Build your own `TransactionTemplate` with `PROPAGATION_REQUIRES_NEW`; do not inject Boot's.** A `@Transactional` method invoked from this class's own loop is a self-invocation: the proxy is bypassed and the "per-tenant transaction" silently joins the caller's. But Boot's autoconfigured `TransactionTemplate` bean is `PROPAGATION_REQUIRED`, which leaves the same hole open from the other side — a caller that already holds a transaction makes `tx.execute` join it, `doBegin` never runs, the GUC stays unset, and every scoped read returns zero rows. Construct the template from the injected `PlatformTransactionManager` and set `REQUIRES_NEW`. Never mutate the shared bean; other code autowires it.
 3. **`TenantContext.runAs` is overloaded** on `Runnable` and `Supplier<T>`. An expression lambda whose body is a method call — `() -> tx.execute(...)` — is compatible with both and will not compile ("reference to runAs is ambiguous"). Bind it to a typed `Supplier<Integer>` local first, as the implementation below does.
 
 - [ ] **Step 1: Write the failing tests**
@@ -557,7 +564,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -618,16 +627,18 @@ class TenantJobRunnerTest extends IntegrationTest {
         seedOneCustomerFor(trialA);
         seedOneCustomerFor(activeB);
 
-        List<Long> counts = new ArrayList<>();
+        Map<UUID, Long> counts = new HashMap<>();
         runner.forEachTenant("test-job", t -> {
-            counts.add(customers.count());
+            counts.put(t, customers.count());
             return 0;
         });
 
-        // Every swept tenant sees exactly its own single customer -- never zero (context
-        // not bound) and never the cross-tenant total (isolation broken).
-        assertThat(counts).isNotEmpty();
-        assertThat(counts).allMatch(c -> c == 1L);
+        // Each of MY tenants sees exactly its own single customer -- never zero (context
+        // not bound) and never the cross-tenant total (isolation broken). Keyed by tenant
+        // rather than asserted over every count: the sweep also visits tenants left behind
+        // by other test classes, which have no customers and would contribute 0.
+        assertThat(counts).containsEntry(trialA, 1L);
+        assertThat(counts).containsEntry(activeB, 1L);
     }
 
     @Test
@@ -673,10 +684,15 @@ class TenantJobRunnerTest extends IntegrationTest {
     }
 
     private void seedOneCustomerFor(UUID tenantId) {
+        // BLOCK lambda, not an expression lambda: runAs is overloaded on Runnable and
+        // Supplier, and `() -> customers.saveAndFlush(...)` matches both ("reference to
+        // runAs is ambiguous"). The braces make it unambiguously a Runnable.
         TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"),
-            () -> customers.saveAndFlush(new Customer(
-                "Customer of " + tenantId, null, "27", null, null, 0, null, null,
-                CustomerSource.MANUAL)));
+            () -> {
+                customers.saveAndFlush(new Customer(
+                    "Customer of " + tenantId, null, "27", null, null, 0, null, null,
+                    CustomerSource.MANUAL));
+            });
     }
 }
 ```
@@ -1483,7 +1499,7 @@ Append to `docs/superpowers/engineering-challenges.md` using the template at the
 
 Entry A — **the tenant context must be bound before the transaction opens, and getting it wrong is silent.** Cover: a scheduled job has no JWT, so nothing establishes `TenantContext` the way the auth filter does; `TenantAwareTransactionManager.doBegin` reads the ThreadLocal to set the `app.current_tenant` GUC and Hibernate resolves a session's tenant once at session-open; therefore context set after the transaction opens binds to nothing, `doBegin` returns early with the GUC unset, and RLS-scoped tables return **zero rows instead of raising** — a job that silently does nothing looks exactly like a job with nothing to do. Solution: `TenantJobRunner` owns the ordering so no job re-derives it, and `TenantJobRunnerTest.eachTenantsBodySeesOnlyItsOwnRows` is verified to fail when the order is inverted. Include the second half: why `TransactionTemplate` rather than `@Transactional` — a `@Transactional` method called from the runner's own loop is a self-invocation, the proxy is bypassed, and the per-tenant transaction silently joins the caller's, collapsing the boundary. Lesson: when the failure mode is "returns nothing" rather than "throws", the test that proves the guard fires is worth more than the guard.
 
-Entry B — **an IST calendar date compared against a `LocalDate` column.** Cover: `validUntil` is a `LocalDate` a user typed in IST; the server clock is `Clock.systemUTC()`; IST is UTC+5:30 so the IST day rolls over at 18:30 UTC the previous day. Comparing `validUntil` against a UTC-derived date would expire every tenant's quotations 5½ hours early, every day, and only on the UTC-evening side of the boundary — so it would look correct in a morning-run test and wrong in production. Solution: `DueWindow.todayDate(Instant)` beside the existing IST window arithmetic (one home for the zone, not two), strictly-before comparison so a quote is valid through its stated day, and `@Scheduled(zone = "Asia/Kolkata")` so the fire time is IST regardless of the server's timezone. Lesson: a date column entered in a local zone must be compared against a date computed in that same zone; "the server is UTC" is not neutrality, it is a different answer.
+Entry B — **an IST calendar date compared against a `LocalDate` column.** Cover: `validUntil` is a `LocalDate` a user typed in IST; the server clock is `Clock.systemUTC()`; IST is UTC+5:30 so the IST day rolls over at 18:30 UTC the previous day. Comparing `validUntil` against a UTC-derived date fails in the direction most people guess wrong: a UTC date is never *later* than the IST one, so the naive `asOf` is too early, matches *fewer* rows under `validUntil < asOf`, and **delays** expiry rather than hastening it — the job fires at 00:30 IST (19:00 UTC the previous day), so a quotation due to expire at IST midnight is skipped until the next night's run. Note that a test running in the UTC morning would see IST and UTC dates agree and pass either way; only an instant at or after 18:30 UTC discriminates the two. Solution: `DueWindow.todayDate(Instant)` beside the existing IST window arithmetic (one home for the zone, not two), strictly-before comparison so a quote is valid through its stated day, and `@Scheduled(zone = "Asia/Kolkata")` so the fire time is IST regardless of the server's timezone. Lesson: a date column entered in a local zone must be compared against a date computed in that same zone; "the server is UTC" is not neutrality, it is a different answer.
 
 - [ ] **Step 3: Add the two new annotations**
 

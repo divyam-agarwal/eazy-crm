@@ -62,11 +62,18 @@ The snippet elides the optimistic-lock retry described in §6, which wraps the
 
 Two choices carry weight:
 
-- **`TransactionTemplate`, not `@Transactional`.** A `@Transactional` method invoked from
-  this class's own loop is a self-invocation: Spring's proxy is bypassed and the "per-tenant
-  transaction" silently joins whatever transaction the caller already had — which would
-  quietly collapse D5's per-tenant boundary into a single sweep-wide transaction. Programmatic
-  transaction management removes the trap rather than documenting it.
+- **Its own `TransactionTemplate`, built with `PROPAGATION_REQUIRES_NEW`.** Two distinct traps
+  are closed here, and only the first is obvious. A `@Transactional` method invoked from this
+  class's own loop is a self-invocation: Spring's proxy is bypassed and the "per-tenant
+  transaction" silently joins whatever transaction the caller already had, collapsing D5's
+  per-tenant boundary into a single sweep-wide transaction. But injecting Boot's autoconfigured
+  `TransactionTemplate` would leave the second trap open — that bean is `PROPAGATION_REQUIRED`,
+  so a caller already holding a transaction (a future job wrapped in `@Transactional`, an admin
+  "run now" endpoint, a `@Transactional` test) makes `tx.execute` **join** it: `doBegin` never
+  runs, the GUC stays unset, the session has already resolved `NO_TENANT`, and every scoped read
+  returns zero rows — precisely the failure this class exists to prevent. The runner therefore
+  constructs its own template from the `PlatformTransactionManager` and sets
+  `PROPAGATION_REQUIRES_NEW`. It must not mutate the shared bean, which other code autowires.
 - **`runAs` wraps `tx.execute`, never the reverse.** `TenantAwareTransactionManager.doBegin`
   reads `TenantContext` to set the `app.current_tenant` GUC, and Hibernate resolves a
   session's tenant once at session-open and never re-reads it (challenge #9). Context set
@@ -95,7 +102,7 @@ sweep or the runner directly, so no test waits on a cron.
 
 ### 3.4 `sales/QuotationExpiredEvent` + two listeners (new)
 
-`record QuotationExpiredEvent(UUID quotationId, UUID quotationVersionId, LocalDate validUntil)`,
+`record QuotationExpiredEvent(UUID quotationId, String quoteNo, UUID quotationVersionId, LocalDate validUntil)`,
 with `QuotationExpiredAuditListener` and `QuotationExpiredActivityListener` copied
 shape-for-shape from the accept path's pair. The record deliberately carries **no**
 `actorUserId`, unlike `QuotationAcceptedEvent`: there is no actor, and an always-null
@@ -115,7 +122,7 @@ the existing listeners, so their writes join the tenant's transaction and roll b
   `VisibilityScopingArchTest` fails the build on any read of it outside
   `com.easycrm.platform.visibility`. The visibility filter is a no-op under a `SYSTEM`
   principal, but the guard forces the read into the one place that is allowed to do it.
-- **`DueWindow.today(Instant)`** — today's date in IST. `DueWindow` already computes this
+- **`DueWindow.todayDate(Instant)`** — today's date in IST. `DueWindow` already computes this
   internally for its day boundaries; this exposes it rather than adding a second home for
   IST arithmetic.
 - **`TenantRepository.findByStatusIn(...)`** — a derived query. `Tenant` is unguarded, so no
@@ -140,12 +147,17 @@ and expires once IST rolls into 1 Sep. A null `validUntil` means open-ended and 
 and the other three are terminal.
 
 IST matters because the tenants are Indian and `validUntil` is a `LocalDate` a user typed in
-IST. Evaluating it against a UTC date would expire quotes 5½ hours early every day, on the
-UTC-evening side of the boundary.
+IST. Evaluating it against a UTC date would get the direction of the error backwards from what
+you might guess: a UTC calendar date is never *later* than the IST one and, between 18:30 and
+24:00 UTC, is a full day earlier. The job fires at 00:30 IST — 19:00 UTC the previous day — so a
+UTC `asOf` would still read yesterday's date. Since the predicate is `validUntil < asOf`, too
+early an `asOf` matches *fewer* rows: a quotation that should expire the moment IST rolls over
+is skipped and waits for the next night's run. The mistake **delays** expiry, it does not
+hasten it.
 
 ## 5. Data flow, one run
 
-1. 00:30 IST — Spring fires `QuotationExpiryJob`; `asOf = DueWindow.today(clock.instant())`.
+1. 00:30 IST — Spring fires `QuotationExpiryJob`; `asOf = DueWindow.todayDate(clock.instant())`.
 2. Runner loads `TRIAL` + `ACTIVE` tenants, no tenant context (global table).
 3. Per tenant, `runAs(systemPrincipal)` **then** `tx.execute`:
    1. `TenantAwareTransactionManager.doBegin` sets the `app.current_tenant` GUC from the

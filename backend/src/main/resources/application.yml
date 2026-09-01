@@ -64,6 +64,13 @@ easycrm:
         path: /api/v1/auth/**
         capacity: 30
         refill-period: 1m
+  # Scheduled work. Cron is a property, not a constant, so it can be moved without a
+  # release — and so the test suite can disable it outright ("-" is Spring's disabled-cron
+  # value). 00:30 in the zone pinned on @Scheduled (Asia/Kolkata), i.e. just after the IST
+  # midnight at which a lapsed quotation becomes expirable.
+  jobs:
+    quotation-expiry:
+      cron: "0 30 0 * * *"
 management:
   endpoints:
     web:

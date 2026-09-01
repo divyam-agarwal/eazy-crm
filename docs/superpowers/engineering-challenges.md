@@ -3110,3 +3110,128 @@ Also worth checking deliberately, not assuming: three scopes that each look obvi
 in isolation (`OVERDUE`, `DUE_TODAY`, `UPCOMING`) can still silently overlap or
 leave a gap at their boundary — verify a partition actually partitions before
 trusting that three counts sum to the whole.
+
+---
+
+## Challenge 52 — A scheduled job has no JWT, and getting the ordering wrong is silent
+
+**Phase:** Implementation (quotation auto-expiry slice)
+
+### The problem
+
+Every existing tenant-scoped read in this codebase runs behind `JwtAuthFilter`, which
+resolves `TenantContext` before anything else touches the request. A nightly job has no
+request and no token — nothing establishes `TenantContext` the way the filter does, and
+nothing forces it to be set at the right moment relative to the transaction. Get the
+ordering wrong and the result is not an exception; it's silence.
+
+### Why it's hard
+
+`TenantAwareTransactionManager.doBegin` reads the `TenantContext` ThreadLocal to set the
+`app.current_tenant` Postgres GUC, and Hibernate resolves a session's tenant discriminator
+**once, at session-open** (challenge #9) and never re-reads it. So context set *after* the
+transaction has already opened binds to nothing: `doBegin` finds no context, returns early
+with the GUC unset, and every RLS-scoped table then returns **zero rows instead of
+raising**. A job built this way looks, from the log line, exactly like a job that correctly
+found nothing to expire — there is no stack trace to Google, no failed assertion, just an
+empty sweep every single night.
+
+There is a second, independent door into the identical silent failure, and it is easy to
+walk through while trying to fix the first one. The instinctive fix for "no per-request
+transaction boundary" is `@Transactional` on the per-tenant unit of work — but a
+`@Transactional` method called from the runner's own loop is a **self-invocation**: the
+Spring proxy is bypassed, so the "transaction" is whatever the caller already has (typically
+none), and nothing new opens. The next instinct is to inject `TransactionTemplate` and call
+`tx.execute(...)` explicitly — except Boot's autoconfigured `TransactionTemplate` bean is
+`PROPAGATION_REQUIRED`. If the runner is ever invoked from *inside* an existing transaction
+(a caller already holding one), `tx.execute` **joins** it rather than opening a new one:
+`doBegin` never runs, the GUC stays unset, and the read returns zero rows — the exact same
+symptom as the ordering bug, reached from the opposite direction. Self-invocation and a
+joining caller are two different bugs that produce one indistinguishable failure mode.
+
+### The solution
+
+`TenantJobRunner` owns both halves of the ordering so no future job has to re-derive
+either: `runInTenant` wraps `tx.execute(...)` **inside** `TenantContext.runAs(...)`, never
+the reverse, and the template it uses is built by the runner itself —
+`new TransactionTemplate(transactionManager)` with
+`setPropagationBehavior(PROPAGATION_REQUIRES_NEW)` explicitly set — rather than an injected,
+autoconfigured bean. `REQUIRES_NEW` closes the joining-caller trap the same motion that
+owning the template closes the self-invocation trap: every call always gets its own
+transaction, regardless of what, if anything, is already open on the calling thread.
+`TenantJobRunnerTest.eachTenantsBodySeesOnlyItsOwnRows` is the test that proves the ordering
+half fires: it is verified to fail (zero rows, no exception) when `runAs` and `tx.execute`
+are inverted. A second test in the same class,
+`opensItsOwnTransactionEvenWhenTheCallerAlreadyHasOne`, independently pins the
+`REQUIRES_NEW` half: it uses Boot's autoconfigured, `PROPAGATION_REQUIRED`
+`TransactionTemplate` bean as the **caller's** outer transaction -- standing in for a
+caller that already holds one -- and asserts the runner's own per-tenant work still sees
+its tenant's rows, which only holds if the runner truly opens its own transaction rather
+than joining the caller's.
+
+### Lesson
+
+When the failure mode is "returns nothing" rather than "throws," the test that proves the
+guard fires is worth more than the guard — a correct-looking ordering with no test behind
+it is one refactor away from being silently wrong again. And a fix for one silent-zero-rows
+trap can open a different door to the identical symptom: closing "context after the
+transaction" is not the same fix as closing "transaction joins the caller's," even though
+both present as an empty result set with no error. Diagnose by asking what specifically
+guarantees a *new* transaction with the *right* context bound before it opens, not just
+whether a transaction exists at all.
+
+---
+
+## Challenge 53 — An IST calendar date compared against a `LocalDate` column
+
+**Phase:** Implementation (quotation auto-expiry slice)
+
+### The problem
+
+`Quotation`'s `validUntil` is a `LocalDate` a user typed while thinking in IST. The
+server's clock is `Clock.systemUTC()`. IST is UTC+5:30, so the IST calendar day rolls over
+at 18:30 UTC the previous day — for roughly six hours of every day, "today" in UTC and
+"today" in IST disagree. The nightly sweep needs an `asOf` date to compare against
+`validUntil`, and deriving it from the wrong zone gets the direction of the bug backwards
+from what most people would guess.
+
+### Why it's hard
+
+The naive instinct is that a UTC-derived date is somehow "neutral," and the intuitive fear
+is that it would expire quotations *early*. It's the opposite. A UTC date is **never later**
+than the IST date on the same instant (UTC is always behind or equal, never ahead) — so
+comparing `validUntil < asOfUtc` matches **fewer** rows than `validUntil < asOfIst`, and the
+naive job **delays** expiry rather than hastening it. Concretely: the job fires at 00:30
+IST, which is 19:00 UTC the previous day. A quotation with `validUntil` = today's IST date
+is due to expire once the IST calendar flips past that date — but `asOfUtc` at that instant
+is still *yesterday's* UTC date, so the comparison sees the quotation as not-yet-due and
+skips it for an entire extra night.
+
+The bug is also easy to miss in the one place most people would look: a test written and
+run during the UTC morning (roughly 00:00–18:30 UTC) sees IST and UTC agree on "today," so
+it passes regardless of which zone the code actually uses. Only a test instant at or after
+18:30 UTC — the IST-day rollover — discriminates the two, and nothing about the naive
+implementation signals that this is the one window that matters.
+
+### The solution
+
+`DueWindow.todayDate(Instant)` sits beside the existing `DueWindow.today(Instant)` IST
+window arithmetic (challenge #51) — one home for the zone constant, not two independently
+maintained ones. It returns `now.atZone(IST).toLocalDate()`, and the sweep compares with a
+strict `validUntil < asOf`, so a quote stays valid through the entirety of its stated day.
+`QuotationExpiryJob` itself pins `@Scheduled(cron = "...", zone = "Asia/Kolkata")` so the
+job's *fire time* is also IST-correct regardless of the deploying server's system timezone
+— getting the comparison right and then running it at the wrong wall-clock instant would
+just trade one zone bug for another.
+
+### Lesson
+
+A date column a user enters in a local zone must be compared against a date computed in
+that same zone; "the server runs in UTC" is not a neutral default, it is a different
+answer, and the difference is not symmetric — it can only make a UTC-derived `asOf` earlier
+than or equal to the IST one, never later, so the bug it introduces always points in the
+*delay* direction, not the early-expiry direction most people would guess. When a
+day-boundary bug is timezone-dependent, write (or at least reason through) the test case
+at the actual rollover instant, not merely at a convenient time during your own working
+day — a test that only runs correctly during a specific window of the clock is not
+exercising the property it claims to.
