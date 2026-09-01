@@ -79,4 +79,28 @@ dependencies {
     testImplementation(libs.archunit.junit5)
 }
 
-tasks.withType<Test> { useJUnitPlatform() }
+// The committed OpenAPI snapshot lives outside the Gradle project (the Gradle root is
+// backend/, the snapshot is at <repo>/docs/api/openapi.yaml). The absolute path is injected
+// rather than derived from the test's working directory, which is not something a test should
+// have an opinion about.
+val openApiSnapshot = layout.projectDirectory.file("../docs/api/openapi.yaml")
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+    systemProperty("openapi.snapshot", openApiSnapshot.asFile.absolutePath)
+}
+
+// Regenerates docs/api/openapi.yaml by running the drift guard in write mode. Deliberately the
+// SAME test, not a second generation path: a separate generator could disagree with the guard,
+// and then neither would mean anything.
+tasks.register<Test>("updateOpenApiSnapshot") {
+    group = "documentation"
+    description = "Regenerate docs/api/openapi.yaml from the current controllers."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform()
+    systemProperty("openapi.snapshot", openApiSnapshot.asFile.absolutePath)
+    systemProperty("openapi.write", "true")
+    filter { includeTestsMatching("com.easycrm.platform.openapi.OpenApiSnapshotTest") }
+    outputs.upToDateWhen { false }
+}
