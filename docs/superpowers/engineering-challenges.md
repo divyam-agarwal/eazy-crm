@@ -3854,3 +3854,67 @@ exact property the wrapped-`LinkedHashMap` form was chosen to preserve. When a t
 bar is stated as "identical," verify the specific idiom against that literal bar (here: run it and
 diff the bytes, or reason about the concrete JDK class returned) rather than reaching for whichever
 immutable-copy one-liner is shortest and trusting it's equivalent by category.
+
+---
+
+## Challenge 63 — A committed API snapshot needs a writer and a checker, and they have to be the same code
+
+**Phase:** Implementation (openapi-contract, Task 4)
+
+### The problem
+
+A committed OpenAPI document is only worth having if something fails when the code and the
+document disagree. That needs two capabilities that pull against each other: something that
+**writes** `docs/api/openapi.yaml` from the current controllers, and something that **checks** the
+committed file still matches them.
+
+The obvious shape is two artefacts — a Gradle plugin (`springdoc-openapi-gradle-plugin`, or a
+`bootRun`-and-curl task) that boots the app and dumps the spec, plus a test that reads the file and
+compares. That gives two independent code paths producing what is supposed to be one document, and
+they will not stay equal: they boot different contexts, apply different property sets, and
+serialize through different writers. When they drift, the guard is asserting against something the
+generator never emits — and the failure is not a visible disagreement, it is a red build that
+**stays red after you regenerate**, which reads as a broken tool rather than a real finding.
+
+Determinism compounds it. springdoc's internal maps have no guaranteed iteration order, so two runs
+over byte-identical source can emit the same content in a different key order. A guard that
+compares text would then fail intermittently for no real reason — the failure mode that teaches
+people to re-run a build rather than read it, which is strictly worse than having no guard, because
+it also discredits the guard's true positives.
+
+### The solution
+
+**One test in two modes, not one test and one generator.** `OpenApiSnapshotTest` fetches
+`/v3/api-docs.yaml` through `MockMvc` once, then branches on a system property: with
+`-Dopenapi.write=true` it writes the result to the snapshot path and returns; without it, it reads
+the committed file and asserts equality. `./gradlew updateOpenApiSnapshot` is a second `Test` task
+over the same test classes that sets that property and filters to this one class
+(`outputs.upToDateWhen { false }`, since "nothing changed" is never the right answer for a
+regeneration). There is physically one generation path, so the guard cannot check something the
+regeneration task would not have produced — a property of the structure, not of anyone remembering
+to keep two files aligned.
+
+Two supporting decisions travel with it. The snapshot's absolute path is injected as
+`systemProperty("openapi.snapshot", ...)` from `build.gradle.kts` rather than derived inside the
+test, because the file sits outside the Gradle project (the Gradle root is `backend/`, the snapshot
+is `<repo>/docs/api/openapi.yaml`) and a test should not have an opinion about its own working
+directory. And on mismatch the generated document is written to `build/openapi-actual.yaml` with
+the `diff` command spelled out in the failure message — a 5231-line equality assertion is useless
+as a diff.
+
+Ordering was pinned with `springdoc.writer-with-order-by-keys: true`, and pinned *by verification*:
+the property was confirmed to exist on springdoc 3.1.0 before anything was made to depend on it
+(3.x is the Spring Boot 4 line; every pre-2026 tutorial names the 2.x Boot 3 line, which does not
+work here), and the output was then proven byte-stable across two consecutive regenerations rather
+than assumed stable because a flag was set. Finally the guard was **proven able to fail**: a
+throwaway query parameter added to one controller turned it red, and removing it turned it green
+again. A guard nobody has watched fail is a guard nobody has tested.
+
+### Lesson
+
+When a guard and a generator are supposed to produce the same artefact, make them literally the
+same code rather than two implementations of one idea — otherwise the interesting failure is not
+"the API drifted" but "the two tools disagree," which is invisible in the assertion message and
+looks exactly like a broken build. And a determinism flag you have set but not verified is a
+scheduled intermittent failure: check the property exists on the version you actually resolved, and
+run the generator twice and diff, before letting a text-equality assertion into the build.
