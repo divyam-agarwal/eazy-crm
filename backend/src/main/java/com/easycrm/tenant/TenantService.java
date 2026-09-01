@@ -1,7 +1,7 @@
 package com.easycrm.tenant;
 
-import com.easycrm.platform.error.ForbiddenException;
 import com.easycrm.platform.error.NotFoundException;
+import com.easycrm.platform.security.RoleGuard;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.web.dto.TenantProfileRequest;
 import com.easycrm.tenant.web.dto.TenantResponse;
@@ -14,8 +14,12 @@ import java.util.UUID;
 public class TenantService {
 
     private final TenantRepository tenants;
+    private final RoleGuard roleGuard;
 
-    public TenantService(TenantRepository tenants) { this.tenants = tenants; }
+    public TenantService(TenantRepository tenants, RoleGuard roleGuard) {
+        this.tenants = tenants;
+        this.roleGuard = roleGuard;
+    }
 
     @Transactional(readOnly = true)
     public TenantResponse get() {
@@ -24,7 +28,7 @@ public class TenantService {
 
     @Transactional
     public TenantResponse updateProfile(TenantProfileRequest req) {
-        requireOwner();
+        roleGuard.requireOwner("only an owner may change the business profile");
         Tenant t = current();
         t.updateProfile(req.address(), req.phone(), req.email());
         return TenantResponse.of(t);
@@ -35,12 +39,5 @@ public class TenantService {
         // `tenant` is a global table, so this is the one place the id must be passed
         // explicitly rather than left to @TenantId + RLS.
         return tenants.findById(id).orElseThrow(() -> new NotFoundException("tenant not found"));
-    }
-
-    private void requireOwner() {
-        String role = TenantContext.get().map(TenantContext.TenantPrincipal::role).orElse(null);
-        if (!"OWNER".equals(role)) {
-            throw new ForbiddenException("only an owner may change the business profile");
-        }
     }
 }
