@@ -1,10 +1,17 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-01 — **`build-hygiene` is on branch `build-hygiene`, off `main` at
-`2dc50ba`, all seven tasks done and pushed to `origin` — awaiting whole-branch review, NOT
-merged.** It adds this repo's first automated quality gates (Spotless/palantir-java-format,
-SpotBugs + find-sec-bugs, JaCoCo, GitHub Actions CI) with zero application-code changes; see
-§3's new top bullet for the detail. Before it, user invitations were merged to `main` as
+**Last updated:** 2026-09-01 — **Build hygiene is built and merged to `main` as `83e6880`.
+Nothing is in flight; `main` is the baseline for new work.** This repo now has automated quality
+gates for the first time: one `./gradlew clean check` runs the tests **plus** Spotless
+(palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage verification
+across both Gradle projects, and **GitHub Actions runs that same command on every push to `main`**
+— the repo also has a remote for the first time, `git@github.com:divyam-agarwal/eazy-crm.git`
+(public). Zero application-code changes: the only production-source diff is one mechanical
+whole-tree reformat of 311 files, proven byte-identical to `spotlessApply` output. **Read §0's
+"What CI does and does not do" before assuming the gate blocks anything** — it is a post-merge
+smoke alarm, not a pre-merge gate, and that is a consequence of this repo's no-PR merge habit
+rather than an oversight. See §3's top bullet for the gate detail (baseline count, coverage
+floors, resolved plugin versions). Before it, user invitations were merged to `main` as
 `f265cfe`. A tenant can finally have more than one user. An owner invites an email and a role, the invitee
 follows a link, sets a password, and becomes an `ACTIVE` user of that tenant — which is what makes
 `assigned_to`, the record-visibility slice and the `SALES_EXEC` role stop being notional. The
@@ -33,15 +40,21 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### `build-hygiene` is in flight, not yet merged
+### Nothing is in flight
 
-**The current branch adds this repo's first automated quality gates and is done but not
-merged.** Seven tasks off `main` at `2dc50ba`, pushed to `origin/build-hygiene`, awaiting
-whole-branch review — see `docs/superpowers/specs/2026-09-01-build-hygiene-design.md` and
-`docs/superpowers/plans/2026-09-01-build-hygiene.md`, plus the SDD ledger at
-`.superpowers/sdd/2026-09-01-build-hygiene/progress.md` for the execution-time findings (worth
-reading even after merge — it carries the reasoning behind several rulings §3/§5/§6/§8 below only
-summarize). **The new baseline command is `./gradlew clean check`, not `clean test`:** `check` now
+**`main` is clean and is the baseline for new work.** The `build-hygiene` slice — seven tasks plus
+a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba` — was merged `--no-ff` as
+**`83e6880`** on 2026-09-01 and its local branch deleted; the merged result was verified green
+(519 tests, full `clean check`) before the branch went away. See
+`docs/superpowers/specs/2026-09-01-build-hygiene-design.md` and
+`docs/superpowers/plans/2026-09-01-build-hygiene.md`. **Its SDD ledger is gone** — deleted with the
+workspace at merge, per the standing practice — so this file, the spec, and challenges #58–#61 are
+now the only record of that slice's reasoning. Two loose ends, neither blocking: the remote branch
+`origin/build-hygiene` still exists and can be deleted (`git push origin --delete build-hygiene`),
+and the four intermediate CI-testing commits inside the merge are deliberate — they are the
+evidence for challenge #59 and must not be tidied away.
+
+**The new baseline command is `./gradlew clean check`, not `clean test`:** `check` now
 runs test **plus** `spotlessCheck` **plus** `spotbugsMain` **plus**
 `jacocoTestCoverageVerification` for both projects, so it is strictly stronger than the old
 baseline and is the exact command CI runs — a green local `clean check` and a green CI run now
@@ -49,10 +62,30 @@ assert the same thing. `clean test` still works but no longer proves what "the b
 means on this repo. See §3 for the gate detail (SpotBugs baseline count, coverage floors, plugin
 versions) and §8 for the follow-on waves this opens up.
 
-**Below this point, §0 describes the state of `main` as the previous session left it** — clean,
-`user-invitations` merged as `f265cfe` — which `build-hygiene` branched from and has not changed.
+### What CI does and does not do
 
-**`main` is clean and is the baseline for new work.** Eight tasks (the `RoleGuard` extraction, the
+**It is a post-merge smoke alarm, not a pre-merge gate.** The workflow
+(`.github/workflows/ci.yml`) fires on `push: [main]` and on `pull_request`. This repo has **never
+opened a pull request** — every slice merges to `main` directly with `git merge --no-ff`, including
+the one that added CI. So in practice CI runs *after* a merge has already landed: it tells you
+`main` broke, automatically, instead of relying on someone remembering to run the build. It cannot
+stop `main` from breaking.
+
+Broadening the trigger to all branches was considered and **deliberately rejected**: it would
+arrive earlier but still block nothing, because required-status-check protection is PR-shaped and
+cannot gate a direct push. Making the gate genuinely blocking means adopting pull requests — a
+process change, not a config change. §3 carries the full reasoning.
+
+Two consequences to carry: **run `./gradlew clean check` locally before you merge**, because CI
+will not catch it for you beforehand; and **the `pull_request` trigger has never once fired** — it
+is dormant-but-correct config, not verified behaviour, which is the same untested-gate category as
+challenge #33.
+
+**Below this point, §0 records the slice before this one — user invitations, merged as `f265cfe`.**
+It is history, not current state; `build-hygiene` has since landed on top of it. Read it when you
+touch the invitation/auth area, not to find out what to do next.
+
+Eight tasks (the `RoleGuard` extraction, the
 `invitation` table/entity/repository plus both isolation-guard allowlists, the owner invite
 endpoint, the pending-list + revoke endpoints, the pre-auth accept endpoint, the pre-auth preview
 endpoint, the expiry and concurrency tests, and the docs wrap-up) were done on branch
@@ -95,10 +128,10 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 (merged as `3c239d1`), and `platform-primitives-module` before that (merged as `210545e`).
 
 1. **Confirm the baseline before touching anything:** `open -a Docker`, wait for `docker info`,
-   then `cd backend && ./gradlew clean check`. **Once `build-hygiene` is merged, `clean check` is
-   the baseline command, not `clean test`** — it is strictly stronger (adds `spotlessCheck`,
-   `spotbugsMain`, `jacocoTestCoverageVerification`) and is the same command CI runs. On `main`
-   (pre-`build-hygiene`) this is
+   then `cd backend && ./gradlew clean check`. **`clean check` is the baseline command, not
+   `clean test`** — it is strictly stronger (adds `spotlessCheck`, `spotbugsMain`,
+   `jacocoTestCoverageVerification` across both projects) and is the same command CI runs, so a
+   green local run and a green CI run assert the same thing. On `main` at `83e6880` this is
    **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
    **464-test** baseline before the invitations slice. Gradle prints no total for a
    multi-project build, so count it yourself:
@@ -285,15 +318,22 @@ All under `docs/superpowers/`:
     and *why the rest is deferred*. **Note:** §10's `--add-exports` risk entry was written before
     execution and turned out to be wrong — see §5 below for the corrected finding.
 40. **`plans/2026-09-01-build-hygiene.md`** — the seven-task implementation plan for it.
-    Executed in full; **on branch `build-hygiene`, done and pushed, NOT yet merged** — see §0 and
-    §3. Its own SDD ledger (`.superpowers/sdd/2026-09-01-build-hygiene/progress.md`) is worth
-    reading directly — several rulings below (the CI-trigger decision, the module BRANCH-floor
-    debate, the version-catalog blind spot) are summarized here but reasoned there in full.
+    Executed in full; **merged to `main` as `83e6880`** — see §0 and §3. Worth reading even if you
+    never touch build tooling, for the same reason the rate-limiting plan is: several things the
+    plan asserted turned out to be wrong under execution — every pinned action and plugin version
+    was stale, the `--add-exports` risk was overstated, one `sed` targeted a class declaration that
+    does not exist, the CI trigger it specified cannot fire on a feature branch, and it claimed a
+    version duplication was structural when it is not. Challenges #58–#61 are the write-ups.
+    **Its SDD ledger was deleted with the workspace at merge**, so the rulings it recorded survive
+    only where they were copied out — §0's CI subsection, §3's gate detail, §5's environment notes
+    and §6's stack quirks. Do not go looking for it.
 
 ## 3. Current state
 
-- **Latest code work: build hygiene** — **on branch `build-hygiene`, off `main` at `2dc50ba`,
-  seven tasks done and pushed, NOT yet merged** (whole-branch review pending). Zero application-code
+- **Latest code work: build hygiene** — **merged to `main` as `83e6880`** (branch deleted). 25
+  commits off `main` at `2dc50ba`: seven tasks, every one reviewed clean on its first pass with no
+  fix round anywhere, plus a whole-branch-review fix wave of five commits (`82e0f4e`..`ee4641c`)
+  that closed six Minors and two nits. Zero application-code
   diff other than a reformat and a temporary, reverted proof-of-concept violation (below); the
   entire slice is build configuration: `gradle/libs.versions.toml` (a version catalog with the
   justifying comment for every non-obvious pin travelling with the number, not left behind in
