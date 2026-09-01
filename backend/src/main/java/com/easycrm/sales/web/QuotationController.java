@@ -16,6 +16,7 @@ import com.easycrm.sales.web.dto.ShareResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -59,7 +60,7 @@ public class QuotationController {
     public PageResponse<QuotationResponse> list(
             @RequestParam(required = false) QuotationStatus status,
             @RequestParam(required = false) UUID customerId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return service.list(status, customerId, pageable);
     }
 
