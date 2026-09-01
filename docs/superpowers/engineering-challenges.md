@@ -3685,3 +3685,94 @@ against the target spec). Prefer this over `workflow_dispatch` as a manual-trigg
 workaround for a not-yet-merged workflow: it looks like the standard escape hatch but
 silently doesn't work until the trigger is already on the default branch, which is exactly
 the chicken-and-egg state a first-ever CI workflow starts in.
+
+---
+
+## Challenge 60 — A formatter's exclude list can encode a runtime invariant, not a style preference
+
+**Phase:** Design / Implementation
+
+### The problem
+
+Spotless (palantir-java-format, build-hygiene slice) reformats every `.java`, `.gradle.kts`, and
+`.yml` file it can reach. Two file categories under `src/main/resources` were deliberately never
+put in scope: `db/migration/*.sql` (32 Flyway migrations) and `templates/quotation.xhtml`.
+Nothing about a formatter's target-file list obviously encodes a runtime correctness rule — on
+its face it looks like ordinary scope-narrowing, only format the languages the tool understands.
+
+But Flyway checksums every applied migration file and refuses to start if a byte of an
+already-applied migration changes (`flyway_schema_history.checksum`, validated on every startup).
+Worse, **this failure would not appear in CI**: a fresh Testcontainers database has never applied
+the *old* text, so it computes a checksum from the *new*, reformatted text and matches itself —
+the build stays green. The failure only appears against a database that already ran the original
+migration: a developer's long-lived local database, or a production deployment on its next
+restart. Of everything in this slice, this is the one change whose blast radius is a running
+database rather than a red build (design spec §10 names it for exactly this reason).
+
+### The solution
+
+Both exclusions are structural, not remembered: every Spotless target in
+`easycrm.quality-conventions.gradle.kts` is extension-scoped (`src/**/*.java`, `*.yml` matched
+only under `src/main/resources`), so `.sql` files are never matched by construction — there is no
+exclude *rule* sitting next to an include rule, waiting for someone to delete it later.
+`templates/quotation.xhtml` is excluded for a related but distinct reason: it is Thymeleaf XML
+parsed in XML mode by openhtmltopdf, and whitespace there is load-bearing for PDF layout with no
+test that would catch a subtle regression if it moved.
+
+### Lesson
+
+When a whole-tree mechanical tool (formatter, linter, or any other tree-wide rewrite) is scoped to
+"the file types it understands," check whether any of the *excluded* types carry a runtime
+invariant tied to their literal bytes — a checksum, a signature, a hash-addressed cache key — not
+just a style preference the team happens to hold. Flyway's checksum is one instance of a broader
+pattern (Docker layer caching, subresource-integrity hashes, content-addressed storage): "the
+bytes didn't functionally change" and "the bytes are byte-identical" are different claims, and
+only the second is safe to assume survives after a mechanical, semantics-preserving reformat.
+
+---
+
+## Challenge 61 — A precompiled Gradle script plugin cannot see the version catalog
+
+**Phase:** Implementation
+
+### The problem
+
+The build-hygiene slice moved every third-party version into `gradle/libs.versions.toml`,
+specifically so each version's justifying comment (why 7.2.1 and not the newer 8.10.1, why an
+artifact id is JDK-qualified, why a BOM must be pinned separately) travels with the number instead
+of being scattered across build files. Shared quality-gate config (Spotless, SpotBugs, JaCoCo
+targets and floors) was written once, as a precompiled script plugin —
+`buildSrc/src/main/kotlin/easycrm.quality-conventions.gradle.kts` — applied explicitly by both
+Gradle projects so the block exists in one place. Two versions are needed *inside that file*, at
+configuration time: the `palantirJavaFormat(...)` formatter version and the find-sec-bugs plugin
+coordinate. The obvious move is `libs.versions.palantirJavaFormat.get()`, the same type-safe
+accessor every other build file in the project already uses.
+
+It does not resolve. Gradle's type-safe catalog accessors (`libs.*`) are generated for the
+*including* build via the `versionCatalogs {}` mechanism its own `settings.gradle.kts` enables —
+but `buildSrc` is itself a separate, independently-built Gradle project with its own
+`settings.gradle.kts`, built *before* the parent build even starts evaluating, and that separate
+build has no visibility into the parent's catalog block. The accessor genuinely does not exist at
+that point in the build's lifecycle; it is not a typo or a missing import, and no amount of
+searching for the right accessor name would have found one.
+
+### The solution
+
+The two versions are literals inside `easycrm.quality-conventions.gradle.kts`, each with a comment
+naming the exact catalog key it must be kept equal to (`palantirJavaFormat` and `findsecbugs` in
+`gradle/libs.versions.toml`); the catalog's own version comments say the reverse. Nothing
+*enforces* the two staying equal — a version bump in the TOML now requires a human to remember the
+buildSrc file exists and update it too. That obligation is written down at both sites rather than
+solved, because there is no clean Gradle mechanism at this scope to remove it — a composite-build
+trick to share the catalog, or a small helper that reads the TOML by hand, were both considered
+and rejected as more moving parts than two comments earn for two version numbers.
+
+### Lesson
+
+A version catalog does not have uniform reach across a multi-build Gradle project — `buildSrc`
+(and any `includeBuild` composite) is its own build with its own catalog visibility, so a value a
+precompiled script plugin needs at configuration time is a second source of truth *by
+construction*, not by oversight. The fix is not eliminating the duplication — there is no clean
+way to, at this scope — but making it loud: a comment at each site naming the other, so a version
+bump that updates only one location is a five-second grep away from being caught, rather than a
+silent drift discovered only when the two plugins disagree about what "the pinned version" is.

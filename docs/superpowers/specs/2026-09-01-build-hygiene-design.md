@@ -273,11 +273,22 @@ root-only variant, and with any `--tests` filter project-qualified.
 other work starts first, this slice gets harder and the argument for the ratchet alternative that
 was rejected in D6 gets stronger. Sequencing is the mitigation; there is no technical one.
 
-**Palantir Java Format needs `--add-exports` on JDK 25.** It reaches into `jdk.compiler` internals,
-and the JVM that must be opened up is the **Gradle daemon** — which runs on the shell default JDK
-21, not the toolchain's 25. Expect an `org.gradle.jvmargs` line in `gradle.properties` and expect
-it to take a couple of attempts. The environment note in `HANDOFF.md` §5 — *shell default is 21,
-toolchain is 25, do not change the shell default* — is exactly the wrinkle in play.
+**Palantir Java Format needs `--add-exports` on JDK 25 — CORRECTED after execution, this risk did
+not play out as predicted.** The daemon-not-toolchain distinction below turned out to be right,
+but the "expect it to take a couple of attempts" prediction did not: Task 2 found Gradle 9.6.1's
+daemon already supplies `--add-exports` for `jdk.compiler.{api,util}` by default (confirmed via
+`ps aux` on the running daemon process), which was sufficient for palantir-java-format 2.97.0 to
+run cleanly on its very first classpath resolution — no `gradle.properties` iteration, no
+`InaccessibleObjectException`. It also worked unmodified on CI's daemon (Task 6), a different
+machine entirely. All five `--add-exports` flags (`api`, `file`, `parser`, `tree`, `util`) were
+still added to `backend/gradle.properties`, but as **insurance, not a requirement**: only 2 of the
+5 are supplied by the daemon's own default, and the remaining 3 (`file`, `parser`, `tree`) cover
+palantir codepaths this tree does not currently exercise — a defensive superset that costs nothing
+at runtime and avoids a silent `InaccessibleObjectException` surfacing later on a different
+JDK/Gradle combination, whose defaults are an undocumented implementation detail. The underlying
+wrinkle this risk entry correctly anticipated — the JVM that needs opening up is the **Gradle
+daemon**, which runs on the shell default JDK 21, not the toolchain's 25 (`HANDOFF.md` §5) — is
+real and worth knowing; it just turned out to already be handled by this Gradle version.
 
 **The Flyway checksum trap is silent in CI.** §5 covers it; it is repeated here because it is the
 only risk in this slice whose blast radius is a running database rather than a red build.
