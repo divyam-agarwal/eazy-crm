@@ -72,7 +72,13 @@ jobs:
         continue-on-error: true
         working-directory: .
         run: |
-          set -u
+          # pipefail: without it, `docker run ... | tee -a "$GITHUB_STEP_SUMMARY"` exits with
+          # tee's status (0) even when the docker run itself fails (bad pull, oasdiff crash,
+          # daemon problem). continue-on-error already makes this step non-blocking, so a
+          # silent zero there would render identically to "no API changes" in the job summary
+          # -- a misreport, not just a missed alert. Each docker run below is captured and
+          # checked explicitly so a tool failure says so instead of leaving a blank section.
+          set -uo pipefail
           SNAPSHOT=docs/api/openapi.yaml
           if ! git cat-file -e "HEAD~1:$SNAPSHOT" 2>/dev/null; then
             echo "No previous version of $SNAPSHOT - nothing to compare." >> "$GITHUB_STEP_SUMMARY"
@@ -80,15 +86,19 @@ jobs:
           fi
           git show "HEAD~1:$SNAPSHOT" > /tmp/openapi-base.yaml
           echo "## API changelog" >> "$GITHUB_STEP_SUMMARY"
-          docker run --rm \
+          if ! docker run --rm \
             -v /tmp/openapi-base.yaml:/base.yaml:ro \
             -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
             tufin/oasdiff:latest changelog /base.yaml /head.yaml \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+            | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo "_oasdiff changelog failed to run -- see the step log._" >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Breaking changes" >> "$GITHUB_STEP_SUMMARY"
-          docker run --rm \
+          if ! docker run --rm \
             -v /tmp/openapi-base.yaml:/base.yaml:ro \
             -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
             tufin/oasdiff:latest breaking /base.yaml /head.yaml \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+            | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo "_oasdiff breaking failed to run -- see the step log._" >> "$GITHUB_STEP_SUMMARY"
+          fi
