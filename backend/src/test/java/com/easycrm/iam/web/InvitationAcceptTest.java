@@ -108,6 +108,20 @@ class InvitationAcceptTest extends IntegrationTest {
             .andExpect(jsonPath("$.length()").value(0));
     }
 
+    /** The 404 body an accept produces for the given token. */
+    private String rejectedAcceptBody(String token) throws Exception {
+        return mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
+                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
+            .andExpect(status().isNotFound())
+            .andReturn().getResponse().getContentAsString();
+    }
+
+    /**
+     * Revoked must be indistinguishable from never-existed, as BYTES and not merely as a
+     * status. Asserting only isNotFound() would stay green if someone later added a
+     * helpful "this invitation was revoked" message — which is precisely the enumeration
+     * oracle challenge #55 exists to close.
+     */
     @Test
     void aRevokedInvitationCannotBeAccepted() throws Exception {
         var owner = tokens.provisionOwner("27");
@@ -125,9 +139,29 @@ class InvitationAcceptTest extends IntegrationTest {
                 .header("Authorization", "Bearer " + owner.token()))
             .andExpect(status().isNoContent());
 
-        mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound());
+        assertEquals(rejectedAcceptBody("never-existed"), rejectedAcceptBody(token),
+            "a revoked token must be indistinguishable from one that never existed");
+    }
+
+    /**
+     * A SUSPENDED tenant must not mint credentials. AuthService.login refuses one
+     * explicitly; accept is the only other entry point that resolves a tenant from
+     * something other than an existing JWT, so a tenant suspended for non-payment could
+     * otherwise keep onboarding staff on links issued before suspension — each new user
+     * holding an indefinitely-refreshable credential.
+     *
+     * <p>Asserted as bytes for the same reason as the revoked case: a distinct status or
+     * message here would reopen the enumeration oracle.
+     */
+    @Test
+    void aSuspendedTenantCannotAcceptAnInvitation() throws Exception {
+        var owner = tokens.provisionOwner("27");
+        String token = inviteAndExtractToken(owner.token(), "susp@shop.in", "SALES_EXEC");
+
+        tokens.suspend(owner.tenantId());
+
+        assertEquals(rejectedAcceptBody("never-existed"), rejectedAcceptBody(token),
+            "a suspended tenant's invitation must look exactly like an unknown token");
     }
 
     @Test

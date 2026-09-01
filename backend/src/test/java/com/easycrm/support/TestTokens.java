@@ -4,6 +4,7 @@ import com.easycrm.platform.security.JwtService;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
+import com.easycrm.tenant.TenantStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -45,6 +46,23 @@ public class TestTokens {
         }
         return new ProvisionedOwner(tenant.getId(),
             jwt.mint(tenant.getId(), UUID.randomUUID(), "OWNER"));
+    }
+
+    /**
+     * Flip a provisioned tenant to SUSPENDED — the "stopped paying" state that
+     * AuthService.login and InvitationService.requireLive both refuse to mint credentials
+     * for. {@code tenant} is a GLOBAL table, so this needs a bound context only because
+     * TenantAwareTransactionManager reads one at doBegin.
+     */
+    public void suspend(UUID tenantId) {
+        TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
+        try {
+            tx.executeWithoutResult(s -> tenants.findById(tenantId)
+                .orElseThrow(() -> new IllegalStateException("no such tenant: " + tenantId))
+                .setStatus(TenantStatus.SUSPENDED));
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     public record ProvisionedOwner(UUID tenantId, String token) {}

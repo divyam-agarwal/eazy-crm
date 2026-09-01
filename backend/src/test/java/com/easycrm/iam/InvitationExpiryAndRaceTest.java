@@ -1,7 +1,6 @@
 package com.easycrm.iam;
 
 import com.easycrm.platform.tenancy.TenantContext;
-
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
 import com.jayway.jsonpath.JsonPath;
@@ -56,15 +55,35 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         return raw;
     }
 
+    /** The 404 body an accept produces for the given token. */
+    private String rejectedAcceptBody(String token) throws Exception {
+        return mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
+                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
+            .andExpect(status().isNotFound())
+            .andReturn().getResponse().getContentAsString();
+    }
+
+    /** The 404 body a preview produces for the given token. */
+    private String rejectedPreviewBody(String token) throws Exception {
+        return mvc.perform(get("/api/v1/auth/invitations/" + token))
+            .andExpect(status().isNotFound())
+            .andReturn().getResponse().getContentAsString();
+    }
+
+    /**
+     * Asserted as BYTES, not merely as a status. "Expired" is the state most likely to
+     * attract a helpful message later ("this link has expired, ask for a new one"), and
+     * that message is exactly the enumeration leak challenge #55 closes: it confirms the
+     * token was real. A status-only assertion would not notice.
+     */
     @Test
     void anExpiredInvitationCannotBeAccepted() throws Exception {
         var owner = tokens.provisionOwner("27");
         String raw = seed(owner.tenantId(), "expired@shop.in",
             Instant.now().minus(1, ChronoUnit.MINUTES));
 
-        mvc.perform(post("/api/v1/auth/invitations/" + raw + "/accept")
-                .contentType(MediaType.APPLICATION_JSON).content(ACCEPT))
-            .andExpect(status().isNotFound());
+        assertEquals(rejectedAcceptBody("never-existed"), rejectedAcceptBody(raw),
+            "an expired token must be indistinguishable from one that never existed");
     }
 
     @Test
@@ -73,8 +92,8 @@ class InvitationExpiryAndRaceTest extends IntegrationTest {
         String raw = seed(owner.tenantId(), "expprev@shop.in",
             Instant.now().minus(1, ChronoUnit.MINUTES));
 
-        mvc.perform(get("/api/v1/auth/invitations/" + raw))
-            .andExpect(status().isNotFound());
+        assertEquals(rejectedPreviewBody("never-existed"), rejectedPreviewBody(raw),
+            "preview must not reveal that a token merely expired");
     }
 
     /**

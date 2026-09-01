@@ -14,6 +14,7 @@ import com.easycrm.platform.security.RoleGuard;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
+import com.easycrm.tenant.TenantStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -184,11 +185,7 @@ public class InvitationService {
      * it silently writes an unbound row. Same trap as challenge #9 and #52.
      */
     public AuthResponse accept(String rawToken, AcceptInvitationRequest req) {
-        // Global table: no tenant context needed, and none exists yet.
-        Invitation inv = invitations.findByTokenHash(hasher.sha256Hex(rawToken))
-            .filter(i -> i.getStatus() == InvitationStatus.PENDING)
-            .filter(i -> !i.isExpired(Instant.now()))
-            .orElseThrow(() -> new NotFoundException("invitation not found"));
+        Invitation inv = requireLive(rawToken).invitation();
 
         TenantContext.set(new TenantContext.TenantPrincipal(inv.getTenantId(), null, "SYSTEM"));
         try {
@@ -229,16 +226,43 @@ public class InvitationService {
      */
     @Transactional(readOnly = true)
     public InvitationPreviewResponse preview(String rawToken) {
+        Live live = requireLive(rawToken);
+        return new InvitationPreviewResponse(live.tenant().getBusinessName(),
+            live.invitation().getEmail(), live.invitation().getRole().name());
+    }
+
+    /** A live invitation and the tenant it admits you to. */
+    private record Live(Invitation invitation, Tenant tenant) {}
+
+    /**
+     * The single gate both public endpoints pass through, and the SOLE enforcement of the
+     * enumeration contract (spec §8): unknown, revoked, consumed, expired and
+     * suspended-tenant all leave by the same {@code throw}, so no caller can tell them
+     * apart and the GET cannot be used as an oracle against the POST. Extracted so that
+     * contract lives in one place — as two copies it was a remember-to-update-both
+     * convention, and one helpful "this invitation has expired" would have quietly
+     * reopened the oracle. See engineering-challenges #55.
+     *
+     * <p>The tenant load is not just for the preview's business name. A SUSPENDED tenant
+     * must not mint credentials: AuthService.login refuses one explicitly, and accept is
+     * the only other entry point that resolves a tenant from something other than an
+     * existing JWT. Without this, a tenant suspended for non-payment could keep onboarding
+     * staff through links issued before suspension.
+     *
+     * <p>Both tables read here are GLOBAL, so this is correct with no tenant context bound
+     * — which is the state accept calls it in, deliberately and necessarily (see accept).
+     */
+    private Live requireLive(String rawToken) {
         Invitation inv = invitations.findByTokenHash(hasher.sha256Hex(rawToken))
             .filter(i -> i.getStatus() == InvitationStatus.PENDING)
             .filter(i -> !i.isExpired(Instant.now()))
             .orElseThrow(() -> new NotFoundException("invitation not found"));
 
         Tenant tenant = tenants.findById(inv.getTenantId())
+            .filter(t -> t.getStatus() != TenantStatus.SUSPENDED)
             .orElseThrow(() -> new NotFoundException("invitation not found"));
 
-        return new InvitationPreviewResponse(
-            tenant.getBusinessName(), inv.getEmail(), inv.getRole().name());
+        return new Live(inv, tenant);
     }
 
     private String randomToken() {

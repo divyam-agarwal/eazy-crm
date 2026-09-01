@@ -88,6 +88,18 @@ class InvitationPreviewTest extends IntegrationTest {
             "preview must not reveal that a token once existed");
     }
 
+    /** The 404 body a preview produces for the given token. */
+    private String rejectedPreviewBody(String token) throws Exception {
+        return mvc.perform(get("/api/v1/auth/invitations/" + token))
+            .andExpect(status().isNotFound())
+            .andReturn().getResponse().getContentAsString();
+    }
+
+    /**
+     * Asserted as BYTES, not merely as a status: a status-only assertion would stay green
+     * if someone added a helpful "this invitation was revoked" message, which is exactly
+     * the oracle challenge #55 exists to close.
+     */
     @Test
     void previewOfARevokedInvitationIs404() throws Exception {
         var owner = tokens.provisionOwner("27");
@@ -105,7 +117,24 @@ class InvitationPreviewTest extends IntegrationTest {
                 .header("Authorization", "Bearer " + owner.token()))
             .andExpect(status().isNoContent());
 
-        mvc.perform(get("/api/v1/auth/invitations/" + token))
-            .andExpect(status().isNotFound());
+        assertEquals(rejectedPreviewBody("never-existed"), rejectedPreviewBody(token),
+            "preview must not reveal that a token was revoked rather than unknown");
+    }
+
+    /**
+     * The preview must refuse a SUSPENDED tenant too — not because previewing itself mints
+     * anything, but because a preview that succeeded where the accept fails would name the
+     * workspace and confirm the token, turning the GET back into the oracle the POST
+     * refuses to be.
+     */
+    @Test
+    void previewOfASuspendedTenantsInvitationIs404() throws Exception {
+        var owner = tokens.provisionOwner("27");
+        String token = inviteAndExtractToken(owner.token(), "prevsusp@shop.in");
+
+        tokens.suspend(owner.tenantId());
+
+        assertEquals(rejectedPreviewBody("never-existed"), rejectedPreviewBody(token),
+            "a suspended tenant's invitation must look exactly like an unknown token");
     }
 }
