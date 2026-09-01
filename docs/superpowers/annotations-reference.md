@@ -134,7 +134,15 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 
 | Annotation | Origin | Purpose | Composed of / inherits |
 |---|---|---|---|
-| `@JsonInclude` | `com.fasterxml.jackson.annotation` (the annotations module did not move to `tools.jackson` in the Jackson 3 split — only `jackson-core`/`jackson-databind` did) | Drops fields from the serialized JSON under a given inclusion rule. `ActivityResponse` carries `@JsonInclude(Include.NON_NULL)` at the record level so an activity with no linked follow-up omits `followUpId` from the response rather than serializing it as `null`. Applied class-wide, so it also suppresses any other null field on the same record — today that includes a null `outcome`, which is harmless (the client already treats a missing key and an explicit `null` the same way) but is a blast radius wider than the one field it was added for. | — |
+| `@JsonInclude` | `com.fasterxml.jackson.annotation` (the annotations module did not move to `tools.jackson` in the Jackson 3 split — only `jackson-core`/`jackson-databind` did) | Drops fields from the serialized JSON under a given inclusion rule. `ActivityResponse` carries `@JsonInclude(Include.NON_NULL)` at the record level so an activity with no linked follow-up omits `followUpId` from the response rather than serializing it as `null`. Applied class-wide, so it also suppresses any other null field on the same record — today that includes a null `outcome`, which is harmless (the client already treats a missing key and an explicit `null` the same way) but is a blast radius wider than the one field it was added for. `ApiError` uses the same annotation, for the same reason: an error with no field detail must omit `fields` entirely, not serialize `"fields":null` (openapi-contract Task 2). | — |
+
+## 6b. OpenAPI documentation (springdoc / swagger-annotations)
+
+| Annotation | Origin | Purpose | Composed of / inherits |
+|---|---|---|---|
+| `@ApiResponse` | `io.swagger.v3.oas.annotations.responses` | Documents one HTTP status code springdoc should list for the annotated handler method, including the schema of its body. On `ApiExceptionHandler`, one `@ApiResponse` per distinct status (404/401/403/409/422/400) on the first handler method that maps to it; the two extra 409 handlers (`dataIntegrity`, `optimisticLock`) deliberately carry none, since a second `@ApiResponse` for a status code already documented on the advice is a duplicate springdoc resolves arbitrarily (openapi-contract Task 2). | — |
+| `@Content` | `io.swagger.v3.oas.annotations.media` | Nested inside `@ApiResponse`; names the media type (implicitly `application/json`) and, via `schema`, the type describing the response body. | — |
+| `@Schema` | `io.swagger.v3.oas.annotations.media` | Nested inside `@Content`; `implementation = ApiErrorResponse.class` tells springdoc which Java type's shape to reflect into the OpenAPI document for this response, rather than describing it as a bare `object` (the failure mode a raw `Map<String, Object>` return type produced before openapi-contract Task 2). | — |
 
 ## 7. Testing (JUnit 5, Spring Test, Testcontainers)
 

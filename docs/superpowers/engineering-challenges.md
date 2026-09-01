@@ -3785,3 +3785,54 @@ does not follow from it and should have been checked, not assumed, before writin
 eliminate it" into a comment. `VersionCatalogsExtension` is the general escape hatch any Gradle
 plugin can use to read a registered catalog without generated accessors; reach for it before
 concluding a catalog is unreachable from a given file.
+
+---
+
+## Challenge 62 — A brand-new record with a `Map` component fails SpotBugs on the first build, and the baseline can't absorb it
+
+**Phase:** Implementation (openapi-contract, Task 2)
+
+### The problem
+
+`ApiExceptionHandler` returned `ResponseEntity<Map<String, Object>>` from all seven handlers,
+which springdoc has no way to describe beyond "some object." The fix is two records —
+`ApiErrorResponse(ApiError error)` and `ApiError(String code, String message, Map<String, Object>
+fields)` — replacing the hand-built `HashMap` envelope. `./gradlew clean check` failed on the
+first attempt, not on tests (the wire-format characterization test passed unchanged) but on
+`spotbugsMain`: `EI_EXPOSE_REP` and `EI_EXPOSE_REP2` on `ApiError.fields()`, because a record
+component of type `Map` stores and returns whatever mutable map the caller handed it, verbatim.
+
+This project already carries 26 baselined instances of exactly this pattern (`EI_EXPOSE_REP` +
+`EI_EXPOSE_REP2`, called out in `config/spotbugs/baseline.xml` as "largely noise on JPA entities
+and records"), which made it tempting to treat this as more of the same and baseline it away. That
+file explicitly forbids that move: "do NOT append new findings to this file to make the gate pass;
+new findings must be fixed in the code that introduced them." The baseline is a snapshot of
+findings that predate a change, not a place to launder new ones.
+
+### The solution
+
+A compact constructor on `ApiError` that replaces the incoming map with `Map.copyOf(fields)` (null
+passed through unchanged, so the existing "no fields" case still omits the key rather than
+serializing `null`): the record no longer stores the caller's map, and the auto-generated accessor
+returns something the caller can't mutate afterward — both findings cleared on the next
+`spotbugsMain` run.
+
+The one thing worth having checked before trusting this: `Map.copyOf` rejects a `null` *value*
+inside the map, not just a `null` map. One of the two call sites that populate `fields` — the
+`MethodArgumentNotValidException` handler — builds it from `FieldError.getDefaultMessage()` per
+bean-validation constraint. If any annotation on this codebase's DTOs were ever declared without a
+message and resolved to `null`, this defensive copy would turn a 400 response into an unhandled
+500 — a wire-format regression the characterization test wouldn't catch, because it never exercises
+that handler with a null message. It doesn't happen here (every constraint in use has an
+interpolated default message), and the full suite's `MethodArgumentNotValidException` scenarios all
+passed after the change, but the risk is real for any future constraint added without one.
+
+### Lesson
+
+A record component typed as `Map`/`List`/`Set` fails `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` on the very
+first build that introduces it — this is not something to discover by running `clean check` and
+being surprised; assume a mutable-collection record component needs a defensive copy (`Map.copyOf`
+/ `List.copyOf` in a compact constructor, or `Collections.unmodifiable*` where nulls must survive)
+from the start. And a SpotBugs baseline file that says "fix new findings in code" means exactly
+that: it's a ratchet against the pre-existing backlog, not a general-purpose escape hatch for
+anything a change introduces.
