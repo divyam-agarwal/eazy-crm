@@ -3544,3 +3544,86 @@ silently do to the column.
 Finally: Hibernate's flush order is not your call order. Any transaction that frees a
 unique index by an `UPDATE` and then re-fills it with an `INSERT` needs an explicit flush
 between the two, or it will fail with the exact error the change was meant to prevent.
+
+---
+
+## Challenge 58 — SpotBugs's `baselineFile` had to be decompiled to trust, and a `--` in an XML comment silently broke it
+
+**Phase:** Implementation
+
+### The problem
+
+Task 4 (build-hygiene slice) wires SpotBugs + find-sec-bugs into both Gradle projects,
+gated so only *new* findings fail the build; the first-ever run produces 32 pre-existing
+findings (29 root, 3 `platform-primitives`) that must be baselined rather than fixed. The
+plan deliberately left the baseline *mechanism* open, because it depends on what the
+resolved plugin version actually supports: "if the task exposes a `baselineFile`
+property, use it; if not, fall back to a generated exclude filter."
+
+`SpotBugsExtension`/`SpotBugsTask` in spotbugs-gradle-plugin 6.5.11 do declare a
+`baselineFile: RegularFileProperty`. That alone is not evidence it does anything — a
+declared-but-dead property is exactly challenge #33's ArchUnit rule shape (a check that
+looks wired and passes vacuously). Trusting it on the strength of autocomplete would have
+been the same mistake in a different tool.
+
+Verifying by *reading the docs* wasn't an option either: the brief already flagged that
+`plugins.gradle.org/api/gradle/1.0/search` is dead, and the plugin's own site documentation
+for `baselineFile` is thin-to-absent for 6.x. The only authoritative source was the
+plugin's own bytecode.
+
+Once wired, a second failure showed up that looked unrelated: with `ignoreFailures =
+false` and a hand-assembled `baseline.xml` (see Solution), the gate still failed on every
+pre-existing finding — as if the baseline were being ignored entirely, with no diagnostic
+in the default log output explaining why.
+
+### The solution
+
+Decompiled the plugin jar (`javap -p -c` on the extracted classes) rather than guessing
+from the property's existence. `SpotBugsRunner`'s bytecode shows `getBaselineFile()`
+read exactly like `getIncludeFilter()`/`getExcludeFilter()` and pushed onto the SpotBugs
+CLI args behind the literal string `-excludeBugs` (confirmed by the constant pool entries
+next to it: `-exclude`, `-excludeBugs`, `-onlyAnalyze`). `-excludeBugs` is a real,
+long-standing SpotBugs core flag: it reads a prior bug-collection XML and suppresses any
+finding whose `instanceHash` matches an entry in it. So `baselineFile` is not a Gradle-
+plugin invention — it is a thin pass-through to a mechanism SpotBugs itself has always
+had, and it works per the plan's preferred branch.
+
+Because one `baselineFile` value is shared by both projects via the convention plugin, the
+baseline had to cover both: root's and `platform-primitives`'s `build/reports/spotbugs/
+main.xml` were merged (concatenating their `<BugInstance>` elements into one
+`<BugCollection>`, via a small Python script rather than hand-editing) into
+`config/spotbugs/baseline.xml`. This works because matching is by hash, not by project —
+a hash that belongs to the other project's classes simply never matches, so a merged file
+is safe for both.
+
+The second failure — gate still red with the baseline in place — turned out to be
+unrelated to Gradle or the merge logic entirely. Running with `--info` surfaced the real
+executor's stderr, buried under the Worker API's own summary: `org.dom4j.
+DocumentException: Failing reading .../baseline.xml`. SpotBugs's baseline reader
+(`dom4j`) was silently failing to parse the file and — critically — not treating that as
+a load-bearing error worth surfacing at the default log level, so `-excludeBugs` matched
+nothing and every original finding still failed the build, with no explanation of *why*
+the baseline had no effect. The cause was banal: the hand-written provenance comment at
+the top of the generated `baseline.xml` used `--` as a prose dash ("32 findings -- see
+...", "make the gate pass -- new findings must be..."). `--` is illegal *anywhere* inside
+an XML comment body, not just as a delimiter — `python3 -c "import
+xml.etree.ElementTree as ET; ET.parse(...)"` caught it in one line where staring at the
+file did not. Swapping the dashes for semicolons fixed it immediately.
+
+### Lesson
+
+A build-tool property existing on an extension is not evidence it is consumed —
+decompile (or otherwise trace) the call site before committing a whole task's design
+branch to it, the same discipline #33 established for assertions. Here it happened to be
+real and well-behaved, which is worth stating plainly since the alternative (silently
+inert) was equally plausible going in.
+
+Separately: a tool that reads a config file with a lenient XML library and then treats a
+parse failure as "zero entries" rather than "abort" produces a gate that fails *open* —
+here in the safe direction (every finding still blocks), but the class of bug generalizes
+to filters that fail open the *unsafe* way. When a generated exclude/baseline/allowlist
+file silently has no effect, check whether the file parsed at all before re-deriving the
+content; `xml.etree.ElementTree.parse()` (or equivalent) is a one-line well-formedness
+oracle that is cheaper than re-reasoning about hashes. And never hand-write `--` into an
+XML comment — it is invisible in most editors' comment styling and invalid regardless of
+position within the comment body, not just adjacent to `<!--`/`-->`.
