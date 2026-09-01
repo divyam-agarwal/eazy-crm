@@ -940,6 +940,21 @@ rather than in build hygiene:
   **false** and load-bearing (challenge #29), and `TenantJobRunner` opens a `REQUIRES_NEW`
   transaction *per tenant* in a loop, so the nightly sweep's pool demand scales with tenant count in
   a way nothing currently observes.
+- **Evaluate `quickperf` — and decide it *against* the bullet above, not alongside it.** QuickPerf
+  is an annotation layer over the same idea: `@ExpectSelect(1)`, `@ExpectMaxQueryExecutionTime`,
+  `@ExpectJdbcBatches`, `@ExpectNoJoin`, and — most relevant here —
+  `@DisableSameSelectTypesWithDifferentParams`, which detects an N+1 *by shape* rather than by a
+  hand-counted number, so it keeps working when the row count changes. It also measures JVM heap
+  allocation (`@ExpectMaxHeapAllocation`), which `SQLStatementCountValidator` does not do at all.
+  **These two are alternatives for one job, not two items to adopt.** The trade-off worth deciding
+  deliberately: QuickPerf is declarative and reads well on a test method, but it is another test
+  runtime with its own JUnit 5 extension and Spring integration to keep working across Boot
+  upgrades — and this project is on Boot 4.1 / Java 25 / Hibernate 7, where §6 shows most
+  third-party tooling has needed a version hunt. `SQLStatementCountValidator` is a plain assertion
+  in a plain test with almost no integration surface. **Evaluate QuickPerf's Boot 4 / JUnit 5
+  compatibility first** — if it lags, the plain validator is the lower-risk way to get the same
+  N+1 guard. Either way, run it in measure-mode first to discover today's real query counts before
+  asserting on them; do not guess the expected numbers.
 - **Count client-side REST calls by asserting on `RestTemplate`.** Worth recording, but be honest
   about the trigger: **there are zero outbound HTTP calls in `src/` today** — no `RestTemplate`,
   `WebClient`, `RestClient` or `HttpClient` anywhere, which is also why Pact and Spring Cloud
