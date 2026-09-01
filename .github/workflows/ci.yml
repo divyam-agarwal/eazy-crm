@@ -85,20 +85,28 @@ jobs:
             exit 0
           fi
           git show "HEAD~1:$SNAPSHOT" > /tmp/openapi-base.yaml
+          # The step summary is rendered as Markdown, which joins consecutive lines into one
+          # paragraph. oasdiff emits plain text, one finding per line, so unfenced output would
+          # arrive as a single run-on blob. Each block is fenced; the fences are written
+          # separately from the tool output so a tool failure still closes its fence.
           echo "## API changelog" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
           if ! docker run --rm \
             -v /tmp/openapi-base.yaml:/base.yaml:ro \
             -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
             tufin/oasdiff:latest changelog /base.yaml /head.yaml \
             | tee -a "$GITHUB_STEP_SUMMARY"; then
-            echo "_oasdiff changelog failed to run -- see the step log._" >> "$GITHUB_STEP_SUMMARY"
+            echo "oasdiff changelog failed to run -- see the step log." >> "$GITHUB_STEP_SUMMARY"
           fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Breaking changes" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
           if ! docker run --rm \
             -v /tmp/openapi-base.yaml:/base.yaml:ro \
             -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
             tufin/oasdiff:latest breaking /base.yaml /head.yaml \
             | tee -a "$GITHUB_STEP_SUMMARY"; then
-            echo "_oasdiff breaking failed to run -- see the step log._" >> "$GITHUB_STEP_SUMMARY"
+            echo "oasdiff breaking failed to run -- see the step log." >> "$GITHUB_STEP_SUMMARY"
           fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

@@ -16,7 +16,8 @@ class OpenApiConfigTest {
         return new BuildProperties(p);
     }
 
-    private final OpenAPI api = new OpenApiConfig(buildProperties("0.0.1-SNAPSHOT")).customOpenApi();
+    private final OpenAPI api =
+            new OpenApiConfig(buildProperties("0.0.1-SNAPSHOT"), "https://app.example.test").customOpenApi();
 
     @Test
     void carriesTitleAndTheInjectedProjectVersion() {
@@ -35,6 +36,14 @@ class OpenApiConfigTest {
         assertEquals(SecurityScheme.Type.HTTP, scheme.getType());
         assertEquals("bearer", scheme.getScheme());
         assertEquals("JWT", scheme.getBearerFormat());
+    }
+
+    @Test
+    void publishesTheConfiguredPublicBaseUrlAsTheServer() {
+        // Not springdoc's request-derived guess: left to itself it stamped the snapshot with
+        // "http://localhost", the origin of whatever MockMvc call generated the document.
+        assertEquals(1, api.getServers().size());
+        assertEquals("https://app.example.test", api.getServers().get(0).getUrl());
     }
 
     @Test

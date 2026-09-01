@@ -2,6 +2,7 @@ package com.easycrm.platform.openapi;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.easycrm.support.IntegrationTest;
 import java.nio.charset.StandardCharsets;
@@ -38,15 +39,37 @@ class OpenApiSnapshotTest extends IntegrationTest {
     @Autowired
     MockMvc mvc;
 
+    /**
+     * Comfortably below the 54 paths the app publishes today and nowhere near zero. The point is
+     * not to pin the exact number — that is the snapshot's job, and a threshold that had to move
+     * on every new endpoint would just get bumped without being read. The point is to catch a
+     * document that scanned almost nothing.
+     */
+    private static final int MINIMUM_API_PATHS = 45;
+
     @Test
     void generatedDocumentMatchesTheCommittedSnapshot() throws Exception {
         String generated = mvc.perform(get("/v3/api-docs.yaml"))
+                .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString(StandardCharsets.UTF_8);
 
         assertFalse(generated.isBlank(), "springdoc produced an empty document");
         assertTrue(generated.contains("EasyCRM API"), "the OpenApiConfig info block is missing");
+
+        // Floor on the paths, checked BEFORE the write/read branch so both modes get it. Without
+        // it, a misconfigured springdoc.paths-to-match, a stray @Hidden or a narrowed scan
+        // base-package would leave `info` intact while `paths` came back empty: write mode would
+        // cheerfully overwrite the committed contract with a gutted document and pass, and read
+        // mode would pass too, because it then compares the gutted generator output against the
+        // now-gutted file. Every other guard here compares the document to itself; this one
+        // compares it to a fact about the application.
+        long paths = generated.lines().filter(l -> l.startsWith("  /api/v1/")).count();
+        assertTrue(
+                paths >= MINIMUM_API_PATHS,
+                "only " + paths + " /api/v1 paths generated (expected at least " + MINIMUM_API_PATHS
+                        + "); component scanning or springdoc path matching is broken");
 
         Path snapshot = Path.of(System.getProperty("openapi.snapshot"));
 
@@ -72,5 +95,35 @@ class OpenApiSnapshotTest extends IntegrationTest {
                     + "  Generated output: " + actual + "\n"
                     + "  Diff: diff " + snapshot + " " + actual);
         }
+    }
+
+    /**
+     * The contract must say money is a string, because the server sends a string:
+     * {@code BigDecimalStringModule} serializes every {@code BigDecimal} with
+     * {@code writeString}, and {@code QuotationControllerTest} pins that with
+     * {@code jsonPath("$.currentVersion.subTotal").value("200.00")}.
+     *
+     * <p>This is the one assertion in this class that compares the document against something
+     * other than itself. The snapshot guard above is a *drift* guard: it is perfectly happy for
+     * the contract to be consistently, deterministically, reproducibly wrong, because both sides
+     * of its comparison come from the same generator. Nothing else here would notice if the
+     * {@code SpringDocUtils.replaceWithSchema} registration in {@code OpenApiConfig} were
+     * deleted — the snapshot would simply be regenerated with {@code type: number} throughout and
+     * every test would stay green while the published contract stopped describing the server.
+     */
+    @Test
+    void moneyFieldsAreDocumentedAsStrings() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                // A response field...
+                .andExpect(jsonPath("$.components.schemas.QuotationVersionResponse.properties.grandTotal.type")
+                        .value("string"))
+                .andExpect(jsonPath("$.components.schemas.OrderResponse.properties.grandTotal.type")
+                        .value("string"))
+                // ...and a request field: string on the way in is intended, not collateral damage.
+                .andExpect(jsonPath("$.components.schemas.ItemRequest.properties.rate.type")
+                        .value("string"))
+                .andExpect(jsonPath("$.components.schemas.ItemRequest.properties.qty.type")
+                        .value("string"));
     }
 }

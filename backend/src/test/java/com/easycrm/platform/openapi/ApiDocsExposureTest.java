@@ -68,8 +68,10 @@ class ApiDocsExposureTest extends IntegrationTest {
 
     @Test
     void healthIsStillReachable() throws Exception {
-        // Guards against the new dev filter chain accidentally taking precedence over the
-        // existing one: /actuator/health is permitAll today and must stay that way.
+        // /actuator/health is permitAll today and must stay that way. Note what this does NOT
+        // check: the dev filter chain is @Profile("dev") and this class does not activate it, so
+        // this assertion is identical whether DevApiDocsSecurityConfig exists, is deleted, or has
+        // its securityMatcher widened to "/**". DevApiDocsSecurityConfigTest is what covers that.
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 }

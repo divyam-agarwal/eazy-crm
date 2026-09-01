@@ -3,12 +3,12 @@ info:
   description: |-
     Multi-tenant CRM for Indian distributors, traders and small manufacturers. Scope stops at the Order: no invoicing, stock or ledger.
 
-    Every route under /api/** requires a bearer JWT except the auth routes, the invitation accept/preview pair, and GET /public/q/{token}. Money is carried as a JSON string, never a number. Errors share one envelope: {"error":{"code","message","fields"}}.
+    Routes under /api/** require a bearer JWT, including GET /api/v1/auth/me. The exceptions are the four unauthenticated auth calls (signup, login, refresh, logout) and the invitation preview/accept pair; each is marked with an empty security requirement below. GET /public/q/{token} is a separate, unauthenticated route that is not under /api/** at all — the share token itself is the credential. Money is carried as a JSON string, never a number. Errors share one envelope: {"error":{"code","message","fields"}}.
   title: EasyCRM API
   version: 0.0.1-SNAPSHOT
 servers:
-- description: Generated server url
-  url: http://localhost
+- description: Configured deployment origin (easycrm.public-base-url)
+  url: http://localhost:8080
 security:
 - bearer-jwt: []
 paths:
@@ -248,6 +248,7 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+      security: []
       tags:
       - public-invitation-controller
   /api/v1/auth/invitations/{token}/accept:
@@ -303,6 +304,7 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+      security: []
       tags:
       - public-invitation-controller
   /api/v1/auth/login:
@@ -352,6 +354,7 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+      security: []
       tags:
       - auth-controller
   /api/v1/auth/logout:
@@ -397,6 +400,7 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+      security: []
       tags:
       - auth-controller
   /api/v1/auth/me:
@@ -489,6 +493,7 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+      security: []
       tags:
       - auth-controller
   /api/v1/auth/signup:
@@ -538,6 +543,7 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+      security: []
       tags:
       - auth-controller
   /api/v1/customers:
@@ -4015,6 +4021,7 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+      security: []
       tags:
       - public-share-controller
 components:
@@ -4324,7 +4331,8 @@ components:
           type: string
           format: uuid
         expectedValue:
-          type: number
+          type: string
+          format: decimal
         requirementText:
           type: string
         source:
@@ -4356,7 +4364,8 @@ components:
           type: string
           format: uuid
         expectedValue:
-          type: number
+          type: string
+          format: decimal
         id:
           type: string
           format: uuid
@@ -4401,7 +4410,8 @@ components:
           type: string
           format: uuid
         expectedValue:
-          type: number
+          type: string
+          format: decimal
         requirementText:
           type: string
         source:
@@ -4588,14 +4598,17 @@ components:
       type: object
       properties:
         discountPct:
-          type: number
+          type: string
+          format: decimal
         productId:
           type: string
           format: uuid
         qty:
-          type: number
+          type: string
+          format: decimal
         rate:
-          type: number
+          type: string
+          format: decimal
       required:
       - productId
       - qty
@@ -4603,33 +4616,42 @@ components:
       type: object
       properties:
         cgst:
-          type: number
+          type: string
+          format: decimal
         discountPct:
-          type: number
+          type: string
+          format: decimal
         gstRate:
-          type: number
+          type: string
+          format: decimal
         hsn:
           type: string
         id:
           type: string
           format: uuid
         igst:
-          type: number
+          type: string
+          format: decimal
         lineTotal:
-          type: number
+          type: string
+          format: decimal
         name:
           type: string
         productId:
           type: string
           format: uuid
         qty:
-          type: number
+          type: string
+          format: decimal
         rate:
-          type: number
+          type: string
+          format: decimal
         sgst:
-          type: number
+          type: string
+          format: decimal
         taxableValue:
-          type: number
+          type: string
+          format: decimal
         uom:
           type: string
     ItemsRequest:
@@ -4709,7 +4731,8 @@ components:
           type: string
           format: uuid
         grandTotal:
-          type: number
+          type: string
+          format: decimal
         id:
           type: string
           format: uuid
@@ -4729,9 +4752,11 @@ components:
         status:
           type: string
         subTotal:
-          type: number
+          type: string
+          format: decimal
         totalTax:
-          type: number
+          type: string
+          format: decimal
     PageResponseActivityResponse:
       type: object
       properties:
@@ -4903,9 +4928,11 @@ components:
       type: object
       properties:
         discountPct:
-          type: number
+          type: string
+          format: decimal
         overrideRate:
-          type: number
+          type: string
+          format: decimal
         productId:
           type: string
           format: uuid
@@ -4915,12 +4942,14 @@ components:
       type: object
       properties:
         discountPct:
-          type: number
+          type: string
+          format: decimal
         id:
           type: string
           format: uuid
         overrideRate:
-          type: number
+          type: string
+          format: decimal
         priceListId:
           type: string
           format: uuid
@@ -4949,9 +4978,11 @@ components:
       type: object
       properties:
         baseRate:
-          type: number
+          type: string
+          format: decimal
         gstRate:
-          type: number
+          type: string
+          format: decimal
         hsnCode:
           type: string
         name:
@@ -4987,9 +5018,11 @@ components:
         active:
           type: boolean
         baseRate:
-          type: number
+          type: string
+          format: decimal
         gstRate:
-          type: number
+          type: string
+          format: decimal
         hsnCode:
           type: string
         id:
@@ -5018,9 +5051,11 @@ components:
       type: object
       properties:
         baseRate:
-          type: number
+          type: string
+          format: decimal
         gstRate:
-          type: number
+          type: string
+          format: decimal
         hsnCode:
           type: string
         name:
@@ -5108,7 +5143,8 @@ components:
         deliveryTerms:
           type: string
         grandTotal:
-          type: number
+          type: string
+          format: decimal
         id:
           type: string
           format: uuid
@@ -5128,9 +5164,11 @@ components:
         status:
           type: string
         subTotal:
-          type: number
+          type: string
+          format: decimal
         totalTax:
-          type: number
+          type: string
+          format: decimal
         validUntil:
           type: string
           format: date
