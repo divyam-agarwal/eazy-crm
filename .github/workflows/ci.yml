@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # TEMPORARY (Task 7): re-widened to confirm a clean push to build-hygiene goes green
+    # under CI, after the RED run in 33510215755. Reverted in the following commit.
+    branches: [main, build-hygiene]
   pull_request:
 
 # A newer push to the same ref supersedes an in-flight run.
