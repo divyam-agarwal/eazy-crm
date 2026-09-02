@@ -99,9 +99,13 @@ and its branch deleted.
 **Housekeeping pass done 2026-09-02, after the members-management merge.** The state below is
 verified, not assumed:
 
-- **`main` is at `5d7c3c6`, fully pushed, and `origin/main` is level with it.** CI run
-  `33611195670` (push, 2m31s) is **green** on that tip — all four gates across both Gradle
-  projects plus the oasdiff step.
+- **`main` is at `28f9ac8`, fully pushed, and `origin/main` is level with it.** CI is **green**
+  on that tip — run `33611759381` (push, 2m27s), and `33611195670` on the merge commit
+  `5d7c3c6` before it — all four gates across both Gradle projects plus the oasdiff step.
+  (This line named `5d7c3c6` until the housekeeping commit itself landed on top of it. A
+  recorded tip goes stale the moment anything else commits, so **treat the SHA as "where this
+  was written", not as a claim about now** — `git log -1` and `gh run list --branch main` are
+  the live answer, and both were green when this was written.)
 - **Local baseline re-verified from clean: 586 tests, 0 failures, 0 errors.** See the header for
   why this is not the 561 the previous entry claimed.
 - **The members-management worktree and its branch are gone.** `.claude/worktrees/members-management`
