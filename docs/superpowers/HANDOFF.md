@@ -101,8 +101,12 @@ one test in two modes rather than two tools.
 
 **One thing in this slice has never run for real, and it must not be written up as though it
 had: the oasdiff CI step.** The workflow fires on `push: [main]` and `pull_request`; a feature-branch
-push triggers neither, and pushing was withheld as the user's decision, so no CI run has ever
-executed the step. Its shell logic *was* verified locally in detail — all three absent-base
+push triggers neither, and pushing was withheld as the user's decision, so no CI run had ever
+executed the step. **That is now resolved for the push half:** `main` was pushed on 2026-09-02 and
+run `33605853807` executed the step for the first time, resolving `BASE_SHA` to
+`e9d694e386…` — `github.event.before`, the previous `origin/main` tip, which is exactly the fix
+below working. That base predates the snapshot, so it correctly took the nothing-to-compare
+branch. **The pull-request half has still never fired**, because this repo has never opened a PR. Its shell logic *was* verified locally in detail — all three absent-base
 branches (all-zero SHA, unreachable base, base predating the snapshot), a structural mutation of the
 snapshot producing a real changelog entry (`api-path-removed-without-deprecation`), and a
 deliberately broken `docker run` producing the explicit "failed to run" line rather than a silently
@@ -539,7 +543,14 @@ All under `docs/superpowers/`:
   pending 19-commit push reported "No changes detected"; with `event.before` the same range
   reports the 187 money-schema changes. That also forces `fetch-depth: 0` on the checkout — the
   base can be any distance back, and a shallow clone that lacks it fails *silently* into the
-  "nothing to compare" path. It reports rather than
+  "nothing to compare" path. **`OasdiffWorkflowTest` guards all of this** — it parses the real
+  `ci.yml` (injected as the `ci.workflow` system property, the same trick the snapshot guard uses)
+  and executes the step's own extracted shell body against throwaway git repos with `docker`
+  stubbed, so it tests *our* base-selection logic without depending on Docker Hub. Ten tests:
+  the per-event base wiring, `fetch-depth: 0`, `continue-on-error`, the push and PR base choices,
+  all three no-base branches, and that a tool failure still writes its explicit line and closes
+  both fences. Proven able to fail: reverting `ci.yml` to `HEAD~1` + `fetch-depth: 2` turns three
+  of them red, and dropping the PR base from the expression turns a fourth. It reports rather than
   gates for two reasons: CI here is post-merge (§0), so a blocking gate would fail *after* the
   breaking change landed; and there is no consumer yet, so it would fire regularly, at nobody, on
   correct work — which is how gates get ignored. **Flip `continue-on-error` to `false` when the

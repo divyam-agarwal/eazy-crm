@@ -85,9 +85,15 @@ dependencies {
 // have an opinion about.
 val openApiSnapshot = layout.projectDirectory.file("../docs/api/openapi.yaml")
 
+// The CI workflow, injected for the same reason and in the same way as the snapshot above:
+// OasdiffWorkflowTest reads the real .github/workflows/ci.yml rather than a copy, so the thing
+// under test is the thing that runs.
+val ciWorkflow = layout.projectDirectory.file("../.github/workflows/ci.yml")
+
 tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("openapi.snapshot", openApiSnapshot.asFile.absolutePath)
+    systemProperty("ci.workflow", ciWorkflow.asFile.absolutePath)
 }
 
 // Regenerates docs/api/openapi.yaml by running the drift guard in write mode. Deliberately the
