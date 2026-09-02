@@ -1,16 +1,17 @@
 # EasyCRM — Handoff
 
 **Last updated:** 2026-09-02 — **The OpenAPI contract slice is merged to `main` as `bead2f8`.
-Nothing is in flight, `main` is the baseline for new work, and `main` is ahead of `origin/main` —
-this slice and the docs commits around it have never been pushed (`git status -sb` for the
-count).** This API now has a
+`main` is the baseline for new work and everything on it is pushed — `main` and `origin/main`
+are level at `b239f5f`. **Something else IS in flight and it is not this slice:** a concurrent
+session's `worktree-members-management`, 16 unpushed commits in a locked worktree — §0 says what
+whoever merges it has to know.** This API now has a
 document: springdoc 3.1.0 generates it, `docs/api/openapi.yaml` is the committed snapshot, and
 `./gradlew clean check` fails when the two disagree — so the contract stops being "whatever the
 controllers happen to do" and becomes the thing the frontend gets built against. The error envelope
 is a typed pair of records rather than a `Map`, the browsable UI is dev-profile-only and physically
-absent from `bootJar`, and CI reports an oasdiff API changelog without blocking on it — though
-that step has still never run, because nothing has been pushed. See §0 for the detail and §3's new
-top bullet for the inventory. Before it, build hygiene was built
+absent from `bootJar`, and CI reports an oasdiff API changelog without blocking on it — **proven
+on real runs for both the push and the pull-request path**, which also fired this repo's first
+ever pull request. See §0 for the detail and §3's new top bullet for the inventory. Before it, build hygiene was built
 and merged to `main` as `83e6880`. This repo now has automated quality
 gates for the first time: one `./gradlew clean check` runs the tests **plus** Spotless
 (palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage verification
@@ -50,13 +51,42 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### There IS in-flight work, and it is not mine — read this before starting anything
+
+**`worktree-members-management` — 16 commits, unpushed, in a *locked* worktree at
+`.claude/worktrees/members-management`, branched from `main` at `e9d694e`.** It was built by a
+concurrent session, not by the one that wrote this entry; I did not touch it, did not review it,
+and cannot vouch for its state. Its own commits say it implements **members management**, which
+§8 lists as a candidate — so **do not propose members management as the next chunk without
+checking that branch first**, and do not assume it is abandoned because this file used to say
+nothing was in flight.
+
+Three things whoever merges it needs, none of which are obvious from the branch itself:
+
+1. **It will fail `clean check` on merge unless the snapshot is regenerated.** It adds
+   `MemberController` with new endpoints, and it was cut from `e9d694e` — *before* the OpenAPI
+   slice — so it contains no `docs/api/openapi.yaml` at all. `main` now guards that file. After
+   merging, run `./gradlew updateOpenApiSnapshot` and commit the result in the same change. This
+   is the first real exercise of the regenerate-alongside rule, and the failure is loud, not
+   silent.
+2. **The conflict surface is four files**, and the only Java one resolves cleanly:
+   `ApiExceptionHandler.java`, `annotations-reference.md`, `engineering-challenges.md`,
+   `HANDOFF.md`. On that branch `ConflictException` gained a `fields` map and the handler passes
+   `ex.getFields()` where `main` passes `null`; its `getFields()` returns `Map<String, Object>`,
+   which is exactly the parameter type `main`'s `body(...)` now takes, so the two changes compose.
+   Both branches independently reached the same `Collections.unmodifiableMap(new LinkedHashMap<>(…))`
+   defensive-copy idiom, so no reconciliation is needed there either.
+3. **Challenge numbering already does not collide.** `main` carries #62–#64 from the OpenAPI
+   slice; that branch renumbered its own to #65–#67 deliberately. Resolve the conflict by keeping
+   both runs, not by renumbering either.
+
+### The OpenAPI contract slice is done and pushed
 
 **The OpenAPI contract slice is merged to `main` as `bead2f8`.** Seven tasks plus a
 whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, merged `--no-ff` on
 2026-09-02 and the `openapi-contract` branch deleted; the merged result was verified green before
-the branch went away. **`main` is the baseline for new work. It is ahead of `origin/main` — this
-slice has NOT been pushed; run `git status -sb` for the current count.** The commit range started at `4a1848b`: two docs
+the branch went away. **`main` is the baseline for new work and is fully pushed — `main` and
+`origin/main` are level at `b239f5f`.** The commit range started at `4a1848b`: two docs
 commits (`4a1848b` the design spec,
 `e0d0dfb` the plan), then the task commits from `b14c92a` (springdoc plus the OpenAPI metadata bean)
 to `2d681fc` (the oasdiff misreport fix), then the final review wave (six items — the money-schema
@@ -66,16 +96,14 @@ a path-count floor on the snapshot guard, and fenced oasdiff output). See `docs/
 the workspace at merge, as `build-hygiene`'s was — so this file, the spec, and challenges #62–#64
 are now the only record of that slice's reasoning.
 
-**Verified green on the merged result: 534 tests, 0 failures, 0 errors** (511 root + 23
+**Verified green: 544 tests, 0 failures, 0 errors** (521 root + 23
 `platform-primitives`), up from the previous 519 baseline — a full `./gradlew clean check`, which
 now includes the OpenAPI drift guard.
 
-**One loose end, and it is deliberate: nothing has been pushed.** `main` is ahead of
-`origin/main` (`git status -sb` for the count). The oasdiff CI step this slice added therefore
-still has **never run** — the
-workflow fires on `push: [main]`, so the first real exercise of it will be whenever this is
-pushed, and it will take the absent-base branch on that run because the snapshot has no
-predecessor version. Its shell logic was verified locally in detail (absent-base guard, a
+**That loose end is now closed: everything is pushed and the CI step is proven on both events.**
+Three real runs did it — `33605853807` (push, absent-base guard), `33606310967` (push, compare
+path) and `33607087225` (pull request, compare path). Its shell logic was additionally verified
+locally in detail (all three no-base branches, a
 structural mutation producing a real changelog, a deliberately broken `docker run` producing an
 explicit failure line rather than a silently empty summary), but local verification is not a CI
 run and must not be written up as one.
@@ -99,10 +127,10 @@ deliberate API change and passing again after regeneration, and the output was p
 across two consecutive regenerations — see challenge #63 for why the guard and the regenerator are
 one test in two modes rather than two tools.
 
-**One thing in this slice has never run for real, and it must not be written up as though it
-had: the oasdiff CI step.** The workflow fires on `push: [main]` and `pull_request`; a feature-branch
-push triggers neither, and pushing was withheld as the user's decision, so no CI run had ever
-executed the step. **That is now resolved for the push half:** `main` was pushed on 2026-09-02 and
+**The oasdiff CI step is now proven on both events — it was dormant config for one day and is
+not any more.** The workflow fires on `push: [main]` and `pull_request`; a feature-branch push
+triggers neither, so while the slice sat unpushed no CI run had ever executed the step.
+**The push half:** `main` was pushed on 2026-09-02 and
 run `33605853807` executed the step for the first time, resolving `BASE_SHA` to
 `e9d694e386…` — `github.event.before`, the previous `origin/main` tip, which is exactly the fix
 below working. That base predates the snapshot, so it correctly took the nothing-to-compare
@@ -241,8 +269,8 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
    then `cd backend && ./gradlew clean check`. **`clean check` is the baseline command, not
    `clean test`** — it is strictly stronger (adds `spotlessCheck`, `spotbugsMain`,
    `jacocoTestCoverageVerification` across both projects) and is the same command CI runs, so a
-   green local run and a green CI run assert the same thing. On `main` at `bead2f8` this is
-   **534 tests, 0 failures, 0 errors** (511 root + 23 `platform-primitives`), up from 519 before
+   green local run and a green CI run assert the same thing. On `main` at `b239f5f` this is
+   **544 tests, 0 failures, 0 errors** (521 root + 23 `platform-primitives`), up from 519 before
    the OpenAPI slice and 464 before the invitations slice.
    Gradle prints no total for a multi-project build, so count it yourself:
 
@@ -256,7 +284,7 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 511, not 534, and this tripped an
+   -path './build/test-results/test/*.xml'` alone reports 521, not 544, and this tripped an
    implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
@@ -452,8 +480,8 @@ All under `docs/superpowers/`:
 ## 3. Current state
 
 - **Latest code work: the OpenAPI contract** — **merged to `main` as `bead2f8`** (off `main` at
-  `e9d694e`, seven tasks plus a whole-branch-review fix wave, every one reviewed). Not yet pushed —
-  `main` is ahead of `origin/main`. **534 tests, 0 failures,
+  `e9d694e`, seven tasks plus a whole-branch-review fix wave, every one reviewed), and pushed.
+  **544 tests, 0 failures,
   0 errors** (511 root + 23 `platform-primitives`), up 15 from `main`'s 519. What it delivers:
 
   **springdoc 3.1.0, split across two Gradle configurations on purpose.**
@@ -563,8 +591,12 @@ All under `docs/superpowers/`:
   gates for two reasons: CI here is post-merge (§0), so a blocking gate would fail *after* the
   breaking change landed; and there is no consumer yet, so it would fire regularly, at nobody, on
   correct work — which is how gates get ignored. **Flip `continue-on-error` to `false` when the
-  frontend exists and consumes this spec.** **This step has never run** — see §0; its shell logic
-  was verified locally, the step itself has not been exercised by a real CI run.
+  frontend exists and consumes this spec.** **Both event paths are proven on real runs** — see §0
+  for the three run IDs. **The base it diffs against is `github.event.before` on a push and
+  `github.event.pull_request.base.sha` on a PR, never `HEAD~1`**, and `OasdiffWorkflowTest`
+  guards that: it parses the real `ci.yml` and executes the step's own extracted shell against
+  throwaway git repos with `docker` stubbed. See the CI-tooling evaluation in §8 for why that
+  harness exists rather than Bats or `act`.
 
   New challenges **#62** (a new record with a `Map` component fails SpotBugs on the first build,
   and byte-identical is a stricter bar than immutable), **#63** (one generator, two modes) and
@@ -638,12 +670,13 @@ All under `docs/superpowers/`:
   --no-daemon`, triggered on `push: [main]` and `pull_request:`.** One command — the same one a
   developer runs — so CI and a local run produce the same verdict, with no CI-only checks.
   **CI is a post-merge smoke alarm, not a pre-merge gate, and that is a deliberate, reasoned
-  choice, not an oversight.** This repo has never used a pull request (`gh pr list --state all` is
-  empty; every slice so far merged with `git merge --no-ff` — `f265cfe`, `2fb2b85`, `f97c62c`,
-  `c81f59f`, …), so the `pull_request` trigger has **never fired and is unproven** — dormant but
-  correct config, the same untested-gate category as challenge #33, not evidence CI is fully
-  exercised. Under `push: [main]` + `pull_request`, with no PRs ever opened, CI only runs *after* a
-  merge lands: it can tell you `main` broke, it cannot stop `main` from breaking. Broadening the
+  choice, not an oversight.** Every slice so far merged with `git merge --no-ff` — `f265cfe`,
+  `2fb2b85`, `f97c62c`, `c81f59f`, … — and that has not changed. **The `pull_request` trigger is
+  no longer unproven, though:** PR #1 (`ci-verify-pr-oasdiff`, 2026-09-02) was opened purely to
+  fire it, confirmed the whole job runs on that event, and was closed without merging. That
+  retires the challenge-#33-shaped doubt about the trigger itself — but it changes nothing about
+  the workflow's *shape*. Under `push: [main]` + `pull_request`, with PRs not part of the merge
+  habit, CI still only runs *after* a merge lands: it can tell you `main` broke, it cannot stop `main` from breaking. Broadening the
   push trigger to every branch was considered and **rejected**: it would fire earlier, but
   still block nothing, because required-status-check branch protection is PR-shaped and cannot
   gate a direct push to `main` — so broadening buys earliness at the cost of Actions minutes on
@@ -1160,7 +1193,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
   reformat commit `2616049`; with it set, those lines correctly fall back to the real original
   commit `a855056b`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 534 tests on `main`, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 544 tests on `main`, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -1324,8 +1357,10 @@ number standing.
   slice ships a link that gets pasted into WhatsApp and has no page behind it. Unscoped, so it
   begins at brainstorming, and it is large enough to want decomposing into sub-projects before a
   spec; that size, not its value, is why Wave 1.5 sits above it.
-- **Members management — the natural sequel to invitations.** List existing users, change a role,
-  disable one. Today invite + accept + revoke + pending-list is the whole surface, so a multi-user
+- **Members management — ALREADY BEING BUILT by a concurrent session; check before proposing
+  it.** `worktree-members-management` has 16 unpushed commits implementing exactly this (§0).
+  Treat it as taken unless that branch turns out to be abandoned. What it covers: list existing
+  users, change a role, Today invite + accept + revoke + pending-list is the whole surface, so a multi-user
   tenant is creatable but not administrable. Unscoped; starts at brainstorming. It is also the
   first real test of the new drift guard on a slice that adds endpoints: the snapshot must be
   regenerated and committed in the same change, not afterwards.
