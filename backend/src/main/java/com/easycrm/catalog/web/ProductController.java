@@ -35,7 +35,9 @@ public class ProductController {
 
     @GetMapping
     public PageResponse<ProductResponse> list(
-            @RequestParam(required = false) Boolean active, @ParameterObject Pageable pageable) {
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) String ciProbe,
+            @ParameterObject Pageable pageable) {
         return service.list(active, pageable);
     }
 
