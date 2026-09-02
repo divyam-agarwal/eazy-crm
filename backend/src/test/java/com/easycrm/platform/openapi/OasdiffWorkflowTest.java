@@ -73,11 +73,14 @@ class OasdiffWorkflowTest {
     void baseShaIsResolvedPerEvent() throws Exception {
         String baseSha = String.valueOf(((Map<?, ?>) stepNamed("API changelog").get("env")).get("BASE_SHA"));
 
+        // Matched with a trailing word boundary, not `contains`. A substring check passes on
+        // `...base.shaa` -- a typo actionlint does NOT catch either, because it does not
+        // deep-validate webhook payload properties. Verified empirically before writing this.
         assertTrue(
-                baseSha.contains("github.event.before"),
+                baseSha.matches("(?s).*\\bgithub\\.event\\.before\\b.*"),
                 "a push must diff against the SHA the branch was at before the push; got: " + baseSha);
         assertTrue(
-                baseSha.contains("github.event.pull_request.base.sha"),
+                baseSha.matches("(?s).*\\bgithub\\.event\\.pull_request\\.base\\.sha\\b.*"),
                 "a pull request must diff against the base branch tip; got: " + baseSha);
         assertFalse(
                 baseSha.contains("HEAD~1"),

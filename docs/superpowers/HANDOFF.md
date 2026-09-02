@@ -106,7 +106,16 @@ executed the step. **That is now resolved for the push half:** `main` was pushed
 run `33605853807` executed the step for the first time, resolving `BASE_SHA` to
 `e9d694e386…` — `github.event.before`, the previous `origin/main` tip, which is exactly the fix
 below working. That base predates the snapshot, so it correctly took the nothing-to-compare
-branch. **The pull-request half has still never fired**, because this repo has never opened a PR. Its shell logic *was* verified locally in detail — all three absent-base
+branch. **The pull-request half is now proven too.** PR #1 (`ci-verify-pr-oasdiff`, opened and
+closed on 2026-09-02 purely to fire the event — it was never meant to merge) carried one added
+optional query parameter and a regenerated snapshot. Run `33607087225` resolved `BASE_SHA` to
+`11b40f38…`, `main`'s tip — i.e. `github.event.pull_request.base.sha`, not the merge commit's
+parent — took the compare path, and reported `1 changes: 0 error, 0 warning, 1 info / added the
+new optional query request parameter ciProbe`. That also incidentally confirms oasdiff's default
+severities behave as the design assumed: an added *optional* request parameter is `info`, not a
+breaking change. **Both events are therefore verified on real runs, and this step is no longer
+dormant config.** The `pull_request` trigger itself, dormant since the build-hygiene slice, fired
+for the first time on that same run. Its shell logic *was* verified locally in detail — all three absent-base
 branches (all-zero SHA, unreachable base, base predating the snapshot), a structural mutation of the
 snapshot producing a real changelog entry (`api-path-removed-without-deprecation`), and a
 deliberately broken `docker run` producing the explicit "failed to run" line rather than a silently
@@ -1376,7 +1385,9 @@ re-deriving the reasoning from that spec each time.
 
 - **Wave 1.5 — supply chain, a short follow-up, not yet started.** `gitleaks` (secret scanning),
   Dependabot or Renovate (dependency update PRs), OWASP Dependency-Check (published-CVE
-  scanning), and `squawk` (unsafe Postgres DDL linting for Flyway migrations). Deliberately split
+  scanning), `squawk` (unsafe Postgres DDL linting for Flyway migrations), and **`actionlint`**
+  (workflow linting with shellcheck over `run:` blocks — see the CI-tooling evaluation later in
+  this section for what it does and does not catch). Deliberately split
   out of Wave 1 rather than folded in: it's a third distinct tool family, and Dependency-Check
   needs an NVD cache that makes CI setup meaningfully slower — bundling it with Spotless/SpotBugs/
   JaCoCo would have blurred one clean slice into two. Higher real security value than anything in
@@ -1421,6 +1432,58 @@ those is probably a permanent category exclusion in `config/spotbugs/exclude.xml
 empty, ready for this) rather than baseline debt that looks like it's waiting to be "paid off."
 The other 6 — 3× `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`, 3× `CT_CONSTRUCTOR_THROW` — are a
 different kind of finding and deserve someone actually reading each one, not a blanket exclusion.
+
+### CI-pipeline testing tooling — evaluated 2026-09-02, mostly declined
+
+Raised after the oasdiff base-SHA bug: the step diffed against `HEAD~1` (the previous *commit*)
+instead of the branch's previous *state*, so a multi-commit push reported nothing for all but its
+last commit. Nothing caught it — the workflow parsed, the step exited 0, and the summary said "no
+changes", which is also what it says when there genuinely are none. The question this section
+answers is which of the standard CI-testing tools would have helped, and the answer is mostly
+"none of them, and here is the one that earns a slot anyway."
+
+**Every claim below was measured against this repo's own `ci.yml`, not read off a description.**
+
+- **`actionlint` — ADOPT, fold into Wave 1.5.** The only clear win. Run it on the real file and it
+  reports shellcheck findings *inside* `run:` blocks (it embeds shellcheck), unknown runner labels,
+  and malformed action refs. On our current file it already flags one live style issue
+  (`SC2129`, the repeated `>> "$GITHUB_STEP_SUMMARY"` redirects). Given this repo's CI now carries
+  ~45 lines of non-trivial shell — `set -uo pipefail`, three guard branches, fenced summary output
+  — shellcheck coverage of that shell is real value for one Docker invocation.
+  **Be clear about what it does NOT do:** it would not have caught our bug, and it does not catch a
+  typo in the very expression we fixed. Injecting `github.event.beforre` and
+  `github.event.pull_request.base.shaa` produced *no* actionlint findings — it does not
+  deep-validate webhook payload properties. It catches shape, not meaning.
+- **`Bats` — DECLINE, with a reason rather than a shrug.** It is the obvious tool for testing the
+  shell inside `run:` blocks, and we already do that from JUnit: `OasdiffWorkflowTest` extracts the
+  step's body out of the real `ci.yml` and executes it against throwaway git repos with `docker`
+  stubbed. That approach wins on the property this repo cares most about — it runs inside
+  `./gradlew clean check`, the single command that means "the build is green". Bats would be a
+  second test runtime, a second command to remember, and a second thing CI has to install, to test
+  the same 45 lines. Revisit only if pipeline shell grows past what is comfortable in a JUnit
+  harness.
+- **`act` (nektos/act) — DEFER, with a trigger.** It runs workflows locally in Docker and is the
+  only tool here that could exercise a `pull_request` event without opening a PR. Two things make
+  it a poor fit *today*: our job runs Testcontainers under Gradle, so act means Docker-in-Docker;
+  and act emulates GitHub rather than being it — checkout's merge-ref behaviour and
+  `github.event.before` are exactly the semantics we would be trusting it to reproduce, which is
+  circular for our purposes. **Trigger to revisit:** a workflow change that cannot be verified by
+  pushing, or a second workflow with matrix/conditional logic worth iterating on locally.
+- **`yamllint` — DECLINE.** actionlint subsumes the workflow-specific half, Spotless already owns
+  formatting for `src/**/*.yml`, and `OasdiffWorkflowTest` parses `ci.yml` with snakeyaml on every
+  build, so a syntax break fails the suite already. Pure overlap.
+- **Mocked env vars paired with `act` — ALREADY DONE, without act.** The valuable half is stubbing
+  the external tool, and the test does that: a fake `docker` on `PATH` records the base document it
+  was handed. That is what makes the test deterministic and offline.
+- **GitLab Runner — not applicable.** This project is on GitHub Actions.
+
+**What actually closed the gap** was not a tool. Two things did: the JUnit harness above, and
+opening one throwaway pull request to fire the event that had never fired. Note the division of
+labour, because it is the reusable lesson — actionlint checks that a workflow is *well-formed*;
+only a test that runs the workflow's own logic checks that it is *correct*; and only a real run
+proves the platform populates what you assumed. A tool that would have caught the `HEAD~1` bug
+does not exist, because the bug was a wrong answer to a question the file never asks out loud.
+
 
 ### TODO — assert runtime behaviour, not just outcomes (raised 2026-09-01)
 
