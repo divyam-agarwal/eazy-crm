@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-02 — **Members management is merged to `main`.** Eight task commits
+**Last updated:** 2026-09-02 — **Members management is merged to `main` as `f2465b8`.** Eight task commits
 (`0d80e9b`..`f0ce72c`, one per task) plus two intermediate fix-ups folded in along the way
 (`2a11fa7` a Spotless reformat, `1577d50` a defensive copy for a new SpotBugs finding —
 challenge #67 is about how those two came to be needed), every task reviewed clean. A tenant's
@@ -498,8 +498,8 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: members management** — **merged to `main`**, off `main` at `e9d694e`
-  (branch `worktree-members-management`). Eight task commits (`0d80e9b`..`f0ce72c`) plus
+- **Latest code work: members management** — **merged to `main` as `f2465b8`**, off `main` at
+  `e9d694e` (branch `worktree-members-management`). Eight task commits (`0d80e9b`..`f0ce72c`) plus
   two intermediate fix-up commits folded in along the way (`2a11fa7` a Spotless reformat,
   `1577d50` a defensive copy for a new SpotBugs finding — challenge #67), every task reviewed
   clean. Closes the gap `user-invitations` deliberately left open (below): a workspace with more
