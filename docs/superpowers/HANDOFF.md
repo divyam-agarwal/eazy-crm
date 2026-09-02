@@ -1,13 +1,15 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-02 — **`openapi-contract` is on branch `openapi-contract`, off `main`
-at `e9d694e`, all seven tasks done and reviewed — NOT merged, NOT pushed.** This API now has a
+**Last updated:** 2026-09-02 — **The OpenAPI contract slice is merged to `main` as `bead2f8`.
+Nothing is in flight; `main` is the baseline for new work, and it is 16 commits ahead of
+`origin/main` — nothing has been pushed.** This API now has a
 document: springdoc 3.1.0 generates it, `docs/api/openapi.yaml` is the committed snapshot, and
 `./gradlew clean check` fails when the two disagree — so the contract stops being "whatever the
 controllers happen to do" and becomes the thing the frontend gets built against. The error envelope
 is a typed pair of records rather than a `Map`, the browsable UI is dev-profile-only and physically
-absent from `bootJar`, and CI reports an oasdiff API changelog without blocking on it. See §0 for
-the in-flight detail and §3's new top bullet for the inventory. Before it, build hygiene was built
+absent from `bootJar`, and CI reports an oasdiff API changelog without blocking on it — though
+that step has still never run, because nothing has been pushed. See §0 for the detail and §3's new
+top bullet for the inventory. Before it, build hygiene was built
 and merged to `main` as `83e6880`. This repo now has automated quality
 gates for the first time: one `./gradlew clean check` runs the tests **plus** Spotless
 (palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage verification
@@ -47,23 +49,34 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### `openapi-contract` is in flight — complete, green, and pending merge
+### Nothing is in flight
 
-**Seven tasks plus a whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, on
-branch `openapi-contract`. Nothing has been merged and nothing has been pushed — the branch exists
-only locally.** The commit range starts at `4a1848b`: two docs commits (`4a1848b` the design spec,
+**The OpenAPI contract slice is merged to `main` as `bead2f8`.** Seven tasks plus a
+whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, merged `--no-ff` on
+2026-09-02 and the `openapi-contract` branch deleted; the merged result was verified green before
+the branch went away. **`main` is the baseline for new work, and it is 16 commits ahead of
+`origin/main` — this slice has NOT been pushed.** The commit range started at `4a1848b`: two docs
+commits (`4a1848b` the design spec,
 `e0d0dfb` the plan), then the task commits from `b14c92a` (springdoc plus the OpenAPI metadata bean)
 to `2d681fc` (the oasdiff misreport fix), then the final review wave (six items — the money-schema
 fix, the dev-profile chain's first test, per-operation `security: []`, an explicit `servers` block,
 a path-count floor on the snapshot guard, and fenced oasdiff output). See `docs/superpowers/specs/2026-09-01-openapi-contract-design.md` and
-`docs/superpowers/plans/2026-09-01-openapi-contract.md`, and the SDD ledger at
-`.superpowers/sdd/2026-09-01-openapi-contract/` while it still exists — it is deleted with the
-workspace at merge, as `build-hygiene`'s was, so anything in it worth keeping has to be copied out
-into this file, the spec, or a challenge entry first.
+`docs/superpowers/plans/2026-09-01-openapi-contract.md`. **Its SDD ledger is gone** — deleted with
+the workspace at merge, as `build-hygiene`'s was — so this file, the spec, and challenges #62–#64
+are now the only record of that slice's reasoning.
 
-**Verified green on the branch tip: 534 tests, 0 failures, 0 errors** (511 root + 23
-`platform-primitives`), up from `main`'s 519 — a full `./gradlew clean check`, which now includes
-the OpenAPI drift guard. **Merge is the user's call and has deliberately not been taken.**
+**Verified green on the merged result: 534 tests, 0 failures, 0 errors** (511 root + 23
+`platform-primitives`), up from the previous 519 baseline — a full `./gradlew clean check`, which
+now includes the OpenAPI drift guard.
+
+**One loose end, and it is deliberate: nothing has been pushed.** `main` is 16 commits ahead of
+`origin/main`. The oasdiff CI step this slice added therefore still has **never run** — the
+workflow fires on `push: [main]`, so the first real exercise of it will be whenever this is
+pushed, and it will take the absent-base branch on that run because the snapshot has no
+predecessor version. Its shell logic was verified locally in detail (absent-base guard, a
+structural mutation producing a real changelog, a deliberately broken `docker run` producing an
+explicit failure line rather than a silently empty summary), but local verification is not a CI
+run and must not be written up as one.
 
 **The most important thing the review wave found: the document said money was a JSON `number`.**
 All 31 monetary and quantity fields did, while the server has never sent anything but a string
@@ -417,18 +430,17 @@ All under `docs/superpowers/`:
     envelope, the dev-only exposure, and why the oasdiff gate reports instead of blocking). Source
     of truth for *what* this slice built.
 42. **`plans/2026-09-01-openapi-contract.md`** — the seven-task implementation plan for it.
-    Executed in full; **on branch `openapi-contract`, done and reviewed, NOT merged** — see §0 and
-    §3. Read it for the two places execution contradicted it: the springdoc major line (3.x is Boot
+    Executed in full and **merged as `bead2f8`** — see §0 and §3. Read it for the two places
+    execution contradicted it: the springdoc major line (3.x is Boot
     4; the plan's own research had to establish that 2.x, which every tutorial names, does not
-    work here) and the predicted test count, which was 529 against an actual 530. Its SDD ledger
-    (`.superpowers/sdd/2026-09-01-openapi-contract/`) still exists while the branch is unmerged and
-    carries the per-task reports; it goes away with the workspace at merge.
+    work here) and the predicted test count, which was 529 against an actual 530 on the branch and
+    534 after the review wave. Its SDD ledger is gone, deleted with the workspace at merge.
 
 ## 3. Current state
 
-- **Latest code work: the OpenAPI contract** — **on branch `openapi-contract`, off `main` at
-  `e9d694e`, seven tasks plus a whole-branch-review fix wave, done and reviewed, NOT merged and NOT
-  pushed.** Commits from `4a1848b` (design spec) through the review wave. **534 tests, 0 failures,
+- **Latest code work: the OpenAPI contract** — **merged to `main` as `bead2f8`** (off `main` at
+  `e9d694e`, seven tasks plus a whole-branch-review fix wave, every one reviewed). Not yet pushed:
+  `main` is 16 commits ahead of `origin/main`. **534 tests, 0 failures,
   0 errors** (511 root + 23 `platform-primitives`), up 15 from `main`'s 519. What it delivers:
 
   **springdoc 3.1.0, split across two Gradle configurations on purpose.**
@@ -1362,7 +1374,7 @@ re-deriving the reasoning from that spec each time.
   assertions on query/pool/call behaviour rather than *production* observability, but both need
   the same underlying instrumentation, so plan them together rather than standing up tracing
   twice.
-- **Wave 3 — OpenAPI. DONE** (branch `openapi-contract`, pending merge; see §0 and §3). springdoc
+- **Wave 3 — OpenAPI. DONE** (merged as `bead2f8`; see §0 and §3). springdoc
   3.1.0, the committed and drift-guarded snapshot at `docs/api/openapi.yaml`, and an `oasdiff`
   changelog in CI — reporting rather than blocking, for the reasons in §3. It was the highest-value
   item on the user's original list: there are 16 controllers and the frontend has never been
