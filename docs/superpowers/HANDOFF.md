@@ -1,8 +1,9 @@
 # EasyCRM — Handoff
 
 **Last updated:** 2026-09-02 — **The OpenAPI contract slice is merged to `main` as `bead2f8`.
-Nothing is in flight; `main` is the baseline for new work, and it is 16 commits ahead of
-`origin/main` — nothing has been pushed.** This API now has a
+Nothing is in flight and `main` is the baseline for new work. **`main` is ahead of `origin/main`:
+this slice and the docs commits around it have never been pushed** — `git status -sb` gives the
+current count.** This API now has a
 document: springdoc 3.1.0 generates it, `docs/api/openapi.yaml` is the committed snapshot, and
 `./gradlew clean check` fails when the two disagree — so the contract stops being "whatever the
 controllers happen to do" and becomes the thing the frontend gets built against. The error envelope
@@ -54,8 +55,8 @@ the first thing to do when the frontend lands.
 **The OpenAPI contract slice is merged to `main` as `bead2f8`.** Seven tasks plus a
 whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, merged `--no-ff` on
 2026-09-02 and the `openapi-contract` branch deleted; the merged result was verified green before
-the branch went away. **`main` is the baseline for new work, and it is 16 commits ahead of
-`origin/main` — this slice has NOT been pushed.** The commit range started at `4a1848b`: two docs
+the branch went away. **`main` is the baseline for new work. It is ahead of `origin/main` — this
+slice has NOT been pushed; run `git status -sb` for the current count.** The commit range started at `4a1848b`: two docs
 commits (`4a1848b` the design spec,
 `e0d0dfb` the plan), then the task commits from `b14c92a` (springdoc plus the OpenAPI metadata bean)
 to `2d681fc` (the oasdiff misreport fix), then the final review wave (six items — the money-schema
@@ -69,8 +70,9 @@ are now the only record of that slice's reasoning.
 `platform-primitives`), up from the previous 519 baseline — a full `./gradlew clean check`, which
 now includes the OpenAPI drift guard.
 
-**One loose end, and it is deliberate: nothing has been pushed.** `main` is 16 commits ahead of
-`origin/main`. The oasdiff CI step this slice added therefore still has **never run** — the
+**One loose end, and it is deliberate: nothing has been pushed.** `main` is ahead of
+`origin/main` (`git status -sb` for the count). The oasdiff CI step this slice added therefore
+still has **never run** — the
 workflow fires on `push: [main]`, so the first real exercise of it will be whenever this is
 pushed, and it will take the absent-base branch on that run because the snapshot has no
 predecessor version. Its shell logic was verified locally in detail (absent-base guard, a
@@ -124,11 +126,11 @@ either side (or `--theirs`, it does not matter), finish the merge, then run
 produces a document that matches neither branch's code, and the guard is the only thing that would
 tell you — after the fact.
 
-### `main` at `e9d694e` — what this branch was cut from, and still current
+### `main` before the OpenAPI slice — still current
 
-**`main` is clean; `openapi-contract` branched from it and has changed nothing on it.** Everything
-in this subsection and the CI one after it is current state, not history — the OpenAPI slice adds to
-it rather than replacing it. The `build-hygiene` slice — seven tasks plus
+**Everything in this subsection and the CI one after it is current state, not history.** The
+OpenAPI slice added to it rather than replacing it, so the build gates, CI behaviour and RLS
+posture described here all still hold on `main` at `bead2f8`. The `build-hygiene` slice — seven tasks plus
 a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba` — was merged `--no-ff` as
 **`83e6880`** on 2026-09-01 and its local branch deleted; the merged result was verified green
 (519 tests, full `clean check`) before the branch went away. See
@@ -226,10 +228,9 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
    then `cd backend && ./gradlew clean check`. **`clean check` is the baseline command, not
    `clean test`** — it is strictly stronger (adds `spotlessCheck`, `spotbugsMain`,
    `jacocoTestCoverageVerification` across both projects) and is the same command CI runs, so a
-   green local run and a green CI run assert the same thing. On `main` at `e9d694e` this is
-   **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`); **on the unmerged
-   `openapi-contract` branch tip it is 530** (507 root + 23), and that is the number to expect once
-   that branch lands. Both are up from the **464-test** baseline before the invitations slice.
+   green local run and a green CI run assert the same thing. On `main` at `bead2f8` this is
+   **534 tests, 0 failures, 0 errors** (511 root + 23 `platform-primitives`), up from 519 before
+   the OpenAPI slice and 464 before the invitations slice.
    Gradle prints no total for a multi-project build, so count it yourself:
 
    ```bash
@@ -242,8 +243,7 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 496, not 519 (507, not 530, on
-   `openapi-contract`), and this tripped an
+   -path './build/test-results/test/*.xml'` alone reports 511, not 534, and this tripped an
    implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
@@ -439,8 +439,8 @@ All under `docs/superpowers/`:
 ## 3. Current state
 
 - **Latest code work: the OpenAPI contract** — **merged to `main` as `bead2f8`** (off `main` at
-  `e9d694e`, seven tasks plus a whole-branch-review fix wave, every one reviewed). Not yet pushed:
-  `main` is 16 commits ahead of `origin/main`. **534 tests, 0 failures,
+  `e9d694e`, seven tasks plus a whole-branch-review fix wave, every one reviewed). Not yet pushed —
+  `main` is ahead of `origin/main`. **534 tests, 0 failures,
   0 errors** (511 root + 23 `platform-primitives`), up 15 from `main`'s 519. What it delivers:
 
   **springdoc 3.1.0, split across two Gradle configurations on purpose.**
@@ -1133,7 +1133,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
   reformat commit `2616049`; with it set, those lines correctly fall back to the real original
   commit `a855056b`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests on `main`, 530 on the unmerged `openapi-contract` branch, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 534 tests on `main`, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -1276,7 +1276,7 @@ The numbered list above is down to one open item (#4), the correctness backlog i
 slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level
 visibility, activity/follow-up, scheduled auto-expiry, user invitations, build hygiene, then the
 OpenAPI contract). **Wave 3 is done** — springdoc, the committed and guarded `docs/api/openapi.yaml`
-snapshot, and the oasdiff changelog in CI are all on the `openapi-contract` branch; strike it from
+snapshot, and the oasdiff changelog in CI are all merged to `main` as `bead2f8`; strike it from
 the option set. **The strongest remaining candidates are still not on the numbered list**, so the
 real option set is the five below. Present them; do not default into #4 because it is the last
 number standing.
