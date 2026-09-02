@@ -1,7 +1,14 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-01 — **Build hygiene is built and merged to `main` as `83e6880`.
-Nothing is in flight; `main` is the baseline for new work.** This repo now has automated quality
+**Last updated:** 2026-09-02 — **`openapi-contract` is on branch `openapi-contract`, off `main`
+at `e9d694e`, all seven tasks done and reviewed — NOT merged, NOT pushed.** This API now has a
+document: springdoc 3.1.0 generates it, `docs/api/openapi.yaml` is the committed snapshot, and
+`./gradlew clean check` fails when the two disagree — so the contract stops being "whatever the
+controllers happen to do" and becomes the thing the frontend gets built against. The error envelope
+is a typed pair of records rather than a `Map`, the browsable UI is dev-profile-only and physically
+absent from `bootJar`, and CI reports an oasdiff API changelog without blocking on it. See §0 for
+the in-flight detail and §3's new top bullet for the inventory. Before it, build hygiene was built
+and merged to `main` as `83e6880`. This repo now has automated quality
 gates for the first time: one `./gradlew clean check` runs the tests **plus** Spotless
 (palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage verification
 across both Gradle projects, and **GitHub Actions runs that same command on every push to `main`**
@@ -40,9 +47,75 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### `openapi-contract` is in flight — complete, green, and pending merge
 
-**`main` is clean and is the baseline for new work.** The `build-hygiene` slice — seven tasks plus
+**Seven tasks plus a whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, on
+branch `openapi-contract`. Nothing has been merged and nothing has been pushed — the branch exists
+only locally.** The commit range starts at `4a1848b`: two docs commits (`4a1848b` the design spec,
+`e0d0dfb` the plan), then the task commits from `b14c92a` (springdoc plus the OpenAPI metadata bean)
+to `2d681fc` (the oasdiff misreport fix), then the final review wave (six items — the money-schema
+fix, the dev-profile chain's first test, per-operation `security: []`, an explicit `servers` block,
+a path-count floor on the snapshot guard, and fenced oasdiff output). See `docs/superpowers/specs/2026-09-01-openapi-contract-design.md` and
+`docs/superpowers/plans/2026-09-01-openapi-contract.md`, and the SDD ledger at
+`.superpowers/sdd/2026-09-01-openapi-contract/` while it still exists — it is deleted with the
+workspace at merge, as `build-hygiene`'s was, so anything in it worth keeping has to be copied out
+into this file, the spec, or a challenge entry first.
+
+**Verified green on the branch tip: 534 tests, 0 failures, 0 errors** (511 root + 23
+`platform-primitives`), up from `main`'s 519 — a full `./gradlew clean check`, which now includes
+the OpenAPI drift guard. **Merge is the user's call and has deliberately not been taken.**
+
+**The most important thing the review wave found: the document said money was a JSON `number`.**
+All 31 monetary and quantity fields did, while the server has never sent anything but a string
+(`BigDecimalStringModule`). Every guard on this branch — drift, byte-stability, oasdiff — compares
+the document to *itself*, so none of them could see it. Fixed with one global
+`SpringDocUtils.replaceWithSchema(BigDecimal.class, …)` in `OpenApiConfig` and, more to the point,
+guarded by `OpenApiSnapshotTest.moneyFieldsAreDocumentedAsStrings`, the only assertion in the suite
+that checks the contract against a fact about the server. It was watched failing with the override
+removed. **Read challenge #64 before adding any further guard to this document.**
+
+**`clean check` now asserts something new: that the committed API document still matches the
+code.** `OpenApiSnapshotTest` generates the document from the live controllers and compares it byte
+for byte against `docs/api/openapi.yaml`. Add an endpoint, rename a response field, change a status
+code or add a query parameter and the build goes red until the snapshot is regenerated
+(`./gradlew updateOpenApiSnapshot`) and committed **in the same change**. That is the whole
+difference between having a Swagger page and having a contract. The guard was watched failing on a
+deliberate API change and passing again after regeneration, and the output was proven byte-stable
+across two consecutive regenerations — see challenge #63 for why the guard and the regenerator are
+one test in two modes rather than two tools.
+
+**One thing in this slice has never run for real, and it must not be written up as though it
+had: the oasdiff CI step.** The workflow fires on `push: [main]` and `pull_request`; a feature-branch
+push triggers neither, and pushing was withheld as the user's decision, so no CI run has ever
+executed the step. Its shell logic *was* verified locally in detail — the absent-base guard
+(`git cat-file -e HEAD~1:…` short-circuiting on a first commit), a structural mutation of the
+snapshot producing a real changelog entry (`api-path-removed-without-deprecation`), and a
+deliberately broken `docker run` producing the explicit "failed to run" line rather than a silently
+empty summary section, which is what the `pipefail` and the `if !` wrappers exist for. So the logic
+is exercised; the step is not. It will first run on the merge to `main`. Treat it as the same
+untested-config category as the `pull_request` trigger below and challenge #33 — dormant and
+reasoned, not proven. (The review wave did fix one thing about it that only a first run would have
+exposed: oasdiff emits plain text one finding per line, and `$GITHUB_STEP_SUMMARY` is Markdown,
+which joins consecutive lines — so both blocks are now wrapped in fenced code blocks, written
+separately from the tool output so a tool failure still closes its fence.)
+
+### `docs/api/openapi.yaml` is generated output, not a document
+
+**Never hand-edit it.** It is written by `./gradlew updateOpenApiSnapshot`, which runs the same test
+that guards it; anything typed into the file directly is erased by the next regeneration, and in the
+meantime it makes the guard red for a reason that has nothing to do with the API.
+
+**A merge conflict in it is always resolved by regenerating, never by hand-merging the YAML.** Take
+either side (or `--theirs`, it does not matter), finish the merge, then run
+`./gradlew updateOpenApiSnapshot` and commit the result. Hand-resolving a 5000-line generated file
+produces a document that matches neither branch's code, and the guard is the only thing that would
+tell you — after the fact.
+
+### `main` at `e9d694e` — what this branch was cut from, and still current
+
+**`main` is clean; `openapi-contract` branched from it and has changed nothing on it.** Everything
+in this subsection and the CI one after it is current state, not history — the OpenAPI slice adds to
+it rather than replacing it. The `build-hygiene` slice — seven tasks plus
 a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba` — was merged `--no-ff` as
 **`83e6880`** on 2026-09-01 and its local branch deleted; the merged result was verified green
 (519 tests, full `clean check`) before the branch went away. See
@@ -140,10 +213,11 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
    then `cd backend && ./gradlew clean check`. **`clean check` is the baseline command, not
    `clean test`** — it is strictly stronger (adds `spotlessCheck`, `spotbugsMain`,
    `jacocoTestCoverageVerification` across both projects) and is the same command CI runs, so a
-   green local run and a green CI run assert the same thing. On `main` at `c303b2c` this is
-   **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
-   **464-test** baseline before the invitations slice. Gradle prints no total for a
-   multi-project build, so count it yourself:
+   green local run and a green CI run assert the same thing. On `main` at `e9d694e` this is
+   **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`); **on the unmerged
+   `openapi-contract` branch tip it is 530** (507 root + 23), and that is the number to expect once
+   that branch lands. Both are up from the **464-test** baseline before the invitations slice.
+   Gradle prints no total for a multi-project build, so count it yourself:
 
    ```bash
    cd backend && ./gradlew clean check
@@ -155,7 +229,8 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 496, not 519, and this tripped an
+   -path './build/test-results/test/*.xml'` alone reports 496, not 519 (507, not 530, on
+   `openapi-contract`), and this tripped an
    implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
@@ -222,7 +297,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (57 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (63 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -336,10 +411,134 @@ All under `docs/superpowers/`:
     **Its SDD ledger was deleted with the workspace at merge**, so the rulings it recorded survive
     only where they were copied out — §0's CI subsection, §3's gate detail, §5's environment notes
     and §6's stack quirks. Do not go looking for it.
+41. **`specs/2026-09-01-openapi-contract-design.md`** — OpenAPI contract design spec (Wave 3 of the
+    hygiene programme; why the snapshot is committed and guarded rather than merely served, the
+    `implementation`/`developmentOnly` split that keeps swagger-ui out of `bootJar`, the typed error
+    envelope, the dev-only exposure, and why the oasdiff gate reports instead of blocking). Source
+    of truth for *what* this slice built.
+42. **`plans/2026-09-01-openapi-contract.md`** — the seven-task implementation plan for it.
+    Executed in full; **on branch `openapi-contract`, done and reviewed, NOT merged** — see §0 and
+    §3. Read it for the two places execution contradicted it: the springdoc major line (3.x is Boot
+    4; the plan's own research had to establish that 2.x, which every tutorial names, does not
+    work here) and the predicted test count, which was 529 against an actual 530. Its SDD ledger
+    (`.superpowers/sdd/2026-09-01-openapi-contract/`) still exists while the branch is unmerged and
+    carries the per-task reports; it goes away with the workspace at merge.
 
 ## 3. Current state
 
-- **Latest code work: build hygiene** — **merged to `main` as `83e6880`** (branch deleted). 25
+- **Latest code work: the OpenAPI contract** — **on branch `openapi-contract`, off `main` at
+  `e9d694e`, seven tasks plus a whole-branch-review fix wave, done and reviewed, NOT merged and NOT
+  pushed.** Commits from `4a1848b` (design spec) through the review wave. **534 tests, 0 failures,
+  0 errors** (511 root + 23 `platform-primitives`), up 15 from `main`'s 519. What it delivers:
+
+  **springdoc 3.1.0, split across two Gradle configurations on purpose.**
+  `springdoc-openapi-starter-webmvc-api` is on `implementation` — the generator ships;
+  `springdoc-openapi-starter-webmvc-ui` is on `developmentOnly`, Spring Boot's own configuration
+  for "on the `bootRun` classpath, excluded from `bootJar`". The swagger-ui webjar therefore cannot
+  reach a production artefact even if someone later flips `springdoc.swagger-ui.enabled` by
+  mistake: structural absence rather than a configured one, verified by unzipping the jar rather
+  than by reading the Gradle docs. **3.x is the Spring Boot 4 line** (its POM parent is
+  `spring-boot-starter-parent` 4.1.0); the 2.x line is Boot 3 and does not work here, which matters
+  because every pre-2026 tutorial names 2.x. `OpenApiConfig` supplies only what springdoc cannot
+  infer — title, description, the `bearer-jwt` security scheme, the `servers` entry — and takes
+  `info.version` from `BuildProperties`, i.e. from the Gradle project version via
+  `springBoot { buildInfo() }`, so there is one copy of that number rather than a literal in
+  `application.yml` to keep in sync. `servers` is taken from `easycrm.public-base-url`, the one
+  property this app already treats as its canonical external origin (share and invitation links
+  are both built from it); left implicit, springdoc synthesized the entry from whatever request
+  fetched the document and published `url: http://localhost` — the MockMvc origin, wrong rather
+  than merely vague, in the artefact a frontend reads.
+
+  **Money is documented as a string, and that is enforced, not just fixed.** springdoc infers
+  schemas from the Java type, so `BigDecimal` came out as `type: number` on all 31 monetary and
+  quantity fields while `BigDecimalStringModule` has always serialized them as JSON strings. One
+  static `SpringDocUtils.getConfig().replaceWithSchema(BigDecimal.class, new
+  StringSchema().format("decimal"))` in `OpenApiConfig` fixes every occurrence — global, because 31
+  per-field annotations are 31 chances to miss one and the next DTO would have none. Request-body
+  fields (`rate`, `qty`, `discountPct`) become `string` too, which is intended. The guard is
+  `OpenApiSnapshotTest.moneyFieldsAreDocumentedAsStrings`; it was proven able to fail. See
+  challenge **#64** — every other guard on this document compares it to itself.
+
+  **The genuinely public operations carry an empty `@SecurityRequirements`.** The document-level
+  `bearer-jwt` requirement applied to *everything*, including `POST /api/v1/auth/login` — the first
+  call a frontend writes and the one call that by definition has no token. Seven operations now
+  emit `security: []`, mirroring `SecurityConfig`'s `permitAll` list exactly: auth
+  signup/login/refresh/logout, the invitation preview/accept pair, and `GET /public/q/{token}`.
+  **`GET /api/v1/auth/me` is deliberately not among them** — it is `authenticated()`.
+
+  **The error envelope is typed.** `ApiErrorResponse(ApiError error)` and
+  `ApiError(String code, String message, Map<String, Object> fields)` replaced
+  `ResponseEntity<Map<String, Object>>` across all seven `ApiExceptionHandler` handlers, with
+  `@ApiResponse`/`@Content`/`@Schema` declaring one response per distinct status. The acceptance bar
+  was **byte-identical output**, not "an equivalent document": `@JsonInclude(NON_NULL)` at type
+  level preserves the omit-`fields`-when-absent behaviour, and the defensive copy inside `ApiError`
+  is a wrapped `LinkedHashMap` rather than `Map.copyOf` specifically to preserve key order
+  (challenge #62 — `Map.copyOf` randomizes iteration order per JVM boot). The proof of behaviour
+  preservation is procedural, not rhetorical: `ApiErrorWireFormatTest` was written and committed
+  **first and separately** (`26371ff`), passing against the old `Map`-based handler, and still
+  passes against the records. No assertion outside `platform/error/` was touched.
+
+  **`@ParameterObject` on the eight `Pageable` list endpoints; `@Hidden` on `DemoRecordController`.**
+  The first is what makes the document advertise `page`/`size`/`sort` — the parameters a client can
+  actually send — instead of a `Pageable` schema nobody can construct. The second removes the P0
+  isolation fixture from the document; **it does not remove the route**, which stays live and
+  authenticated in every profile. Whether that controller should exist in production at all is a
+  separate decision that was deliberately not taken here.
+
+  **`docs/api/openapi.yaml`, committed and guarded.** `OpenApiSnapshotTest` fails
+  `clean check` whenever the generated document and the snapshot disagree; `./gradlew
+  updateOpenApiSnapshot` regenerates it. The guard also asserts a **floor**: at least 45 `/api/v1/`
+  paths, against the 54 the app publishes today. Without it, a misconfigured
+  `springdoc.paths-to-match`, a stray `@Hidden` or a narrowed scan base-package would leave `info`
+  intact while `paths` came back empty — and *both* modes would pass, write mode by overwriting the
+  contract with a gutted document and read mode by then comparing gutted against gutted. The
+  threshold is deliberately loose: pinning the exact count is the snapshot's job. **The guard and the regenerator are one test in two modes,
+  not two tools** — see §0's standing note and challenge #63. Determinism is pinned with
+  `springdoc.writer-with-order-by-keys: true`, confirmed present on 3.1.0 before being depended on,
+  and the output proven byte-stable across two regenerations. The guard was watched going red on a
+  throwaway query parameter and green again once it was removed.
+
+  **`/v3/api-docs` and `/swagger-ui/**` are exposed only under the `dev` profile, in two
+  independent layers.** Layer 1: springdoc's own `api-docs.enabled`/`swagger-ui.enabled` are
+  `false` in `application.yml` and `true` only in `application-dev.yml`, so outside dev the routes
+  are never registered and there is nothing for a security rule to have to deny. Layer 2:
+  `DevApiDocsSecurityConfig`, a `@Profile("dev")` `@Order(0)` `SecurityFilterChain` whose
+  `securityMatcher` names exactly five springdoc paths. **`SecurityConfig` was not modified** —
+  `git diff main -- …/SecurityConfig.java` is empty, and deleting the new file restores today's
+  behaviour exactly, with no conditional hole left in the real chain to reason about later. Verified
+  live, not only in tests: `bootRun` under the dev profile served both routes with 200. It is now
+  also verified *in* tests: `DevApiDocsSecurityConfigTest` is the **only** class in this suite with
+  `@ActiveProfiles("dev")`, and therefore the only place that bean exists in a test context at all.
+  Two assertions — `/v3/api-docs` returns 200 (nothing had ever demonstrated the dev chain works),
+  and an unauthenticated `/api/v1/customers` still returns 401 (an `@Order(0)` chain with a widened
+  `securityMatcher` would silently make the whole API public in dev). **Deliberately one class**: an
+  `@ActiveProfiles` value is a distinct context cache key, so this costs the suite its second Spring
+  context; do not spread dev-profile assertions across more classes. `ApiDocsExposureTest` runs
+  *without* the dev profile and its `healthIsStillReachable` never guarded this — the comment
+  claiming it did has been corrected.
+
+  **CI reports an API changelog and does not block on it.** A `continue-on-error` oasdiff step
+  (`tufin/oasdiff:latest`, `changelog` then `breaking`) writes into the job summary on every push,
+  with `fetch-depth: 2` on the checkout because the default shallow clone has no `HEAD~1` and the
+  step would otherwise be config that reads as correct and does nothing. It reports rather than
+  gates for two reasons: CI here is post-merge (§0), so a blocking gate would fail *after* the
+  breaking change landed; and there is no consumer yet, so it would fire regularly, at nobody, on
+  correct work — which is how gates get ignored. **Flip `continue-on-error` to `false` when the
+  frontend exists and consumes this spec.** **This step has never run** — see §0; its shell logic
+  was verified locally, the step itself has not been exercised by a real CI run.
+
+  New challenges **#62** (a new record with a `Map` component fails SpotBugs on the first build,
+  and byte-identical is a stricter bar than immutable), **#63** (one generator, two modes) and
+  **#64** (every guard compared the document to itself, so it was consistent, deterministic,
+  drift-proof and wrong about money). `annotations-reference.md` gained rows for `@ParameterObject`,
+  `@Hidden`, `@Order`, `@SecurityRequirements` and `@ActiveProfiles`, and the `@Profile`,
+  `@JsonInclude`, `@TestPropertySource` and `@AutoConfigureMockMvc` rows were extended.
+
+  **Carried, not done:** operations are still tagged with springdoc's default internal class names
+  (`activity-controller`, `public-share-controller`). Cosmetic, and fixing it means `@Tag` on 16
+  controllers; ruled out at the end of this branch rather than forgotten.
+
+- **Previous code work: build hygiene** — **merged to `main` as `83e6880`** (branch deleted). 25
   commits off `main` at `2dc50ba`: seven tasks, every one reviewed clean on its first pass with no
   fix round anywhere, plus a whole-branch-review fix wave of five commits (`82e0f4e`..`ee4641c`)
   that closed six Minors and two nits. Zero application-code
@@ -922,7 +1121,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
   reformat commit `2616049`; with it set, those lines correctly fall back to the real original
   commit `a855056b`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests on `main`, 530 on the unmerged `openapi-contract` branch, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -1058,35 +1257,39 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested ranking — read this before proposing anything. Updated 2026-09-01, after `build-hygiene`.**
+**Suggested ranking — read this before proposing anything. Updated 2026-09-02, after
+`openapi-contract`.**
 
-The numbered list above is down to one open item (#4), the correctness backlog is empty, and eight
+The numbered list above is down to one open item (#4), the correctness backlog is empty, and nine
 slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level
-visibility, activity/follow-up, scheduled auto-expiry, user invitations, then build hygiene). **The
-strongest remaining candidates are not on the numbered list**, so the real option set is the six
-below. Present them; do not default into #4 because it is the last number standing.
+visibility, activity/follow-up, scheduled auto-expiry, user invitations, build hygiene, then the
+OpenAPI contract). **Wave 3 is done** — springdoc, the committed and guarded `docs/api/openapi.yaml`
+snapshot, and the oasdiff changelog in CI are all on the `openapi-contract` branch; strike it from
+the option set. **The strongest remaining candidates are still not on the numbered list**, so the
+real option set is the five below. Present them; do not default into #4 because it is the last
+number standing.
 
-- **Wave 3, OpenAPI — the strongest claim, and it is coupled to the frontend.** There are 18
-  controllers and no API document of any kind. Nothing has ever been built against this API, which
-  means the contract is currently whatever the controllers happen to do. springdoc plus a committed
-  spec snapshot plus `oasdiff` breaking-change detection in CI is a small slice that produces the
-  artefact the frontend will be built from — and it is also the honest substitute for the contract
-  testing (Pact, Spring Cloud Contract) that is deferred precisely because there is no second party
-  yet. Doing this *before* the frontend is the natural order; doing it after means the frontend
-  defines the contract by accident. See the design spec `2026-09-01-build-hygiene-design.md` §3.
-- **The frontend — the biggest product step, and the only one a backend slice cannot finish.**
-  Nothing has ever been built. The invitations slice shipped `/invite/{token}`, a link that is
-  pasted into WhatsApp and has **no page behind it**; wiring that route is the stated first task
-  when the frontend starts. Unscoped, so it begins at brainstorming, and it is large enough to want
-  decomposing into sub-projects before a spec.
 - **Wave 1.5, supply chain — the cheapest real win, blocked on nothing.** `gitleaks`, Dependabot or
-  Renovate, OWASP Dependency-Check, and `squawk` for unsafe Postgres DDL. Smaller than Wave 3 and
+  Renovate, OWASP Dependency-Check, and `squawk` for unsafe Postgres DDL. Small, well-scoped, and
   higher security value than anything else on this list, on a repo that is now **public** and ships
-  JWT auth, bcrypt and GST data. The one cost to plan for: Dependency-Check needs an NVD cache that
-  makes CI meaningfully slower.
+  JWT auth, bcrypt and GST data. It is the natural next backend slice for the same reason
+  build hygiene was: it finishes a programme already half-built rather than opening a new front. The
+  one cost to plan for: Dependency-Check needs an NVD cache that makes CI meaningfully slower.
+- **The frontend — the biggest product step, the only one a backend slice cannot finish, and the
+  one this slice was for.** Nothing has ever been built. **It now has a contract to build against**:
+  `docs/api/openapi.yaml` describes every endpoint, the money-as-JSON-string convention, the shared
+  error envelope and the bearer-JWT scheme, and the drift guard means it stays true — which is
+  exactly the thing that was missing when the previous ranking put OpenAPI ahead of it. Doing the
+  frontend now means the contract shapes the client rather than the client defining the contract by
+  accident. **Wiring `/invite/{token}` is still the first task when it starts** — the invitations
+  slice ships a link that gets pasted into WhatsApp and has no page behind it. Unscoped, so it
+  begins at brainstorming, and it is large enough to want decomposing into sub-projects before a
+  spec; that size, not its value, is why Wave 1.5 sits above it.
 - **Members management — the natural sequel to invitations.** List existing users, change a role,
   disable one. Today invite + accept + revoke + pending-list is the whole surface, so a multi-user
-  tenant is creatable but not administrable. Unscoped; starts at brainstorming.
+  tenant is creatable but not administrable. Unscoped; starts at brainstorming. It is also the
+  first real test of the new drift guard on a slice that adds endpoints: the snapshot must be
+  regenerated and committed in the same change, not afterwards.
 - **Wave 2, observability — real value, but sequence it deliberately.** Structured JSON logging, an
   MDC correlation filter (`requestId`/`tenantId`/`userId`), GSTIN/phone/email redaction, Micrometer
   with `/actuator/prometheus`, and tracing over OTLP. Two things make it more than housekeeping: the
@@ -1096,7 +1299,9 @@ below. Present them; do not default into #4 because it is the last number standi
   with it — `digma` in particular is OTel-based and cannot be evaluated before tracing exists.
 - **#4 cursor pagination — leads by elimination, not merit.** Cross-cutting and blocked on nothing,
   but no tenant is remotely large enough for offset paging to hurt. "Before the first large tenant"
-  below is a better description of when it starts to matter.
+  below is a better description of when it starts to matter. One thing did change: offset paging is
+  now *published* — `page`/`size`/`sort` are in the committed contract on eight endpoints — so
+  switching to cursors later is a breaking change oasdiff will report, not a quiet refactor.
 
 **Still blocked or still weak, unchanged:** PF19's entitlement-metering half needs the billing
 thread's *design* decisions, not effort — the public route has no JWT, so there is nowhere to hang a
@@ -1157,11 +1362,14 @@ re-deriving the reasoning from that spec each time.
   assertions on query/pool/call behaviour rather than *production* observability, but both need
   the same underlying instrumentation, so plan them together rather than standing up tracing
   twice.
-- **Wave 3 — OpenAPI, not yet started.** springdoc, a committed spec snapshot, and `oasdiff`
-  breaking-change detection in CI. Arguably the highest-value item on the user's original list:
-  there are 18 controllers and the frontend has never been started, so this spec **is** the
-  contract the frontend gets built against — and it's the honest substitute for consumer-driven
-  contract testing in a repo with no consumer yet (see Pact below).
+- **Wave 3 — OpenAPI. DONE** (branch `openapi-contract`, pending merge; see §0 and §3). springdoc
+  3.1.0, the committed and drift-guarded snapshot at `docs/api/openapi.yaml`, and an `oasdiff`
+  changelog in CI — reporting rather than blocking, for the reasons in §3. It was the highest-value
+  item on the user's original list: there are 16 controllers and the frontend has never been
+  started, so this spec **is** the contract the frontend gets built against — and it is the honest
+  substitute for consumer-driven contract testing in a repo with no consumer yet (see Pact below).
+  The one deferral it leaves behind is the `continue-on-error: true` on the oasdiff step, whose
+  flip trigger is the frontend existing and consuming the spec.
 - **Deferred, each with a trigger, not a vague "later":** SonarQube (deferred on merit, not
   sequencing — SpotBugs + Spotless + JaCoCo + ArchUnit already cover most of what it would flag,
   and it earns its keep with a team and a PR queue rather than solo; the JaCoCo XML report stays
@@ -1240,7 +1448,7 @@ rather than in build hygiene:
   so it depends on Wave 2 (observability, above) landing tracing first — evaluating it before that
   means standing up instrumentation twice; (2) it needs traffic to observe, and this app has no
   frontend and no production traffic, so the realistic trace source today is **the test suite
-  itself**, which is a first-class Digma workflow and is unusually well-suited here: 519 tests,
+  itself**, which is a first-class Digma workflow and is unusually well-suited here: 530 tests,
   many of them Testcontainers integration tests hitting real Postgres, would exercise the exact
   `VisibleFinder` correlated-subquery and expiry-sweep paths the bullets above are worried about.
   Cost to weigh: it runs its own backend in Docker plus an IDE plugin, materially heavier setup

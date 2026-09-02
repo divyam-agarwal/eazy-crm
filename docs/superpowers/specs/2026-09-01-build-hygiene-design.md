@@ -103,9 +103,14 @@ production hazards — the in-process rate-limit store that multiplies every lim
 unlocked 00:30 expiry sweep that duplicates work across instances — are both **invisible** today.
 
 **Wave 3 — OpenAPI.** springdoc, a committed spec snapshot, and `oasdiff` breaking-change
-detection in CI. Arguably the highest-value item on the user's whole list: there are 18
+detection in CI. Arguably the highest-value item on the user's whole list: there are 16
 controllers and the frontend has never been started, so this *is* the contract the frontend will
 be built against. It is also the honest substitute for contract testing in a single-service repo.
+**Corrected 2026-09-02: this said "18 controllers"; the real count is 16, verified by
+`find backend -name '*Controller.java' -not -path '*/build/*'`. Wave 3 was subsequently built —
+see `specs/2026-09-01-openapi-contract-design.md` and HANDOFF §3 — and the CI step reports the
+changelog rather than blocking on it, a deliberate departure from the "breaking-change detection"
+phrasing above.**
 
 **Deferred, each with a trigger rather than a vague "later":**
 

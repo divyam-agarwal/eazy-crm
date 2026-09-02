@@ -37,6 +37,12 @@ palantirJavaFormat = "2.97.0"
 # Single source of truth for the same reason as palantirJavaFormat above -- read back by
 # easycrm.quality-conventions.gradle.kts via the untyped catalog lookup. Bump only here.
 findsecbugs = "1.14.0"
+# --- API contract, added by the openapi-contract slice ---
+# Verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release: 3.1.0, published
+# 2026-08-01). The 3.x line is the Spring Boot 4 line -- its POM parent is
+# spring-boot-starter-parent 4.1.0, matching springBoot above. The 2.x line (latest 2.9.0)
+# is the Boot 3 line and will NOT work here; every pre-2026 tutorial names it.
+springdoc = "3.1.0"
 
 [libraries]
 openhtmltopdf-pdfbox = { module = "com.openhtmltopdf:openhtmltopdf-pdfbox", version.ref = "openhtmltopdf" }
@@ -48,6 +54,8 @@ testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 findsecbugs = { module = "com.h3xstream.findsecbugs:findsecbugs-plugin", version.ref = "findsecbugs" }
+springdoc-webmvc-api = { module = "org.springdoc:springdoc-openapi-starter-webmvc-api", version.ref = "springdoc" }
+springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 
 [plugins]
 springBoot = { id = "org.springframework.boot", version.ref = "springBoot" }

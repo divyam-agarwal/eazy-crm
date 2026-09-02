@@ -28,6 +28,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The oasdiff step below reads the previous commit's copy of the OpenAPI snapshot.
+          # The default shallow clone (depth 1) has no HEAD~1, so that read would fail --
+          # useful-looking config that silently does nothing.
+          fetch-depth: 2
 
       - name: Set up JDK 25
         uses: actions/setup-java@v6
@@ -52,3 +57,56 @@ jobs:
             backend/build/reports/
             backend/platform/platform-primitives/build/reports/
           retention-days: 7
+
+      # The API changelog, reported and not enforced. CI here is a post-merge smoke alarm
+      # (push: [main], and this repo has never opened a pull request), so a blocking gate would
+      # fail after the breaking change had already landed -- a notification with extra steps.
+      # There is also no consumer yet: members management, cursor pagination and the frontend's
+      # own needs will all legitimately change endpoints, so a blocking gate would fire
+      # regularly, at nobody, on correct work. That is how gates get ignored.
+      #
+      # Flip continue-on-error to false when the frontend exists and consumes this spec. At
+      # that point there is a real party to break.
+      - name: API changelog (oasdiff)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        working-directory: .
+        run: |
+          # pipefail: without it, `docker run ... | tee -a "$GITHUB_STEP_SUMMARY"` exits with
+          # tee's status (0) even when the docker run itself fails (bad pull, oasdiff crash,
+          # daemon problem). continue-on-error already makes this step non-blocking, so a
+          # silent zero there would render identically to "no API changes" in the job summary
+          # -- a misreport, not just a missed alert. Each docker run below is captured and
+          # checked explicitly so a tool failure says so instead of leaving a blank section.
+          set -uo pipefail
+          SNAPSHOT=docs/api/openapi.yaml
+          if ! git cat-file -e "HEAD~1:$SNAPSHOT" 2>/dev/null; then
+            echo "No previous version of $SNAPSHOT - nothing to compare." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git show "HEAD~1:$SNAPSHOT" > /tmp/openapi-base.yaml
+          # The step summary is rendered as Markdown, which joins consecutive lines into one
+          # paragraph. oasdiff emits plain text, one finding per line, so unfenced output would
+          # arrive as a single run-on blob. Each block is fenced; the fences are written
+          # separately from the tool output so a tool failure still closes its fence.
+          echo "## API changelog" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          if ! docker run --rm \
+            -v /tmp/openapi-base.yaml:/base.yaml:ro \
+            -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
+            tufin/oasdiff:latest changelog /base.yaml /head.yaml \
+            | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo "oasdiff changelog failed to run -- see the step log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Breaking changes" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          if ! docker run --rm \
+            -v /tmp/openapi-base.yaml:/base.yaml:ro \
+            -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
+            tufin/oasdiff:latest breaking /base.yaml /head.yaml \
+            | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo "oasdiff breaking failed to run -- see the step log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

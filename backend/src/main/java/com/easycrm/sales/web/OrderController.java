@@ -7,6 +7,7 @@ import com.easycrm.sales.web.dto.CancelRequest;
 import com.easycrm.sales.web.dto.OrderResponse;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -50,7 +51,7 @@ public class OrderController {
     public PageResponse<OrderResponse> list(
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) UUID customerId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return service.list(status, customerId, pageable);
     }
 }

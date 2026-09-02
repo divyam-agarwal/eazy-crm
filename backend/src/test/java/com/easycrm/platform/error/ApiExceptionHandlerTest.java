@@ -2,7 +2,6 @@ package com.easycrm.platform.error;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -14,26 +13,22 @@ class ApiExceptionHandlerTest {
     private final ApiExceptionHandler handler = new ApiExceptionHandler();
 
     @Test
-    @SuppressWarnings("unchecked")
     void validationExceptionMapsTo422WithFields() {
-        ResponseEntity<Map<String, Object>> resp =
+        ResponseEntity<ApiErrorResponse> resp =
                 handler.validation(new ValidationException("gstin", "GSTIN checksum is invalid"));
 
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, resp.getStatusCode());
-        Map<String, Object> error = (Map<String, Object>) resp.getBody().get("error");
-        assertEquals("VALIDATION_FAILED", error.get("code"));
-        Map<String, Object> fields = (Map<String, Object>) error.get("fields");
-        assertEquals("GSTIN checksum is invalid", fields.get("gstin"));
+        ApiError error = resp.getBody().error();
+        assertEquals("VALIDATION_FAILED", error.code());
+        assertEquals("GSTIN checksum is invalid", error.fields().get("gstin"));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void optimisticLockMapsTo409() {
-        ResponseEntity<Map<String, Object>> resp =
+        ResponseEntity<ApiErrorResponse> resp =
                 handler.optimisticLock(new ObjectOptimisticLockingFailureException(Object.class, UUID.randomUUID()));
 
         assertEquals(HttpStatus.CONFLICT, resp.getStatusCode());
-        Map<String, Object> error = (Map<String, Object>) resp.getBody().get("error");
-        assertEquals("CONFLICT", error.get("code"));
+        assertEquals("CONFLICT", resp.getBody().error().code());
     }
 }

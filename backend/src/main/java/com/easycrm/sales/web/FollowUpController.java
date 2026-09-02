@@ -13,6 +13,7 @@ import com.easycrm.sales.web.dto.FollowUpSummaryResponse;
 import com.easycrm.sales.web.dto.FollowUpUpdateRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -53,7 +54,7 @@ public class FollowUpController {
             @RequestParam(required = false) UUID assignedTo,
             @RequestParam(required = false) SubjectType subjectType,
             @RequestParam(required = false) UUID subjectId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return service.list(scope, status, assignedTo, subjectType, subjectId, pageable);
     }
 

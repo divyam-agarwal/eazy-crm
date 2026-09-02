@@ -12,6 +12,13 @@ java {
     toolchain { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+// Generates META-INF/build-info.properties from the Gradle project version, exposed at
+// runtime as the actuator's BuildProperties bean. OpenApiConfig reads the API document's
+// info.version from it, so the Gradle version is the single source of truth -- a literal in
+// application.yml would be a second copy to keep in sync by hand, which is exactly what the
+// version catalog's comments exist to prevent.
+springBoot { buildInfo() }
+
 repositories { mavenCentral() }
 
 dependencies {
@@ -49,6 +56,15 @@ dependencies {
     // Version comes from the Boot BOM; do not pin it here.
     implementation("com.github.ben-manes.caffeine:caffeine")
 
+    // OpenAPI generation. The generator ships; the browsable UI does not.
+    // springdoc 3.x is the Spring Boot 4 line -- see the catalog comment. 2.x is Boot 3.
+    implementation(libs.springdoc.webmvc.api)
+    // developmentOnly is Spring Boot's own configuration: on the bootRun classpath,
+    // excluded from bootJar. The swagger-ui webjar therefore never reaches a production
+    // artefact even if someone later flips springdoc.swagger-ui.enabled by mistake --
+    // structural absence rather than a configured one.
+    developmentOnly(libs.springdoc.webmvc.ui)
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     // Boot 4 split MockMvc test auto-config (@AutoConfigureMockMvc) into its own module;
@@ -63,4 +79,28 @@ dependencies {
     testImplementation(libs.archunit.junit5)
 }
 
-tasks.withType<Test> { useJUnitPlatform() }
+// The committed OpenAPI snapshot lives outside the Gradle project (the Gradle root is
+// backend/, the snapshot is at <repo>/docs/api/openapi.yaml). The absolute path is injected
+// rather than derived from the test's working directory, which is not something a test should
+// have an opinion about.
+val openApiSnapshot = layout.projectDirectory.file("../docs/api/openapi.yaml")
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+    systemProperty("openapi.snapshot", openApiSnapshot.asFile.absolutePath)
+}
+
+// Regenerates docs/api/openapi.yaml by running the drift guard in write mode. Deliberately the
+// SAME test, not a second generation path: a separate generator could disagree with the guard,
+// and then neither would mean anything.
+tasks.register<Test>("updateOpenApiSnapshot") {
+    group = "documentation"
+    description = "Regenerate docs/api/openapi.yaml from the current controllers."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform()
+    systemProperty("openapi.snapshot", openApiSnapshot.asFile.absolutePath)
+    systemProperty("openapi.write", "true")
+    filter { includeTestsMatching("com.easycrm.platform.openapi.OpenApiSnapshotTest") }
+    outputs.upToDateWhen { false }
+}

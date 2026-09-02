@@ -4,6 +4,7 @@ import com.easycrm.iam.InvitationService;
 import com.easycrm.iam.web.dto.AcceptInvitationRequest;
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.InvitationPreviewResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,12 +35,17 @@ public class PublicInvitationController {
         this.invitations = invitations;
     }
 
+    // Public: pre-auth by definition — the invitee has no JWT yet. Mirrors the
+    // permitAll in SecurityConfig; without this the contract would demand a token for
+    // the one call that cannot have one.
+    @SecurityRequirements
     @PostMapping("/{token}/accept")
     public ResponseEntity<AuthResponse> accept(
             @PathVariable String token, @Valid @RequestBody AcceptInvitationRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(invitations.accept(token, req));
     }
 
+    @SecurityRequirements
     @GetMapping("/{token}")
     public InvitationPreviewResponse preview(@PathVariable String token) {
         return invitations.preview(token);
