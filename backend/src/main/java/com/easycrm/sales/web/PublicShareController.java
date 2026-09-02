@@ -4,6 +4,7 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.sales.ShareLinkService;
 import com.easycrm.sales.pdf.QuotationPdfService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +34,9 @@ public class PublicShareController {
         this.pdfService = pdfService;
     }
 
+    // Public: the share token in the path is the credential. Mirrors the permitAll in
+    // SecurityConfig.
+    @SecurityRequirements
     @GetMapping("/{token}")
     public ResponseEntity<byte[]> quotation(@PathVariable String token) {
         ShareLinkService.Resolved resolved = shareLinks.resolve(token); // 404 if unknown

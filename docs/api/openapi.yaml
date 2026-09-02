@@ -1,0 +1,5496 @@
+openapi: 3.1.0
+info:
+  description: |-
+    Multi-tenant CRM for Indian distributors, traders and small manufacturers. Scope stops at the Order: no invoicing, stock or ledger.
+
+    Routes under /api/** require a bearer JWT, including GET /api/v1/auth/me. The exceptions are the four unauthenticated auth calls (signup, login, refresh, logout) and the invitation preview/accept pair; each is marked with an empty security requirement below. GET /public/q/{token} is a separate, unauthenticated route that is not under /api/** at all — the share token itself is the credential. Money is carried as a JSON string, never a number. Errors share one envelope: {"error":{"code","message","fields"}}.
+  title: EasyCRM API
+  version: 0.0.1-SNAPSHOT
+servers:
+- description: Configured deployment origin (easycrm.public-base-url)
+  url: http://localhost:8080
+security:
+- bearer-jwt: []
+paths:
+  /api/v1/activities:
+    get:
+      operationId: list_8
+      parameters:
+      - in: query
+        name: subjectType
+        required: true
+        schema:
+          type: string
+          enum:
+          - CUSTOMER
+          - ENQUIRY
+          - QUOTATION
+          - ORDER
+      - in: query
+        name: subjectId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponseActivityResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - activity-controller
+    post:
+      operationId: create_6
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityCreateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ActivityResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - activity-controller
+  /api/v1/activities/{id}:
+    patch:
+      operationId: update_5
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ActivityResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - activity-controller
+  /api/v1/auth/invitations/{token}:
+    get:
+      operationId: preview
+      parameters:
+      - in: path
+        name: token
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/InvitationPreviewResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      security: []
+      tags:
+      - public-invitation-controller
+  /api/v1/auth/invitations/{token}/accept:
+    post:
+      operationId: accept_1
+      parameters:
+      - in: path
+        name: token
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInvitationRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      security: []
+      tags:
+      - public-invitation-controller
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      security: []
+      tags:
+      - auth-controller
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      security: []
+      tags:
+      - auth-controller
+  /api/v1/auth/me:
+    get:
+      operationId: me
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - auth-controller
+  /api/v1/auth/refresh:
+    post:
+      operationId: refresh
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      security: []
+      tags:
+      - auth-controller
+  /api/v1/auth/signup:
+    post:
+      operationId: signup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      security: []
+      tags:
+      - auth-controller
+  /api/v1/customers:
+    get:
+      operationId: list_6
+      parameters:
+      - in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponseCustomerResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - customer-controller
+    post:
+      operationId: create_5
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - customer-controller
+  /api/v1/customers/{customerId}/contacts:
+    get:
+      operationId: list_7
+      parameters:
+      - in: path
+        name: customerId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContactResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - contact-controller
+    post:
+      operationId: add_1
+      parameters:
+      - in: path
+        name: customerId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ContactResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - contact-controller
+  /api/v1/customers/{customerId}/contacts/{contactId}:
+    delete:
+      operationId: delete
+      parameters:
+      - in: path
+        name: customerId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: contactId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - contact-controller
+    put:
+      operationId: update_2
+      parameters:
+      - in: path
+        name: customerId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: contactId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ContactResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - contact-controller
+  /api/v1/customers/{id}:
+    get:
+      operationId: get_2
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - customer-controller
+    put:
+      operationId: update_1
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - customer-controller
+  /api/v1/customers/{id}/activate:
+    post:
+      operationId: activate_2
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - customer-controller
+  /api/v1/customers/{id}/deactivate:
+    post:
+      operationId: deactivate_2
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - customer-controller
+  /api/v1/enquiries:
+    get:
+      operationId: list_5
+      parameters:
+      - in: query
+        name: stage
+        required: false
+        schema:
+          type: string
+          enum:
+          - NEW
+          - CONTACTED
+          - QUALIFIED
+          - CONVERTED
+          - LOST
+      - in: query
+        name: assignedTo
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: source
+        required: false
+        schema:
+          type: string
+          enum:
+          - INDIAMART
+          - WHATSAPP
+          - PHONE
+          - REFERRAL
+          - MANUAL
+          - IMPORT
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponseEnquiryResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - enquiry-controller
+    post:
+      operationId: create_4
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnquiryCreateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EnquiryResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - enquiry-controller
+  /api/v1/enquiries/{id}:
+    get:
+      operationId: get_6
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EnquiryResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - enquiry-controller
+    patch:
+      operationId: update_4
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnquiryUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EnquiryResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - enquiry-controller
+  /api/v1/enquiries/{id}/advance:
+    post:
+      operationId: advance
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EnquiryResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - enquiry-controller
+  /api/v1/enquiries/{id}/lose:
+    post:
+      operationId: lose
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoseRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EnquiryResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - enquiry-controller
+  /api/v1/follow-ups:
+    get:
+      operationId: list_4
+      parameters:
+      - in: query
+        name: scope
+        required: false
+        schema:
+          type: string
+          enum:
+          - OVERDUE
+          - DUE_TODAY
+          - UPCOMING
+          - ALL
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - DONE
+          - CANCELLED
+      - in: query
+        name: assignedTo
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: subjectType
+        required: false
+        schema:
+          type: string
+          enum:
+          - CUSTOMER
+          - ENQUIRY
+          - QUOTATION
+          - ORDER
+      - in: query
+        name: subjectId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponseFollowUpResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - follow-up-controller
+    post:
+      operationId: create_3
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowUpCreateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/FollowUpResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - follow-up-controller
+  /api/v1/follow-ups/summary:
+    get:
+      operationId: summary
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/FollowUpSummaryResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - follow-up-controller
+  /api/v1/follow-ups/{id}:
+    get:
+      operationId: get_5
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/FollowUpResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - follow-up-controller
+    patch:
+      operationId: update_3
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowUpUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/FollowUpResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - follow-up-controller
+  /api/v1/follow-ups/{id}/cancel:
+    post:
+      operationId: cancel_1
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowUpCancelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/FollowUpResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - follow-up-controller
+  /api/v1/follow-ups/{id}/complete:
+    post:
+      operationId: complete
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowUpCompleteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/FollowUpResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - follow-up-controller
+  /api/v1/invitations:
+    get:
+      operationId: listPending
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PendingInvitationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - invitation-controller
+    post:
+      operationId: invite
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/InvitationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - invitation-controller
+  /api/v1/invitations/{id}:
+    delete:
+      operationId: revoke
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - invitation-controller
+  /api/v1/members:
+    get:
+      operationId: list_10
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
+  /api/v1/members/{id}/disable:
+    post:
+      operationId: disable
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
+  /api/v1/members/{id}/enable:
+    post:
+      operationId: enable
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
+  /api/v1/members/{id}/role:
+    post:
+      operationId: changeRole
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeRoleRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
+  /api/v1/orders:
+    get:
+      operationId: list_9
+      parameters:
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - CONFIRMED
+          - DISPATCHED
+          - CLOSED
+          - CANCELLED
+      - in: query
+        name: customerId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponseOrderResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - order-controller
+  /api/v1/orders/{id}:
+    get:
+      operationId: get_7
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - order-controller
+  /api/v1/orders/{id}/cancel:
+    post:
+      operationId: cancel
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - order-controller
+  /api/v1/orders/{id}/close:
+    post:
+      operationId: close
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - order-controller
+  /api/v1/orders/{id}/dispatch:
+    post:
+      operationId: dispatch
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - order-controller
+  /api/v1/price-lists:
+    get:
+      operationId: list_2
+      parameters:
+      - in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponsePriceListResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-controller
+    post:
+      operationId: create_2
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceListRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PriceListResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-controller
+  /api/v1/price-lists/{id}:
+    get:
+      operationId: get_1
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PriceListResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-controller
+    put:
+      operationId: rename
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceListRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PriceListResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-controller
+  /api/v1/price-lists/{id}/activate:
+    post:
+      operationId: activate_1
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PriceListResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-controller
+  /api/v1/price-lists/{id}/deactivate:
+    post:
+      operationId: deactivate_1
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PriceListResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-controller
+  /api/v1/price-lists/{priceListId}/items:
+    get:
+      operationId: list_3
+      parameters:
+      - in: path
+        name: priceListId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PriceListItemResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-item-controller
+    post:
+      operationId: add
+      parameters:
+      - in: path
+        name: priceListId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceListItemRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PriceListItemResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-item-controller
+  /api/v1/price-lists/{priceListId}/items/{itemId}:
+    delete:
+      operationId: delete_1
+      parameters:
+      - in: path
+        name: priceListId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: itemId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-item-controller
+  /api/v1/products:
+    get:
+      operationId: list_1
+      parameters:
+      - in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponseProductResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - product-controller
+    post:
+      operationId: create_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - product-controller
+  /api/v1/products/{id}:
+    get:
+      operationId: get
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - product-controller
+    put:
+      operationId: update
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - product-controller
+  /api/v1/products/{id}/activate:
+    post:
+      operationId: activate
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - product-controller
+  /api/v1/products/{id}/deactivate:
+    post:
+      operationId: deactivate
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - product-controller
+  /api/v1/quotations:
+    get:
+      operationId: list
+      parameters:
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - DRAFT
+          - SENT
+          - ACCEPTED
+          - REJECTED
+          - EXPIRED
+      - in: query
+        name: customerId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Zero-based page index (0..N)
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - description: The size of the page to be returned
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageResponseQuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+    post:
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuotationCreateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}:
+    get:
+      operationId: get_4
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+    patch:
+      operationId: patch_1
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuotationHeaderRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/accept:
+    post:
+      operationId: accept
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptRequest"
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/expire:
+    post:
+      operationId: expire
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/items:
+    put:
+      operationId: replaceItems
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/pdf:
+    get:
+      operationId: pdf
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: version
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/reject:
+    post:
+      operationId: reject
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/revise:
+    post:
+      operationId: revise
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/send:
+    post:
+      operationId: send
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/share:
+    post:
+      operationId: share
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ShareResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/versions:
+    get:
+      operationId: versions
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QuotationVersionResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/quotations/{id}/versions/{versionNo}:
+    get:
+      operationId: version
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: versionNo
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuotationVersionResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - quotation-controller
+  /api/v1/tenant:
+    get:
+      operationId: get_3
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TenantResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - tenant-controller
+    patch:
+      operationId: patch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantProfileRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TenantResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - tenant-controller
+  /public/q/{token}:
+    get:
+      operationId: quotation
+      parameters:
+      - in: path
+        name: token
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      security: []
+      tags:
+      - public-share-controller
+components:
+  schemas:
+    AcceptInvitationRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          maxLength: 2147483647
+          minLength: 8
+        phone:
+          type: string
+      required:
+      - password
+    AcceptRequest:
+      type: object
+      properties:
+        poDate:
+          type: string
+          format: date
+        poReference:
+          type: string
+    ActivityCreateRequest:
+      type: object
+      properties:
+        body:
+          type: string
+          maxLength: 2000
+          minLength: 0
+        nextFollowUp:
+          $ref: "#/components/schemas/NextFollowUpRequest"
+        occurredAt:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          maxLength: 200
+          minLength: 0
+        subjectId:
+          type: string
+          format: uuid
+        subjectType:
+          type: string
+          enum:
+          - CUSTOMER
+          - ENQUIRY
+          - QUOTATION
+          - ORDER
+        type:
+          type: string
+          enum:
+          - CALL
+          - WHATSAPP
+          - EMAIL
+          - VISIT
+          - NOTE
+      required:
+      - subjectId
+      - subjectType
+      - type
+    ActivityResponse:
+      type: object
+      properties:
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        followUpId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        loggedBy:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+        source:
+          type: string
+          enum:
+          - MANUAL
+          - SYSTEM
+        subjectId:
+          type: string
+          format: uuid
+        subjectType:
+          type: string
+          enum:
+          - CUSTOMER
+          - ENQUIRY
+          - QUOTATION
+          - ORDER
+        type:
+          type: string
+          enum:
+          - CALL
+          - WHATSAPP
+          - EMAIL
+          - VISIT
+          - NOTE
+    ActivityUpdateRequest:
+      type: object
+      properties:
+        body:
+          type: string
+          maxLength: 2000
+          minLength: 0
+        outcome:
+          type: string
+          maxLength: 200
+          minLength: 0
+        subjectId:
+          type: string
+          format: uuid
+        subjectType:
+          type: string
+          enum:
+          - CUSTOMER
+          - ENQUIRY
+          - QUOTATION
+          - ORDER
+      required:
+      - subjectId
+      - subjectType
+    AdvanceRequest:
+      type: object
+      properties:
+        stage:
+          type: string
+          enum:
+          - NEW
+          - CONTACTED
+          - QUALIFIED
+          - CONVERTED
+          - LOST
+      required:
+      - stage
+    ApiError:
+      type: object
+      properties:
+        code:
+          type: string
+        fields:
+          type: object
+          additionalProperties: {}
+        message:
+          type: string
+    ApiErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ApiError"
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        role:
+          type: string
+        tenantId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+    CancelRequest:
+      type: object
+      properties:
+        cancelReason:
+          type: string
+          minLength: 1
+      required:
+      - cancelReason
+    ChangeRoleRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          minLength: 1
+          pattern: OWNER|SALES_MANAGER|SALES_EXEC
+      required:
+      - role
+    ContactRequest:
+      type: object
+      properties:
+        designation:
+          type: string
+        email:
+          type: string
+        isPrimary:
+          type: boolean
+        name:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+        whatsappNumber:
+          type: string
+      required:
+      - name
+    ContactResponse:
+      type: object
+      properties:
+        customerId:
+          type: string
+          format: uuid
+        designation:
+          type: string
+        email:
+          type: string
+        id:
+          type: string
+          format: uuid
+        isPrimary:
+          type: boolean
+        name:
+          type: string
+        phone:
+          type: string
+        whatsappNumber:
+          type: string
+    CustomerRequest:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        billingAddress:
+          type: string
+        businessName:
+          type: string
+          minLength: 1
+        creditDays:
+          type: integer
+          format: int32
+        gstin:
+          type: string
+        priceListId:
+          type: string
+          format: uuid
+        shippingAddress:
+          type: string
+        source:
+          type: string
+          enum:
+          - INDIAMART
+          - WHATSAPP
+          - PHONE
+          - REFERRAL
+          - MANUAL
+          - IMPORT
+        stateCode:
+          type: string
+      required:
+      - businessName
+      - source
+    CustomerResponse:
+      type: object
+      properties:
+        active:
+          type: boolean
+        assignedTo:
+          type: string
+          format: uuid
+        billingAddress:
+          type: string
+        businessName:
+          type: string
+        creditDays:
+          type: integer
+          format: int32
+        gstin:
+          type: string
+        id:
+          type: string
+          format: uuid
+        priceListId:
+          type: string
+          format: uuid
+        shippingAddress:
+          type: string
+        source:
+          type: string
+          enum:
+          - INDIAMART
+          - WHATSAPP
+          - PHONE
+          - REFERRAL
+          - MANUAL
+          - IMPORT
+        stateCode:
+          type: string
+    EnquiryCreateRequest:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        contactEmail:
+          type: string
+        contactName:
+          type: string
+          minLength: 1
+        contactPhone:
+          type: string
+          minLength: 1
+        customerId:
+          type: string
+          format: uuid
+        expectedValue:
+          type: string
+          format: decimal
+        requirementText:
+          type: string
+        source:
+          type: string
+          enum:
+          - INDIAMART
+          - WHATSAPP
+          - PHONE
+          - REFERRAL
+          - MANUAL
+          - IMPORT
+      required:
+      - contactName
+      - contactPhone
+      - source
+    EnquiryResponse:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        contactEmail:
+          type: string
+        contactName:
+          type: string
+        contactPhone:
+          type: string
+        customerId:
+          type: string
+          format: uuid
+        expectedValue:
+          type: string
+          format: decimal
+        id:
+          type: string
+          format: uuid
+        lostReason:
+          type: string
+        normalizedPhone:
+          type: string
+        requirementText:
+          type: string
+        source:
+          type: string
+          enum:
+          - INDIAMART
+          - WHATSAPP
+          - PHONE
+          - REFERRAL
+          - MANUAL
+          - IMPORT
+        stage:
+          type: string
+          enum:
+          - NEW
+          - CONTACTED
+          - QUALIFIED
+          - CONVERTED
+          - LOST
+    EnquiryUpdateRequest:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        contactEmail:
+          type: string
+        contactName:
+          type: string
+          minLength: 1
+        contactPhone:
+          type: string
+          minLength: 1
+        customerId:
+          type: string
+          format: uuid
+        expectedValue:
+          type: string
+          format: decimal
+        requirementText:
+          type: string
+        source:
+          type: string
+          enum:
+          - INDIAMART
+          - WHATSAPP
+          - PHONE
+          - REFERRAL
+          - MANUAL
+          - IMPORT
+      required:
+      - contactName
+      - contactPhone
+      - source
+    FollowUpCancelRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 0
+    FollowUpCompleteRequest:
+      type: object
+      properties:
+        body:
+          type: string
+          maxLength: 2000
+          minLength: 0
+        note:
+          type: string
+          maxLength: 500
+          minLength: 0
+        outcome:
+          type: string
+          maxLength: 200
+          minLength: 0
+        type:
+          type: string
+          enum:
+          - CALL
+          - WHATSAPP
+          - EMAIL
+          - VISIT
+          - NOTE
+    FollowUpCreateRequest:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        dueAt:
+          type: string
+          format: date-time
+        note:
+          type: string
+          maxLength: 500
+          minLength: 0
+        subjectId:
+          type: string
+          format: uuid
+        subjectType:
+          type: string
+          enum:
+          - CUSTOMER
+          - ENQUIRY
+          - QUOTATION
+          - ORDER
+      required:
+      - assignedTo
+      - dueAt
+      - subjectId
+      - subjectType
+    FollowUpResponse:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        completedAt:
+          type: string
+          format: date-time
+        completionNote:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+        dueAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        note:
+          type: string
+        overdue:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - PENDING
+          - DONE
+          - CANCELLED
+        subjectId:
+          type: string
+          format: uuid
+        subjectType:
+          type: string
+          enum:
+          - CUSTOMER
+          - ENQUIRY
+          - QUOTATION
+          - ORDER
+    FollowUpSummaryResponse:
+      type: object
+      properties:
+        dueToday:
+          type: integer
+          format: int64
+        overdue:
+          type: integer
+          format: int64
+        upcoming:
+          type: integer
+          format: int64
+    FollowUpUpdateRequest:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        dueAt:
+          type: string
+          format: date-time
+        note:
+          type: string
+          maxLength: 500
+          minLength: 0
+      required:
+      - assignedTo
+      - dueAt
+    InvitationPreviewResponse:
+      type: object
+      properties:
+        businessName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+    InvitationResponse:
+      type: object
+      properties:
+        acceptUrl:
+          type: string
+        email:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+    InviteRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+        role:
+          type: string
+          minLength: 1
+          pattern: OWNER|SALES_MANAGER|SALES_EXEC
+      required:
+      - email
+      - role
+    ItemRequest:
+      type: object
+      properties:
+        discountPct:
+          type: string
+          format: decimal
+        productId:
+          type: string
+          format: uuid
+        qty:
+          type: string
+          format: decimal
+        rate:
+          type: string
+          format: decimal
+      required:
+      - productId
+      - qty
+    ItemResponse:
+      type: object
+      properties:
+        cgst:
+          type: string
+          format: decimal
+        discountPct:
+          type: string
+          format: decimal
+        gstRate:
+          type: string
+          format: decimal
+        hsn:
+          type: string
+        id:
+          type: string
+          format: uuid
+        igst:
+          type: string
+          format: decimal
+        lineTotal:
+          type: string
+          format: decimal
+        name:
+          type: string
+        productId:
+          type: string
+          format: uuid
+        qty:
+          type: string
+          format: decimal
+        rate:
+          type: string
+          format: decimal
+        sgst:
+          type: string
+          format: decimal
+        taxableValue:
+          type: string
+          format: decimal
+        uom:
+          type: string
+    ItemsRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemRequest"
+          minItems: 1
+      required:
+      - items
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+      required:
+      - email
+      - password
+      - slug
+    LoseRequest:
+      type: object
+      properties:
+        lostReason:
+          type: string
+          minLength: 1
+      required:
+      - lostReason
+    MeResponse:
+      type: object
+      properties:
+        email:
+          type: string
+        role:
+          type: string
+        tenantId:
+          type: string
+          format: uuid
+        tenantSlug:
+          type: string
+        userId:
+          type: string
+          format: uuid
+    MemberResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        email:
+          type: string
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+    NextFollowUpRequest:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+          format: uuid
+        dueAt:
+          type: string
+          format: date-time
+        note:
+          type: string
+          maxLength: 500
+          minLength: 0
+      required:
+      - assignedTo
+      - dueAt
+    OrderResponse:
+      type: object
+      properties:
+        cancelReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        customerId:
+          type: string
+          format: uuid
+        grandTotal:
+          type: string
+          format: decimal
+        id:
+          type: string
+          format: uuid
+        orderNo:
+          type: string
+        poDate:
+          type: string
+          format: date
+        poReference:
+          type: string
+        quotationId:
+          type: string
+          format: uuid
+        quotationVersionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        subTotal:
+          type: string
+          format: decimal
+        totalTax:
+          type: string
+          format: decimal
+    PageResponseActivityResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseCustomerResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseEnquiryResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnquiryResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseFollowUpResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/FollowUpResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseOrderResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponsePriceListResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceListResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseProductResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseQuotationResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuotationResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PendingInvitationResponse:
+      type: object
+      properties:
+        email:
+          type: string
+        expired:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+    PriceListItemRequest:
+      type: object
+      properties:
+        discountPct:
+          type: string
+          format: decimal
+        overrideRate:
+          type: string
+          format: decimal
+        productId:
+          type: string
+          format: uuid
+      required:
+      - productId
+    PriceListItemResponse:
+      type: object
+      properties:
+        discountPct:
+          type: string
+          format: decimal
+        id:
+          type: string
+          format: uuid
+        overrideRate:
+          type: string
+          format: decimal
+        priceListId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+    PriceListRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+      required:
+      - name
+    PriceListResponse:
+      type: object
+      properties:
+        active:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    ProductCreateRequest:
+      type: object
+      properties:
+        baseRate:
+          type: string
+          format: decimal
+        gstRate:
+          type: string
+          format: decimal
+        hsnCode:
+          type: string
+        name:
+          type: string
+          minLength: 1
+        sku:
+          type: string
+          minLength: 1
+        uom:
+          type: string
+          enum:
+          - PCS
+          - KG
+          - NOS
+          - MTR
+          - LTR
+          - BOX
+          - SET
+          - DOZEN
+          - PACK
+          - BAG
+          - ROLL
+          - PAIR
+      required:
+      - baseRate
+      - gstRate
+      - name
+      - sku
+      - uom
+    ProductResponse:
+      type: object
+      properties:
+        active:
+          type: boolean
+        baseRate:
+          type: string
+          format: decimal
+        gstRate:
+          type: string
+          format: decimal
+        hsnCode:
+          type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sku:
+          type: string
+        uom:
+          type: string
+          enum:
+          - PCS
+          - KG
+          - NOS
+          - MTR
+          - LTR
+          - BOX
+          - SET
+          - DOZEN
+          - PACK
+          - BAG
+          - ROLL
+          - PAIR
+    ProductUpdateRequest:
+      type: object
+      properties:
+        baseRate:
+          type: string
+          format: decimal
+        gstRate:
+          type: string
+          format: decimal
+        hsnCode:
+          type: string
+        name:
+          type: string
+          minLength: 1
+        uom:
+          type: string
+          enum:
+          - PCS
+          - KG
+          - NOS
+          - MTR
+          - LTR
+          - BOX
+          - SET
+          - DOZEN
+          - PACK
+          - BAG
+          - ROLL
+          - PAIR
+      required:
+      - baseRate
+      - gstRate
+      - name
+      - uom
+    QuotationCreateRequest:
+      type: object
+      properties:
+        customerId:
+          type: string
+          format: uuid
+        deliveryTerms:
+          type: string
+        enquiryId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemRequest"
+          minItems: 1
+        notes:
+          type: string
+        paymentTerms:
+          type: string
+        validUntil:
+          type: string
+          format: date
+      required:
+      - customerId
+      - items
+    QuotationHeaderRequest:
+      type: object
+      properties:
+        deliveryTerms:
+          type: string
+        notes:
+          type: string
+        paymentTerms:
+          type: string
+        validUntil:
+          type: string
+          format: date
+    QuotationResponse:
+      type: object
+      properties:
+        currentVersion:
+          $ref: "#/components/schemas/QuotationVersionResponse"
+        customerId:
+          type: string
+          format: uuid
+        enquiryId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        quoteNo:
+          type: string
+        status:
+          type: string
+    QuotationVersionResponse:
+      type: object
+      properties:
+        deliveryTerms:
+          type: string
+        grandTotal:
+          type: string
+          format: decimal
+        id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemResponse"
+        notes:
+          type: string
+        paymentTerms:
+          type: string
+        placeOfSupply:
+          type: string
+        sentAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        subTotal:
+          type: string
+          format: decimal
+        totalTax:
+          type: string
+          format: decimal
+        validUntil:
+          type: string
+          format: date
+        versionNo:
+          type: integer
+          format: int32
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          minLength: 1
+      required:
+      - refreshToken
+    ShareResponse:
+      type: object
+      properties:
+        publicUrl:
+          type: string
+        waMeUrl:
+          type: string
+    SignupRequest:
+      type: object
+      properties:
+        businessName:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+        gstin:
+          type: string
+        password:
+          type: string
+          maxLength: 2147483647
+          minLength: 8
+        phone:
+          type: string
+        slug:
+          type: string
+          minLength: 1
+          pattern: "[a-z0-9-]{3,64}"
+        stateCode:
+          type: string
+          minLength: 1
+          pattern: "\\d{2}"
+      required:
+      - businessName
+      - email
+      - password
+      - slug
+      - stateCode
+    TenantProfileRequest:
+      type: object
+      properties:
+        address:
+          type: string
+          maxLength: 512
+          minLength: 0
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          minLength: 0
+        phone:
+          type: string
+          maxLength: 20
+          minLength: 0
+    TenantResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        businessName:
+          type: string
+        email:
+          type: string
+        gstin:
+          type: string
+        id:
+          type: string
+        phone:
+          type: string
+        stateCode:
+          type: string
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+  securitySchemes:
+    bearer-jwt:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http

@@ -1,7 +1,6 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-02 — **Members management is built, on branch
-`worktree-members-management`, off `main` at `e9d694e`, not yet merged.** Eight task commits
+**Last updated:** 2026-09-02 — **Members management is merged to `main`.** Eight task commits
 (`0d80e9b`..`f0ce72c`, one per task) plus two intermediate fix-ups folded in along the way
 (`2a11fa7` a Spotless reformat, `1577d50` a defensive copy for a new SpotBugs finding —
 challenge #67 is about how those two came to be needed), every task reviewed clean. A tenant's
@@ -17,35 +16,41 @@ it, so every member-admin write now takes a `PESSIMISTIC_WRITE` lock on the tena
 (challenge #65). See §3 for the full inventory: the four routes, the port, the lock, the
 `AuthService.refresh` fix that makes `disable` actually revoke access rather than just look like
 it, the `ConflictException` structured-fields addition, and migration `V33`. **561 tests, 0
-failures, 0 errors**, up from the 519-test baseline, via `./gradlew clean check` from a clean
-state.
+failures, 0 errors** on the branch, up from the 519-test baseline, via `./gradlew clean check`
+from a clean state.
 
-**Correction, not new news: `main` was never the clean, nothing-in-flight baseline the previous
-version of this line claimed.** It read "Nothing is in flight; `main` is the baseline for new
-work" — false already on the day this slice started, because an `openapi-contract` slice
-(springdoc 3.1.0, a typed error envelope, controller annotations) was mid-execution on its own
-branch at that time. As of this writing that slice appears **complete and unmerged** — all seven
-planned tasks committed plus its own whole-branch-review fix wave and docs wrap-up
-(`b14c92a`..`36abac3`) — but it is still not this one's to finish or narrate further: its own SDD
-ledger has the detail, and this file does not track its status going forward. A handoff that
-asserts nothing is in flight when something plainly is stops being useful the moment it's read
-literally, so this stands as the correction rather than a repeat of the error. Two branches sit
-off `main` at once as of this writing: `worktree-members-management` (this slice, not yet merged)
-and `openapi-contract` (complete, also not yet merged).
+**This slice and the OpenAPI contract slice ran concurrently off the same `main`, and that is
+worth knowing before reading either one's history.** Neither could see the other's uncommitted
+work, so both independently numbered their engineering-challenges entries from #61 and collided
+on #62–#64. OpenAPI merged first, so it kept those numbers and members management renumbered to
+**#65–#67**; the log runs 60–67 with no gap and no duplicate. Both slices also edited
+`ApiExceptionHandler.conflict(...)` — OpenAPI gave it a typed `ApiErrorResponse` return and an
+`@ApiResponse` annotation, members management made it pass the exception's structured `fields`
+through — and the merge keeps both. An earlier version of this line claimed "Nothing is in
+flight; `main` is the baseline for new work" while that was already false; the lesson is that a
+handoff asserting nothing is in flight, when something plainly is, stops being useful the moment
+it is read literally.
 
-**Before it, build hygiene was built and merged to `main` as `83e6880`.** This repo now has
-automated quality gates for the first time: one `./gradlew clean check` runs the tests **plus**
-Spotless (palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage
-verification across both Gradle projects, and **GitHub Actions runs that same command on every
-push to `main`** — the repo also has a remote for the first time,
-`git@github.com:divyam-agarwal/eazy-crm.git` (public). Zero application-code changes in that
-slice: the only production-source diff was one mechanical whole-tree reformat of 311 files,
-proven byte-identical to `spotlessApply` output. **Read §0's "What CI does and does not do"
-before assuming the gate blocks anything** — it is a post-merge smoke alarm, not a pre-merge
-gate, and that is a consequence of this repo's no-PR merge habit rather than an oversight. See
-§3 for the gate detail (baseline count, coverage floors, resolved plugin versions). Before that,
-user invitations were merged to `main` as `f265cfe`. A tenant can finally have more than one
-user. An owner invites an email and a role, the invitee
+**Before it, the OpenAPI contract slice was merged to `main` as `bead2f8`.** This API now has a
+document: springdoc 3.1.0 generates it, `docs/api/openapi.yaml` is the committed snapshot, and
+`./gradlew clean check` fails when the two disagree — so the contract stops being "whatever the
+controllers happen to do" and becomes the thing the frontend gets built against. The error envelope
+is a typed pair of records rather than a `Map`, the browsable UI is dev-profile-only and physically
+absent from `bootJar`, and CI reports an oasdiff API changelog without blocking on it — **proven
+on real runs for both the push and the pull-request path**, which also fired this repo's first
+ever pull request. See §0 for the detail and §3's bullet for the inventory. Before it, build hygiene was built
+and merged to `main` as `83e6880`. This repo now has automated quality
+gates for the first time: one `./gradlew clean check` runs the tests **plus** Spotless
+(palantir-java-format), SpotBugs (+ find-sec-bugs, baselined) and JaCoCo coverage verification
+across both Gradle projects, and **GitHub Actions runs that same command on every push to `main`**
+— the repo also has a remote for the first time, `git@github.com:divyam-agarwal/eazy-crm.git`
+(public). Zero application-code changes: the only production-source diff is one mechanical
+whole-tree reformat of 311 files, proven byte-identical to `spotlessApply` output. **Read §0's
+"What CI does and does not do" before assuming the gate blocks anything** — it is a post-merge
+smoke alarm, not a pre-merge gate, and that is a consequence of this repo's no-PR merge habit
+rather than an oversight. See §3's top bullet for the gate detail (baseline count, coverage
+floors, resolved plugin versions). Before it, user invitations were merged to `main` as
+`f265cfe`. A tenant can finally have more than one user. An owner invites an email and a role, the invitee
 follows a link, sets a password, and becomes an `ACTIVE` user of that tenant — which is what makes
 `assigned_to`, the record-visibility slice and the `SALES_EXEC` role stop being notional. The
 `invitation` table is the codebase's **third global, RLS-exempt table** after `refresh_token` and
@@ -73,30 +78,122 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### What's in flight right now
+### Nothing is in flight
 
-**Two branches sit ahead of `main`, and neither has landed.** This handoff's own slice — members
-management, on `worktree-members-management`, off `main` at `e9d694e` — is code-complete and
-reviewed clean (eight task commits, `0d80e9b`..`f0ce72c`) but not yet merged; this file, the
-design spec, and challenges #65–#67 are the record of it until it does. Separately, an
-`openapi-contract` slice (springdoc 3.1.0, a typed error envelope, controller annotations) began
-mid-execution on its own branch before this slice started and, as of this writing, **appears
-complete and unmerged** — all seven of its planned tasks committed, plus its own
-whole-branch-review fix wave and docs wrap-up. Verify its current state directly
-(`git log --all --oneline`, and `docs/superpowers/plans/2026-09-01-openapi-contract.md` on that
-branch) rather than trusting this line the way an earlier draft of this file trusted a stale
-report of "roughly 2 of 7 tasks" — that stale claim is exactly the mistake this paragraph exists
-to not repeat. **The previous version of this section claimed "Nothing is in flight; `main` is
-the baseline for new work," which was already false the day it was written** — this replaces
-that claim rather than repeating it. Whoever picks up next should check with the user which of
-the two branches lands first and in what order: the design spec's §4.4 already flags that both
-slices touch `ApiExceptionHandler.conflict(...)`, so merging one after the other is expected to
-produce one mechanical conflict there, not a surprise.
+**`main` now carries both of the branches that were running concurrently, and neither remains
+open.** Members management (this file's top entry) was merged after the OpenAPI contract slice;
+its 16 commits were built in a locked worktree by a separate session, reviewed task-by-task and
+then whole-branch, and verified green before merging. `openapi-contract` was merged as `bead2f8`
+and its branch deleted.
 
-**`main` itself is still clean at the last thing that actually landed on it — `build-hygiene`.**
-That slice — seven tasks plus a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba`
-— was merged `--no-ff` as **`83e6880`** on 2026-09-01 and its local branch deleted; the merged
-result was verified green (519 tests, full `clean check`) before the branch went away. See
+**The one thing that merge taught, worth carrying:** members management was cut from `e9d694e`,
+*before* the OpenAPI slice landed, so it contained no `docs/api/openapi.yaml` while `main` had
+begun guarding that file — and it adds `MemberController`, four new endpoints. The regenerate-
+alongside rule therefore got its first real exercise: `./gradlew updateOpenApiSnapshot`, committed
+in the same change. The failure mode is loud, not silent, which is the point of the guard. **Any
+future branch cut before a guard exists will hit the same thing** — the fix is mechanical, but it
+is not automatic.
+
+The other cross-branch lesson is recorded in the header: two slices off one `main` both numbered
+their challenge entries from #61 and collided. The log now runs 60–67 with no gap and no
+duplicate, because the slice that merged second renumbered. Worth remembering the next time two
+sessions run at once — the collision is invisible to both until merge.
+
+### The OpenAPI contract slice is done and pushed
+
+**The OpenAPI contract slice is merged to `main` as `bead2f8`.** Seven tasks plus a
+whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, merged `--no-ff` on
+2026-09-02 and the `openapi-contract` branch deleted; the merged result was verified green before
+the branch went away. **`main` is the baseline for new work and is fully pushed — `main` and
+`origin/main` are level at `b239f5f`.** The commit range started at `4a1848b`: two docs
+commits (`4a1848b` the design spec,
+`e0d0dfb` the plan), then the task commits from `b14c92a` (springdoc plus the OpenAPI metadata bean)
+to `2d681fc` (the oasdiff misreport fix), then the final review wave (six items — the money-schema
+fix, the dev-profile chain's first test, per-operation `security: []`, an explicit `servers` block,
+a path-count floor on the snapshot guard, and fenced oasdiff output). See `docs/superpowers/specs/2026-09-01-openapi-contract-design.md` and
+`docs/superpowers/plans/2026-09-01-openapi-contract.md`. **Its SDD ledger is gone** — deleted with
+the workspace at merge, as `build-hygiene`'s was — so this file, the spec, and challenges #62–#64
+are now the only record of that slice's reasoning.
+
+**Verified green: 544 tests, 0 failures, 0 errors** (521 root + 23
+`platform-primitives`), up from the previous 519 baseline — a full `./gradlew clean check`, which
+now includes the OpenAPI drift guard.
+
+**That loose end is now closed: everything is pushed and the CI step is proven on both events.**
+Three real runs did it — `33605853807` (push, absent-base guard), `33606310967` (push, compare
+path) and `33607087225` (pull request, compare path). Its shell logic was additionally verified
+locally in detail (all three no-base branches, a
+structural mutation producing a real changelog, a deliberately broken `docker run` producing an
+explicit failure line rather than a silently empty summary), but local verification is not a CI
+run and must not be written up as one.
+
+**The most important thing the review wave found: the document said money was a JSON `number`.**
+All 31 monetary and quantity fields did, while the server has never sent anything but a string
+(`BigDecimalStringModule`). Every guard on this branch — drift, byte-stability, oasdiff — compares
+the document to *itself*, so none of them could see it. Fixed with one global
+`SpringDocUtils.replaceWithSchema(BigDecimal.class, …)` in `OpenApiConfig` and, more to the point,
+guarded by `OpenApiSnapshotTest.moneyFieldsAreDocumentedAsStrings`, the only assertion in the suite
+that checks the contract against a fact about the server. It was watched failing with the override
+removed. **Read challenge #64 before adding any further guard to this document.**
+
+**`clean check` now asserts something new: that the committed API document still matches the
+code.** `OpenApiSnapshotTest` generates the document from the live controllers and compares it byte
+for byte against `docs/api/openapi.yaml`. Add an endpoint, rename a response field, change a status
+code or add a query parameter and the build goes red until the snapshot is regenerated
+(`./gradlew updateOpenApiSnapshot`) and committed **in the same change**. That is the whole
+difference between having a Swagger page and having a contract. The guard was watched failing on a
+deliberate API change and passing again after regeneration, and the output was proven byte-stable
+across two consecutive regenerations — see challenge #63 for why the guard and the regenerator are
+one test in two modes rather than two tools.
+
+**The oasdiff CI step is now proven on both events — it was dormant config for one day and is
+not any more.** The workflow fires on `push: [main]` and `pull_request`; a feature-branch push
+triggers neither, so while the slice sat unpushed no CI run had ever executed the step.
+**The push half:** `main` was pushed on 2026-09-02 and
+run `33605853807` executed the step for the first time, resolving `BASE_SHA` to
+`e9d694e386…` — `github.event.before`, the previous `origin/main` tip, which is exactly the fix
+below working. That base predates the snapshot, so it correctly took the nothing-to-compare
+branch. **The pull-request half is now proven too.** PR #1 (`ci-verify-pr-oasdiff`, opened and
+closed on 2026-09-02 purely to fire the event — it was never meant to merge) carried one added
+optional query parameter and a regenerated snapshot. Run `33607087225` resolved `BASE_SHA` to
+`11b40f38…`, `main`'s tip — i.e. `github.event.pull_request.base.sha`, not the merge commit's
+parent — took the compare path, and reported `1 changes: 0 error, 0 warning, 1 info / added the
+new optional query request parameter ciProbe`. That also incidentally confirms oasdiff's default
+severities behave as the design assumed: an added *optional* request parameter is `info`, not a
+breaking change. **Both events are therefore verified on real runs, and this step is no longer
+dormant config.** The `pull_request` trigger itself, dormant since the build-hygiene slice, fired
+for the first time on that same run. Its shell logic *was* verified locally in detail — all three absent-base
+branches (all-zero SHA, unreachable base, base predating the snapshot), a structural mutation of the
+snapshot producing a real changelog entry (`api-path-removed-without-deprecation`), and a
+deliberately broken `docker run` producing the explicit "failed to run" line rather than a silently
+empty summary section, which is what the `pipefail` and the `if !` wrappers exist for. So the logic
+is exercised; the step is not. It will first run on the merge to `main`. Treat it as the same
+untested-config category as the `pull_request` trigger below and challenge #33 — dormant and
+reasoned, not proven. (The review wave did fix one thing about it that only a first run would have
+exposed: oasdiff emits plain text one finding per line, and `$GITHUB_STEP_SUMMARY` is Markdown,
+which joins consecutive lines — so both blocks are now wrapped in fenced code blocks, written
+separately from the tool output so a tool failure still closes its fence.)
+
+### `docs/api/openapi.yaml` is generated output, not a document
+
+**Never hand-edit it.** It is written by `./gradlew updateOpenApiSnapshot`, which runs the same test
+that guards it; anything typed into the file directly is erased by the next regeneration, and in the
+meantime it makes the guard red for a reason that has nothing to do with the API.
+
+**A merge conflict in it is always resolved by regenerating, never by hand-merging the YAML.** Take
+either side (or `--theirs`, it does not matter), finish the merge, then run
+`./gradlew updateOpenApiSnapshot` and commit the result. Hand-resolving a 5000-line generated file
+produces a document that matches neither branch's code, and the guard is the only thing that would
+tell you — after the fact.
+
+### `main` before the OpenAPI slice — still current
+
+**Everything in this subsection and the CI one after it is current state, not history.** The
+OpenAPI slice added to it rather than replacing it, so the build gates, CI behaviour and RLS
+posture described here all still hold on `main` at `bead2f8`. The `build-hygiene` slice — seven tasks plus
+a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba` — was merged `--no-ff` as
+**`83e6880`** on 2026-09-01 and its local branch deleted; the merged result was verified green
+(519 tests, full `clean check`) before the branch went away. See
 `docs/superpowers/specs/2026-09-01-build-hygiene-design.md` and
 `docs/superpowers/plans/2026-09-01-build-hygiene.md`. **Its SDD ledger is gone** — deleted with the
 workspace at merge, per the standing practice — so this file, the spec, and challenges #58–#61 are
@@ -191,10 +288,10 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
    then `cd backend && ./gradlew clean check`. **`clean check` is the baseline command, not
    `clean test`** — it is strictly stronger (adds `spotlessCheck`, `spotbugsMain`,
    `jacocoTestCoverageVerification` across both projects) and is the same command CI runs, so a
-   green local run and a green CI run assert the same thing. On `main` at `c303b2c` this is
-   **519 tests, 0 failures, 0 errors** (496 root + 23 `platform-primitives`), up from the
-   **464-test** baseline before the invitations slice. Gradle prints no total for a
-   multi-project build, so count it yourself:
+   green local run and a green CI run assert the same thing. On `main` at `b239f5f` this is
+   **544 tests, 0 failures, 0 errors** (521 root + 23 `platform-primitives`), up from 519 before
+   the OpenAPI slice and 464 before the invitations slice.
+   Gradle prints no total for a multi-project build, so count it yourself:
 
    ```bash
    cd backend && ./gradlew clean check
@@ -206,7 +303,7 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
    **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 496, not 519, and this tripped an
+   -path './build/test-results/test/*.xml'` alone reports 521, not 544, and this tripped an
    implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
@@ -273,7 +370,7 @@ All under `docs/superpowers/`:
 14. **`plans/2026-07-27-enquiry-conversion.md`** — conversion implementation plan (**DONE, merged to `main` as `06e6014`**).
 15. **`specs/2026-07-27-sales-hardening-design.md`** — sales hardening design spec (optimistic-lock→409 handler + `UNIQUE(tenant_id, enquiry_id)` quote backstop). Source of truth for *what* the hardening slice built.
 16. **`plans/2026-07-27-sales-hardening.md`** — sales hardening implementation plan (**DONE, merged to `main` as `abc2bd3`**).
-17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (57 entries). Great context on the stack's quirks.
+17. **`engineering-challenges.md`** — running log of non-obvious problems + solutions (63 entries). Great context on the stack's quirks.
 18. **`annotations-reference.md`** — living glossary of every Spring/JPA annotation used.
 19. **`specs/2026-07-28-order-lifecycle-design.md`** — order lifecycle design spec (`DISPATCHED`/`CLOSED`/`CANCELLED` transitions + the deferred order-list filter fix). Source of truth for *what* this slice built. **DONE** — spec committed directly as `8a6c9dd`; the slice it describes is implemented and merged as `8247579`.
 20. **`plans/2026-07-28-order-lifecycle.md`** — order lifecycle implementation plan. **DONE** — plan committed directly as `8c0703f`; executed in full and merged as `8247579`.
@@ -387,11 +484,22 @@ All under `docs/superpowers/`:
     **Its SDD ledger was deleted with the workspace at merge**, so the rulings it recorded survive
     only where they were copied out — §0's CI subsection, §3's gate detail, §5's environment notes
     and §6's stack quirks. Do not go looking for it.
+41. **`specs/2026-09-01-openapi-contract-design.md`** — OpenAPI contract design spec (Wave 3 of the
+    hygiene programme; why the snapshot is committed and guarded rather than merely served, the
+    `implementation`/`developmentOnly` split that keeps swagger-ui out of `bootJar`, the typed error
+    envelope, the dev-only exposure, and why the oasdiff gate reports instead of blocking). Source
+    of truth for *what* this slice built.
+42. **`plans/2026-09-01-openapi-contract.md`** — the seven-task implementation plan for it.
+    Executed in full and **merged as `bead2f8`** — see §0 and §3. Read it for the two places
+    execution contradicted it: the springdoc major line (3.x is Boot
+    4; the plan's own research had to establish that 2.x, which every tutorial names, does not
+    work here) and the predicted test count, which was 529 against an actual 530 on the branch and
+    534 after the review wave. Its SDD ledger is gone, deleted with the workspace at merge.
 
 ## 3. Current state
 
-- **Latest code work: members management** — built on branch `worktree-members-management`, off
-  `main` at `e9d694e`, **not yet merged** (see §0). Eight task commits (`0d80e9b`..`f0ce72c`) plus
+- **Latest code work: members management** — **merged to `main`**, off `main` at `e9d694e`
+  (branch `worktree-members-management`). Eight task commits (`0d80e9b`..`f0ce72c`) plus
   two intermediate fix-up commits folded in along the way (`2a11fa7` a Spotless reformat,
   `1577d50` a defensive copy for a new SpotBugs finding — challenge #67), every task reviewed
   clean. Closes the gap `user-invitations` deliberately left open (below): a workspace with more
@@ -488,6 +596,135 @@ All under `docs/superpowers/`:
   gate only at milestones instead of every task); the annotations reference needed one addition —
   a second use site on the existing `@Lock`/`LockModeType` row for
   `TenantRepository.findForUpdate`.
+- **Previous code work: the OpenAPI contract** — **merged to `main` as `bead2f8`** (off `main` at
+  `e9d694e`, seven tasks plus a whole-branch-review fix wave, every one reviewed), and pushed.
+  **544 tests, 0 failures,
+  0 errors** (511 root + 23 `platform-primitives`), up 15 from `main`'s 519. What it delivers:
+
+  **springdoc 3.1.0, split across two Gradle configurations on purpose.**
+  `springdoc-openapi-starter-webmvc-api` is on `implementation` — the generator ships;
+  `springdoc-openapi-starter-webmvc-ui` is on `developmentOnly`, Spring Boot's own configuration
+  for "on the `bootRun` classpath, excluded from `bootJar`". The swagger-ui webjar therefore cannot
+  reach a production artefact even if someone later flips `springdoc.swagger-ui.enabled` by
+  mistake: structural absence rather than a configured one, verified by unzipping the jar rather
+  than by reading the Gradle docs. **3.x is the Spring Boot 4 line** (its POM parent is
+  `spring-boot-starter-parent` 4.1.0); the 2.x line is Boot 3 and does not work here, which matters
+  because every pre-2026 tutorial names 2.x. `OpenApiConfig` supplies only what springdoc cannot
+  infer — title, description, the `bearer-jwt` security scheme, the `servers` entry — and takes
+  `info.version` from `BuildProperties`, i.e. from the Gradle project version via
+  `springBoot { buildInfo() }`, so there is one copy of that number rather than a literal in
+  `application.yml` to keep in sync. `servers` is taken from `easycrm.public-base-url`, the one
+  property this app already treats as its canonical external origin (share and invitation links
+  are both built from it); left implicit, springdoc synthesized the entry from whatever request
+  fetched the document and published `url: http://localhost` — the MockMvc origin, wrong rather
+  than merely vague, in the artefact a frontend reads.
+
+  **Money is documented as a string, and that is enforced, not just fixed.** springdoc infers
+  schemas from the Java type, so `BigDecimal` came out as `type: number` on all 31 monetary and
+  quantity fields while `BigDecimalStringModule` has always serialized them as JSON strings. One
+  static `SpringDocUtils.getConfig().replaceWithSchema(BigDecimal.class, new
+  StringSchema().format("decimal"))` in `OpenApiConfig` fixes every occurrence — global, because 31
+  per-field annotations are 31 chances to miss one and the next DTO would have none. Request-body
+  fields (`rate`, `qty`, `discountPct`) become `string` too, which is intended. The guard is
+  `OpenApiSnapshotTest.moneyFieldsAreDocumentedAsStrings`; it was proven able to fail. See
+  challenge **#64** — every other guard on this document compares it to itself.
+
+  **The genuinely public operations carry an empty `@SecurityRequirements`.** The document-level
+  `bearer-jwt` requirement applied to *everything*, including `POST /api/v1/auth/login` — the first
+  call a frontend writes and the one call that by definition has no token. Seven operations now
+  emit `security: []`, mirroring `SecurityConfig`'s `permitAll` list exactly: auth
+  signup/login/refresh/logout, the invitation preview/accept pair, and `GET /public/q/{token}`.
+  **`GET /api/v1/auth/me` is deliberately not among them** — it is `authenticated()`.
+
+  **The error envelope is typed.** `ApiErrorResponse(ApiError error)` and
+  `ApiError(String code, String message, Map<String, Object> fields)` replaced
+  `ResponseEntity<Map<String, Object>>` across all seven `ApiExceptionHandler` handlers, with
+  `@ApiResponse`/`@Content`/`@Schema` declaring one response per distinct status. The acceptance bar
+  was **byte-identical output**, not "an equivalent document": `@JsonInclude(NON_NULL)` at type
+  level preserves the omit-`fields`-when-absent behaviour, and the defensive copy inside `ApiError`
+  is a wrapped `LinkedHashMap` rather than `Map.copyOf` specifically to preserve key order
+  (challenge #62 — `Map.copyOf` randomizes iteration order per JVM boot). The proof of behaviour
+  preservation is procedural, not rhetorical: `ApiErrorWireFormatTest` was written and committed
+  **first and separately** (`26371ff`), passing against the old `Map`-based handler, and still
+  passes against the records. No assertion outside `platform/error/` was touched.
+
+  **`@ParameterObject` on the eight `Pageable` list endpoints; `@Hidden` on `DemoRecordController`.**
+  The first is what makes the document advertise `page`/`size`/`sort` — the parameters a client can
+  actually send — instead of a `Pageable` schema nobody can construct. The second removes the P0
+  isolation fixture from the document; **it does not remove the route**, which stays live and
+  authenticated in every profile. Whether that controller should exist in production at all is a
+  separate decision that was deliberately not taken here.
+
+  **`docs/api/openapi.yaml`, committed and guarded.** `OpenApiSnapshotTest` fails
+  `clean check` whenever the generated document and the snapshot disagree; `./gradlew
+  updateOpenApiSnapshot` regenerates it. The guard also asserts a **floor**: at least 45 `/api/v1/`
+  paths, against the 54 the app publishes today. Without it, a misconfigured
+  `springdoc.paths-to-match`, a stray `@Hidden` or a narrowed scan base-package would leave `info`
+  intact while `paths` came back empty — and *both* modes would pass, write mode by overwriting the
+  contract with a gutted document and read mode by then comparing gutted against gutted. The
+  threshold is deliberately loose: pinning the exact count is the snapshot's job. **The guard and the regenerator are one test in two modes,
+  not two tools** — see §0's standing note and challenge #63. Determinism is pinned with
+  `springdoc.writer-with-order-by-keys: true`, confirmed present on 3.1.0 before being depended on,
+  and the output proven byte-stable across two regenerations. The guard was watched going red on a
+  throwaway query parameter and green again once it was removed.
+
+  **`/v3/api-docs` and `/swagger-ui/**` are exposed only under the `dev` profile, in two
+  independent layers.** Layer 1: springdoc's own `api-docs.enabled`/`swagger-ui.enabled` are
+  `false` in `application.yml` and `true` only in `application-dev.yml`, so outside dev the routes
+  are never registered and there is nothing for a security rule to have to deny. Layer 2:
+  `DevApiDocsSecurityConfig`, a `@Profile("dev")` `@Order(0)` `SecurityFilterChain` whose
+  `securityMatcher` names exactly five springdoc paths. **`SecurityConfig` was not modified** —
+  `git diff main -- …/SecurityConfig.java` is empty, and deleting the new file restores today's
+  behaviour exactly, with no conditional hole left in the real chain to reason about later. Verified
+  live, not only in tests: `bootRun` under the dev profile served both routes with 200. It is now
+  also verified *in* tests: `DevApiDocsSecurityConfigTest` is the **only** class in this suite with
+  `@ActiveProfiles("dev")`, and therefore the only place that bean exists in a test context at all.
+  Two assertions — `/v3/api-docs` returns 200 (nothing had ever demonstrated the dev chain works),
+  and an unauthenticated `/api/v1/customers` still returns 401 (an `@Order(0)` chain with a widened
+  `securityMatcher` would silently make the whole API public in dev). **Deliberately one class**: an
+  `@ActiveProfiles` value is a distinct context cache key, so this costs the suite its second Spring
+  context; do not spread dev-profile assertions across more classes. `ApiDocsExposureTest` runs
+  *without* the dev profile and its `healthIsStillReachable` never guarded this — the comment
+  claiming it did has been corrected.
+
+  **CI reports an API changelog and does not block on it.** A `continue-on-error` oasdiff step
+  (`tufin/oasdiff:latest`, `changelog` then `breaking`) writes into the job summary on every push
+  and pull request. **The base it diffs against is `github.event.before` on a push and
+  `github.event.pull_request.base.sha` on a PR — not `HEAD~1`**, which was the original form and
+  was wrong on both events: on a push it compares only the last commit, so a push carrying N
+  commits reports nothing for the other N-1, and this repo pushes a merge plus its docs
+  follow-ups together as a matter of course. Measured on the real branch: with `HEAD~1` the
+  pending 19-commit push reported "No changes detected"; with `event.before` the same range
+  reports the 187 money-schema changes. That also forces `fetch-depth: 0` on the checkout — the
+  base can be any distance back, and a shallow clone that lacks it fails *silently* into the
+  "nothing to compare" path. **`OasdiffWorkflowTest` guards all of this** — it parses the real
+  `ci.yml` (injected as the `ci.workflow` system property, the same trick the snapshot guard uses)
+  and executes the step's own extracted shell body against throwaway git repos with `docker`
+  stubbed, so it tests *our* base-selection logic without depending on Docker Hub. Ten tests:
+  the per-event base wiring, `fetch-depth: 0`, `continue-on-error`, the push and PR base choices,
+  all three no-base branches, and that a tool failure still writes its explicit line and closes
+  both fences. Proven able to fail: reverting `ci.yml` to `HEAD~1` + `fetch-depth: 2` turns three
+  of them red, and dropping the PR base from the expression turns a fourth. It reports rather than
+  gates for two reasons: CI here is post-merge (§0), so a blocking gate would fail *after* the
+  breaking change landed; and there is no consumer yet, so it would fire regularly, at nobody, on
+  correct work — which is how gates get ignored. **Flip `continue-on-error` to `false` when the
+  frontend exists and consumes this spec.** **Both event paths are proven on real runs** — see §0
+  for the three run IDs. **The base it diffs against is `github.event.before` on a push and
+  `github.event.pull_request.base.sha` on a PR, never `HEAD~1`**, and `OasdiffWorkflowTest`
+  guards that: it parses the real `ci.yml` and executes the step's own extracted shell against
+  throwaway git repos with `docker` stubbed. See the CI-tooling evaluation in §8 for why that
+  harness exists rather than Bats or `act`.
+
+  New challenges **#62** (a new record with a `Map` component fails SpotBugs on the first build,
+  and byte-identical is a stricter bar than immutable), **#63** (one generator, two modes) and
+  **#64** (every guard compared the document to itself, so it was consistent, deterministic,
+  drift-proof and wrong about money). `annotations-reference.md` gained rows for `@ParameterObject`,
+  `@Hidden`, `@Order`, `@SecurityRequirements` and `@ActiveProfiles`, and the `@Profile`,
+  `@JsonInclude`, `@TestPropertySource` and `@AutoConfigureMockMvc` rows were extended.
+
+  **Carried, not done:** operations are still tagged with springdoc's default internal class names
+  (`activity-controller`, `public-share-controller`). Cosmetic, and fixing it means `@Tag` on 16
+  controllers; ruled out at the end of this branch rather than forgotten.
 
 - **Previous code work: build hygiene** — **merged to `main` as `83e6880`** (branch deleted). 25
   commits off `main` at `2dc50ba`: seven tasks, every one reviewed clean on its first pass with no
@@ -550,12 +787,13 @@ All under `docs/superpowers/`:
   --no-daemon`, triggered on `push: [main]` and `pull_request:`.** One command — the same one a
   developer runs — so CI and a local run produce the same verdict, with no CI-only checks.
   **CI is a post-merge smoke alarm, not a pre-merge gate, and that is a deliberate, reasoned
-  choice, not an oversight.** This repo has never used a pull request (`gh pr list --state all` is
-  empty; every slice so far merged with `git merge --no-ff` — `f265cfe`, `2fb2b85`, `f97c62c`,
-  `c81f59f`, …), so the `pull_request` trigger has **never fired and is unproven** — dormant but
-  correct config, the same untested-gate category as challenge #33, not evidence CI is fully
-  exercised. Under `push: [main]` + `pull_request`, with no PRs ever opened, CI only runs *after* a
-  merge lands: it can tell you `main` broke, it cannot stop `main` from breaking. Broadening the
+  choice, not an oversight.** Every slice so far merged with `git merge --no-ff` — `f265cfe`,
+  `2fb2b85`, `f97c62c`, `c81f59f`, … — and that has not changed. **The `pull_request` trigger is
+  no longer unproven, though:** PR #1 (`ci-verify-pr-oasdiff`, 2026-09-02) was opened purely to
+  fire it, confirmed the whole job runs on that event, and was closed without merging. That
+  retires the challenge-#33-shaped doubt about the trigger itself — but it changes nothing about
+  the workflow's *shape*. Under `push: [main]` + `pull_request`, with PRs not part of the merge
+  habit, CI still only runs *after* a merge lands: it can tell you `main` broke, it cannot stop `main` from breaking. Broadening the
   push trigger to every branch was considered and **rejected**: it would fire earlier, but
   still block nothing, because required-status-check branch protection is PR-shaped and cannot
   gate a direct push to `main` — so broadening buys earliness at the cost of Actions minutes on
@@ -1072,7 +1310,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
   reformat commit `2616049`; with it set, those lines correctly fall back to the real original
   commit `a855056b`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 519 tests run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 544 tests on `main`, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -1209,38 +1447,41 @@ code running **today**, not the future split. **Two of the three are now closed*
 billing/COGS rather than from security — and that half is now done (§3). The entitlement-metering
 half PF19 is actually about is still unstarted.
 
-**Suggested ranking — read this before proposing anything. Written 2026-09-01, after
-`build-hygiene`; not re-derived for members management (§3), which lands after it in the queue
-rather than changing the ranking's logic.**
+**Suggested ranking — read this before proposing anything. Updated 2026-09-02, after both
+`openapi-contract` and members management.**
 
 The numbered list above is down to one open item (#4), the correctness backlog is empty, and nine
 slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level
-visibility, activity/follow-up, scheduled auto-expiry, user invitations, build hygiene, then
-members management). **The strongest remaining candidates are not on the numbered list**, so the
-real option set is the six below, one of which (members management) is now done. Present the
-rest; do not default into #4 because it is the last number standing.
+visibility, activity/follow-up, scheduled auto-expiry, user invitations, build hygiene, the
+OpenAPI contract, then members management). **Two of the candidates that used to head this list
+are now done.** Wave 3 is done — springdoc, the committed and guarded `docs/api/openapi.yaml`
+snapshot, and the oasdiff changelog in CI, merged as `bead2f8`. Members management is done —
+list, change role, disable, enable, merged after it. Strike both from the option set.
+**The strongest remaining candidates are still not on the numbered list**, so the real option
+set is the four below. Present them; do not default into #4 because it is the last number
+standing.
 
-- **Wave 3, OpenAPI — the strongest claim, and it is coupled to the frontend.** There are 18
-  controllers and no API document of any kind. Nothing has ever been built against this API, which
-  means the contract is currently whatever the controllers happen to do. springdoc plus a committed
-  spec snapshot plus `oasdiff` breaking-change detection in CI is a small slice that produces the
-  artefact the frontend will be built from — and it is also the honest substitute for the contract
-  testing (Pact, Spring Cloud Contract) that is deferred precisely because there is no second party
-  yet. Doing this *before* the frontend is the natural order; doing it after means the frontend
-  defines the contract by accident. See the design spec `2026-09-01-build-hygiene-design.md` §3.
-- **The frontend — the biggest product step, and the only one a backend slice cannot finish.**
-  Nothing has ever been built. The invitations slice shipped `/invite/{token}`, a link that is
-  pasted into WhatsApp and has **no page behind it**; wiring that route is the stated first task
-  when the frontend starts. Unscoped, so it begins at brainstorming, and it is large enough to want
-  decomposing into sub-projects before a spec.
 - **Wave 1.5, supply chain — the cheapest real win, blocked on nothing.** `gitleaks`, Dependabot or
-  Renovate, OWASP Dependency-Check, and `squawk` for unsafe Postgres DDL. Smaller than Wave 3 and
+  Renovate, OWASP Dependency-Check, and `squawk` for unsafe Postgres DDL. Small, well-scoped, and
   higher security value than anything else on this list, on a repo that is now **public** and ships
-  JWT auth, bcrypt and GST data. The one cost to plan for: Dependency-Check needs an NVD cache that
-  makes CI meaningfully slower.
-- ~~**Members management**~~ — **DONE** (§3, not yet merged — see §0). List, change-role, disable,
-  enable, all owner-only. **What it deliberately does not do**, and why: no delete — disable only,
-  so `audit_log.actor_user_id`, `invitation.invited_by`, and the `assigned_to` references on
+  JWT auth, bcrypt and GST data. It is the natural next backend slice for the same reason
+  build hygiene was: it finishes a programme already half-built rather than opening a new front. The
+  one cost to plan for: Dependency-Check needs an NVD cache that makes CI meaningfully slower.
+- **The frontend — the biggest product step, the only one a backend slice cannot finish, and the
+  one this slice was for.** Nothing has ever been built. **It now has a contract to build against**:
+  `docs/api/openapi.yaml` describes every endpoint, the money-as-JSON-string convention, the shared
+  error envelope and the bearer-JWT scheme, and the drift guard means it stays true — which is
+  exactly the thing that was missing when the previous ranking put OpenAPI ahead of it. Doing the
+  frontend now means the contract shapes the client rather than the client defining the contract by
+  accident. **Wiring `/invite/{token}` is still the first task when it starts** — the invitations
+  slice ships a link that gets pasted into WhatsApp and has no page behind it. Unscoped, so it
+  begins at brainstorming, and it is large enough to want decomposing into sub-projects before a
+  spec; that size, not its value, is why Wave 1.5 sits above it.
+- ~~**Members management**~~ — **DONE**, merged (§3). List, change-role, disable, enable, all
+  owner-only. It was also the first real test of the drift guard on a slice that adds endpoints:
+  cut before the guard existed, it had to regenerate and commit `docs/api/openapi.yaml` in the
+  merge itself. **What it deliberately does not do**, and why: no delete — disable only, so
+  `audit_log.actor_user_id`, `invitation.invited_by`, and the `assigned_to` references on
   `customer`/`enquiry`/`follow_up` stay intact rather than orphaned; no bulk reassignment — the
   gate refuses a disable and reports what blocks it, and moving the work happens through the
   existing per-record endpoints, with a reassign-in-one-call endpoint left as a reasonable
@@ -1259,7 +1500,9 @@ rest; do not default into #4 because it is the last number standing.
   with it — `digma` in particular is OTel-based and cannot be evaluated before tracing exists.
 - **#4 cursor pagination — leads by elimination, not merit.** Cross-cutting and blocked on nothing,
   but no tenant is remotely large enough for offset paging to hurt. "Before the first large tenant"
-  below is a better description of when it starts to matter.
+  below is a better description of when it starts to matter. One thing did change: offset paging is
+  now *published* — `page`/`size`/`sort` are in the committed contract on eight endpoints — so
+  switching to cursors later is a breaking change oasdiff will report, not a quiet refactor.
 
 **Still blocked or still weak, unchanged:** PF19's entitlement-metering half needs the billing
 thread's *design* decisions, not effort — the public route has no JWT, so there is nowhere to hang a
@@ -1304,7 +1547,9 @@ re-deriving the reasoning from that spec each time.
 
 - **Wave 1.5 — supply chain, a short follow-up, not yet started.** `gitleaks` (secret scanning),
   Dependabot or Renovate (dependency update PRs), OWASP Dependency-Check (published-CVE
-  scanning), and `squawk` (unsafe Postgres DDL linting for Flyway migrations). Deliberately split
+  scanning), `squawk` (unsafe Postgres DDL linting for Flyway migrations), and **`actionlint`**
+  (workflow linting with shellcheck over `run:` blocks — see the CI-tooling evaluation later in
+  this section for what it does and does not catch). Deliberately split
   out of Wave 1 rather than folded in: it's a third distinct tool family, and Dependency-Check
   needs an NVD cache that makes CI setup meaningfully slower — bundling it with Spotless/SpotBugs/
   JaCoCo would have blurred one clean slice into two. Higher real security value than anything in
@@ -1320,11 +1565,14 @@ re-deriving the reasoning from that spec each time.
   assertions on query/pool/call behaviour rather than *production* observability, but both need
   the same underlying instrumentation, so plan them together rather than standing up tracing
   twice.
-- **Wave 3 — OpenAPI, not yet started.** springdoc, a committed spec snapshot, and `oasdiff`
-  breaking-change detection in CI. Arguably the highest-value item on the user's original list:
-  there are 18 controllers and the frontend has never been started, so this spec **is** the
-  contract the frontend gets built against — and it's the honest substitute for consumer-driven
-  contract testing in a repo with no consumer yet (see Pact below).
+- **Wave 3 — OpenAPI. DONE** (merged as `bead2f8`; see §0 and §3). springdoc
+  3.1.0, the committed and drift-guarded snapshot at `docs/api/openapi.yaml`, and an `oasdiff`
+  changelog in CI — reporting rather than blocking, for the reasons in §3. It was the highest-value
+  item on the user's original list: there are 16 controllers and the frontend has never been
+  started, so this spec **is** the contract the frontend gets built against — and it is the honest
+  substitute for consumer-driven contract testing in a repo with no consumer yet (see Pact below).
+  The one deferral it leaves behind is the `continue-on-error: true` on the oasdiff step, whose
+  flip trigger is the frontend existing and consuming the spec.
 - **Deferred, each with a trigger, not a vague "later":** SonarQube (deferred on merit, not
   sequencing — SpotBugs + Spotless + JaCoCo + ArchUnit already cover most of what it would flag,
   and it earns its keep with a team and a PR queue rather than solo; the JaCoCo XML report stays
@@ -1346,6 +1594,58 @@ those is probably a permanent category exclusion in `config/spotbugs/exclude.xml
 empty, ready for this) rather than baseline debt that looks like it's waiting to be "paid off."
 The other 6 — 3× `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`, 3× `CT_CONSTRUCTOR_THROW` — are a
 different kind of finding and deserve someone actually reading each one, not a blanket exclusion.
+
+### CI-pipeline testing tooling — evaluated 2026-09-02, mostly declined
+
+Raised after the oasdiff base-SHA bug: the step diffed against `HEAD~1` (the previous *commit*)
+instead of the branch's previous *state*, so a multi-commit push reported nothing for all but its
+last commit. Nothing caught it — the workflow parsed, the step exited 0, and the summary said "no
+changes", which is also what it says when there genuinely are none. The question this section
+answers is which of the standard CI-testing tools would have helped, and the answer is mostly
+"none of them, and here is the one that earns a slot anyway."
+
+**Every claim below was measured against this repo's own `ci.yml`, not read off a description.**
+
+- **`actionlint` — ADOPT, fold into Wave 1.5.** The only clear win. Run it on the real file and it
+  reports shellcheck findings *inside* `run:` blocks (it embeds shellcheck), unknown runner labels,
+  and malformed action refs. On our current file it already flags one live style issue
+  (`SC2129`, the repeated `>> "$GITHUB_STEP_SUMMARY"` redirects). Given this repo's CI now carries
+  ~45 lines of non-trivial shell — `set -uo pipefail`, three guard branches, fenced summary output
+  — shellcheck coverage of that shell is real value for one Docker invocation.
+  **Be clear about what it does NOT do:** it would not have caught our bug, and it does not catch a
+  typo in the very expression we fixed. Injecting `github.event.beforre` and
+  `github.event.pull_request.base.shaa` produced *no* actionlint findings — it does not
+  deep-validate webhook payload properties. It catches shape, not meaning.
+- **`Bats` — DECLINE, with a reason rather than a shrug.** It is the obvious tool for testing the
+  shell inside `run:` blocks, and we already do that from JUnit: `OasdiffWorkflowTest` extracts the
+  step's body out of the real `ci.yml` and executes it against throwaway git repos with `docker`
+  stubbed. That approach wins on the property this repo cares most about — it runs inside
+  `./gradlew clean check`, the single command that means "the build is green". Bats would be a
+  second test runtime, a second command to remember, and a second thing CI has to install, to test
+  the same 45 lines. Revisit only if pipeline shell grows past what is comfortable in a JUnit
+  harness.
+- **`act` (nektos/act) — DEFER, with a trigger.** It runs workflows locally in Docker and is the
+  only tool here that could exercise a `pull_request` event without opening a PR. Two things make
+  it a poor fit *today*: our job runs Testcontainers under Gradle, so act means Docker-in-Docker;
+  and act emulates GitHub rather than being it — checkout's merge-ref behaviour and
+  `github.event.before` are exactly the semantics we would be trusting it to reproduce, which is
+  circular for our purposes. **Trigger to revisit:** a workflow change that cannot be verified by
+  pushing, or a second workflow with matrix/conditional logic worth iterating on locally.
+- **`yamllint` — DECLINE.** actionlint subsumes the workflow-specific half, Spotless already owns
+  formatting for `src/**/*.yml`, and `OasdiffWorkflowTest` parses `ci.yml` with snakeyaml on every
+  build, so a syntax break fails the suite already. Pure overlap.
+- **Mocked env vars paired with `act` — ALREADY DONE, without act.** The valuable half is stubbing
+  the external tool, and the test does that: a fake `docker` on `PATH` records the base document it
+  was handed. That is what makes the test deterministic and offline.
+- **GitLab Runner — not applicable.** This project is on GitHub Actions.
+
+**What actually closed the gap** was not a tool. Two things did: the JUnit harness above, and
+opening one throwaway pull request to fire the event that had never fired. Note the division of
+labour, because it is the reusable lesson — actionlint checks that a workflow is *well-formed*;
+only a test that runs the workflow's own logic checks that it is *correct*; and only a real run
+proves the platform populates what you assumed. A tool that would have caught the `HEAD~1` bug
+does not exist, because the bug was a wrong answer to a question the file never asks out loud.
+
 
 ### TODO — assert runtime behaviour, not just outcomes (raised 2026-09-01)
 
@@ -1403,7 +1703,7 @@ rather than in build hygiene:
   so it depends on Wave 2 (observability, above) landing tracing first — evaluating it before that
   means standing up instrumentation twice; (2) it needs traffic to observe, and this app has no
   frontend and no production traffic, so the realistic trace source today is **the test suite
-  itself**, which is a first-class Digma workflow and is unusually well-suited here: 519 tests,
+  itself**, which is a first-class Digma workflow and is unusually well-suited here: 530 tests,
   many of them Testcontainers integration tests hitting real Postgres, would exercise the exact
   `VisibleFinder` correlated-subquery and expiry-sweep paths the bullets above are worried about.
   Cost to weigh: it runs its own backend in Docker plus an IDE plugin, materially heavier setup

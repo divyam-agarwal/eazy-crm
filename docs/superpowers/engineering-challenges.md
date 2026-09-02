@@ -3788,6 +3788,215 @@ concluding a catalog is unreachable from a given file.
 
 ---
 
+## Challenge 62 — A brand-new record with a `Map` component fails SpotBugs on the first build, and the baseline can't absorb it
+
+**Phase:** Implementation (openapi-contract, Task 2)
+
+### The problem
+
+`ApiExceptionHandler` returned `ResponseEntity<Map<String, Object>>` from all seven handlers,
+which springdoc has no way to describe beyond "some object." The fix is two records —
+`ApiErrorResponse(ApiError error)` and `ApiError(String code, String message, Map<String, Object>
+fields)` — replacing the hand-built `HashMap` envelope. `./gradlew clean check` failed on the
+first attempt, not on tests (the wire-format characterization test passed unchanged) but on
+`spotbugsMain`: `EI_EXPOSE_REP` and `EI_EXPOSE_REP2` on `ApiError.fields()`, because a record
+component of type `Map` stores and returns whatever mutable map the caller handed it, verbatim.
+
+This project already carries 26 baselined instances of exactly this pattern (`EI_EXPOSE_REP` +
+`EI_EXPOSE_REP2`, called out in `config/spotbugs/baseline.xml` as "largely noise on JPA entities
+and records"), which made it tempting to treat this as more of the same and baseline it away. That
+file explicitly forbids that move: "do NOT append new findings to this file to make the gate pass;
+new findings must be fixed in the code that introduced them." The baseline is a snapshot of
+findings that predate a change, not a place to launder new ones.
+
+### The solution
+
+A compact constructor on `ApiError` that replaces the incoming map with a defensive copy — both
+findings cleared on the next `spotbugsMain` run, since the record no longer stores the caller's
+map and the auto-generated accessor returns something the caller can't mutate afterward. The first
+version of this fix used `Map.copyOf(fields)` and shipped believing "the wire format does not
+change." A follow-up review caught that this was wrong on a stricter, byte-for-byte reading:
+`Map.copyOf` returns `ImmutableCollections.MapN`, whose iteration order is salt-randomized *per JVM
+boot*. Measured directly — a 4-key map serialized in four different key orders across five JVM
+runs, where the `HashMap` the old handler built gave the same order every time. Nothing in the test
+suite caught this (all 23 `$.error.*` assertions across the suite are `jsonPath`, i.e.
+order-insensitive, and this task's own characterization test's only multi-key map has exactly one
+key), but it meant the emitted bytes for any multi-field error — reachable; `ProductService.validate`
+emits up to three — genuinely differed run to run, contradicting the task's actual acceptance bar
+("the JSON on the wire must not change") rather than a weaker "produces an equivalent document"
+reading of it.
+
+The fix landed on `Collections.unmodifiableMap(new LinkedHashMap<>(fields))` instead. The
+`LinkedHashMap` copy preserves the caller's `HashMap`'s iteration order *at copy time*, so the
+emitted bytes go back to matching the pre-conversion output exactly, not just semantically; the
+`unmodifiableMap` wrapper is what SpotBugs needs to clear `EI_EXPOSE_REP` (copying alone, without
+also denying further mutation, isn't enough — a `LinkedHashMap` returned bare is still a mutable
+map from SpotBugs' point of view). Both were verified to still satisfy SpotBugs together, not
+assumed. This form is also null-tolerant the same way `Map.copyOf` was not: `Map.copyOf` rejects a
+`null` *value* inside the map (not just a `null` map), and one of the two call sites populating
+`fields` — the `MethodArgumentNotValidException` handler — builds it from
+`FieldError.getDefaultMessage()` per bean-validation constraint, which is `null` only if some
+constraint were ever declared without a message. `LinkedHashMap`'s copy constructor has no such
+restriction, so that latent 500-on-400-path risk is closed as a side effect rather than merely
+documented as unlikely.
+
+### Lesson
+
+Two separate lessons, from two passes at the same three lines of code. First, the one from the
+initial pass still holds: a record component typed as `Map`/`List`/`Set` fails
+`EI_EXPOSE_REP`/`EI_EXPOSE_REP2` on the very first build that introduces it, and a SpotBugs
+baseline file that says "fix new findings in code" is a ratchet against the pre-existing backlog,
+not a general-purpose escape hatch for anything a change introduces. Second, the one the review
+added: "doesn't change the wire format" is a byte-for-byte claim, and defensive-copy idioms are not
+interchangeable just because they're all "immutable collection from a mutable one" — `Map.copyOf`
+buys immutability at the cost of *iteration order becoming an implementation detail again*, the
+exact property the wrapped-`LinkedHashMap` form was chosen to preserve. When a task's acceptance
+bar is stated as "identical," verify the specific idiom against that literal bar (here: run it and
+diff the bytes, or reason about the concrete JDK class returned) rather than reaching for whichever
+immutable-copy one-liner is shortest and trusting it's equivalent by category.
+
+---
+
+## Challenge 63 — A committed API snapshot needs a writer and a checker, and they have to be the same code
+
+**Phase:** Implementation (openapi-contract, Task 4)
+
+### The problem
+
+A committed OpenAPI document is only worth having if something fails when the code and the
+document disagree. That needs two capabilities that pull against each other: something that
+**writes** `docs/api/openapi.yaml` from the current controllers, and something that **checks** the
+committed file still matches them.
+
+The obvious shape is two artefacts — a Gradle plugin (`springdoc-openapi-gradle-plugin`, or a
+`bootRun`-and-curl task) that boots the app and dumps the spec, plus a test that reads the file and
+compares. That gives two independent code paths producing what is supposed to be one document, and
+they will not stay equal: they boot different contexts, apply different property sets, and
+serialize through different writers. When they drift, the guard is asserting against something the
+generator never emits — and the failure is not a visible disagreement, it is a red build that
+**stays red after you regenerate**, which reads as a broken tool rather than a real finding.
+
+Determinism compounds it. springdoc's internal maps have no guaranteed iteration order, so two runs
+over byte-identical source can emit the same content in a different key order. A guard that
+compares text would then fail intermittently for no real reason — the failure mode that teaches
+people to re-run a build rather than read it, which is strictly worse than having no guard, because
+it also discredits the guard's true positives.
+
+### The solution
+
+**One test in two modes, not one test and one generator.** `OpenApiSnapshotTest` fetches
+`/v3/api-docs.yaml` through `MockMvc` once, then branches on a system property: with
+`-Dopenapi.write=true` it writes the result to the snapshot path and returns; without it, it reads
+the committed file and asserts equality. `./gradlew updateOpenApiSnapshot` is a second `Test` task
+over the same test classes that sets that property and filters to this one class
+(`outputs.upToDateWhen { false }`, since "nothing changed" is never the right answer for a
+regeneration). There is physically one generation path, so the guard cannot check something the
+regeneration task would not have produced — a property of the structure, not of anyone remembering
+to keep two files aligned.
+
+Two supporting decisions travel with it. The snapshot's absolute path is injected as
+`systemProperty("openapi.snapshot", ...)` from `build.gradle.kts` rather than derived inside the
+test, because the file sits outside the Gradle project (the Gradle root is `backend/`, the snapshot
+is `<repo>/docs/api/openapi.yaml`) and a test should not have an opinion about its own working
+directory. And on mismatch the generated document is written to `build/openapi-actual.yaml` with
+the `diff` command spelled out in the failure message — a 5231-line equality assertion is useless
+as a diff.
+
+Ordering was pinned with `springdoc.writer-with-order-by-keys: true`, and pinned *by verification*:
+the property was confirmed to exist on springdoc 3.1.0 before anything was made to depend on it
+(3.x is the Spring Boot 4 line; every pre-2026 tutorial names the 2.x Boot 3 line, which does not
+work here), and the output was then proven byte-stable across two consecutive regenerations rather
+than assumed stable because a flag was set. Finally the guard was **proven able to fail**: a
+throwaway query parameter added to one controller turned it red, and removing it turned it green
+again. A guard nobody has watched fail is a guard nobody has tested.
+
+### Lesson
+
+When a guard and a generator are supposed to produce the same artefact, make them literally the
+same code rather than two implementations of one idea — otherwise the interesting failure is not
+"the API drifted" but "the two tools disagree," which is invisible in the assertion message and
+looks exactly like a broken build. And a determinism flag you have set but not verified is a
+scheduled intermittent failure: check the property exists on the version you actually resolved, and
+run the generator twice and diff, before letting a text-equality assertion into the build.
+
+---
+
+## Challenge 64 — Every guard on a generated contract compared the document to itself, so it was consistent, deterministic, drift-proof and wrong
+
+**Phase:** Implementation (openapi-contract, whole-branch review fix wave)
+
+### The problem
+
+`docs/api/openapi.yaml` shipped with `type: number` on all 31 monetary and quantity fields —
+`grandTotal`, `subTotal`, `totalTax`, `rate`, `lineTotal`, `taxableValue`, `cgst`, `sgst`, `igst`,
+`discountPct`, `qty`, `expectedValue`, `overrideRate`. The server has never sent a number for any
+of them. `BigDecimalStringModule`, registered globally by `MoneyAutoConfiguration`, serializes
+every `BigDecimal` with `gen.writeString(value.toPlainString())`, and existing tests pin exactly
+that: `QuotationControllerTest` asserts `jsonPath("$.currentVersion.subTotal").value("200.00")`,
+and `QuotationAcceptTest` reads `$.currentVersion.grandTotal` into a `String`.
+
+The cause is mundane — springdoc derives schemas from the **Java** type (`BigDecimal` → `number`)
+and has no visibility into a runtime Jackson module. What makes it worth writing down is that the
+branch had four guards over this document and **not one of them could see it**:
+
+- the drift guard (challenge #63) compares the generated document to the committed snapshot — both
+  sides come from the same generator, so a wrong document is simply a stably wrong document;
+- byte-stability across two regenerations proves determinism, which a wrong document also has;
+- the `EasyCRM API` / not-blank assertions prove the generator ran;
+- the oasdiff CI step compares this document to its own previous revision.
+
+Every one of them is a *self*-comparison. The document was internally consistent, reproducible and
+protected against drift, and it told a frontend to send and parse JSON numbers for money — the one
+thing `CLAUDE.md` forbids, in the artefact whose entire job is to be believed. It even contradicted
+itself in plain text: `info.description` said "Money is carried as a JSON string, never a number"
+twenty lines above the first schema saying `number`. A client generated from it would have parsed
+`"1234.50"` into an IEEE double and reintroduced, at the boundary, exactly the money-as-`double`
+bug challenge #2 exists to prevent.
+
+### The solution
+
+One global model replacement, in a static block in `OpenApiConfig`, and verified against the jar
+rather than against memory (`javap` on `springdoc-openapi-starter-common-3.1.0` to confirm the
+method exists and what it delegates to):
+
+```java
+SpringDocUtils.getConfig().replaceWithSchema(BigDecimal.class, new StringSchema().format("decimal"));
+```
+
+It writes into `AdditionalModelsConverter`, a static registry the model-converter chain consults at
+generation time, so a static block is the right home — it only has to have happened before the
+first document is rendered, and class loading of a `@Configuration` during context refresh is
+comfortably earlier. Global, not per-field: 31 annotations are 31 chances to miss one, and the next
+DTO would not have any. Request bodies (`rate`, `qty`, `discountPct`) become `string` too, which is
+correct — Jackson parses a JSON string into a `BigDecimal` without complaint, and string is the
+canonical form everywhere else in this system.
+
+The fix is the easy half. The half that matters is the assertion that now sits beside the drift
+guard:
+
+```java
+mvc.perform(get("/v3/api-docs"))
+   .andExpect(jsonPath("$.components.schemas.QuotationVersionResponse.properties.grandTotal.type")
+       .value("string"))
+```
+
+It is the only assertion in that class that compares the document against a fact about the
+**server** rather than against another copy of the document, and it was proven able to fail: the
+`replaceWithSchema` line was commented out, the assertion went red with `expected:<string> but
+was:<number>`, and the line was restored.
+
+### Lesson
+
+Drift guards, determinism checks and diff tooling all answer "did this artefact change?" — none of
+them answers "is this artefact true?" A generated contract can pass every self-referential guard
+you own and still describe a server you do not have, because the generator infers from types and
+the wire format is decided by runtime serialization. So for any generated document, add at least
+one assertion that crosses the gap: pin a field the runtime demonstrably emits in a particular
+shape, and watch it fail with the fix removed. Otherwise the guards are only proving the generator
+is repeatable.
+
+---
+
 ## Challenge 65 — The last-owner invariant is write skew, not a lost update
 
 **Phase:** Implementation (members-management slice, Task 6/8)

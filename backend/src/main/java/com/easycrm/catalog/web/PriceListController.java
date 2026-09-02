@@ -6,6 +6,7 @@ import com.easycrm.catalog.web.dto.PriceListResponse;
 import com.easycrm.platform.web.PageResponse;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,7 +33,8 @@ public class PriceListController {
     }
 
     @GetMapping
-    public PageResponse<PriceListResponse> list(@RequestParam(required = false) Boolean active, Pageable pageable) {
+    public PageResponse<PriceListResponse> list(
+            @RequestParam(required = false) Boolean active, @ParameterObject Pageable pageable) {
         return service.list(active, pageable);
     }
 

@@ -8,6 +8,7 @@ import com.easycrm.sales.web.dto.ActivityResponse;
 import com.easycrm.sales.web.dto.ActivityUpdateRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,7 +44,7 @@ public class ActivityController {
      */
     @GetMapping
     public PageResponse<ActivityResponse> list(
-            @RequestParam SubjectType subjectType, @RequestParam UUID subjectId, Pageable pageable) {
+            @RequestParam SubjectType subjectType, @RequestParam UUID subjectId, @ParameterObject Pageable pageable) {
         return service.list(subjectType, subjectId, pageable);
     }
 
