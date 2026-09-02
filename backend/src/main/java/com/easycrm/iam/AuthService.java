@@ -167,6 +167,13 @@ public class AuthService {
             return tx.execute(status -> {
                 User user = users.findById(rot.userId())
                         .orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
+                // Without this, disabling a member is decorative: refresh would keep minting
+                // access tokens for them forever. The rotation above has already burned the
+                // presented token, so a disabled member's session cannot be resumed at all.
+                // Same generic message as every other failure here — no enumeration signal.
+                if (user.getStatus() != UserStatus.ACTIVE) {
+                    throw new UnauthorizedException("invalid refresh token");
+                }
                 String access =
                         jwt.mint(rot.tenantId(), rot.userId(), user.getRole().name());
                 return new TokenResponse(access, rot.newRawToken());

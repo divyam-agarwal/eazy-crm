@@ -22,4 +22,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     @Transactional(readOnly = true)
     Optional<User> findByEmailIgnoreCase(String email);
+
+    /** Active-owner census for the last-owner invariant. RLS scopes it to the tenant. */
+    @Transactional(readOnly = true)
+    long countByRoleAndStatus(Role role, UserStatus status);
 }

@@ -49,7 +49,9 @@ public class ApiExceptionHandler {
             description = "the request conflicts with existing data",
             content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     public ResponseEntity<ApiErrorResponse> conflict(ConflictException ex) {
-        return body(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), null);
+        // body() omits the key entirely when fields is null, so every existing 409 in the
+        // codebase stays byte-identical — only a conflict that opts in gains a fields object.
+        return body(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), ex.getFields());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

@@ -1,5 +1,6 @@
 package com.easycrm.iam;
 
+import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.persistence.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -62,5 +63,29 @@ public class User extends TenantScopedEntity {
 
     public UserStatus getStatus() {
         return status;
+    }
+
+    /**
+     * No guard, deliberately: assigning the role a member already holds is harmless, and
+     * rejecting it would fail a retried request for no reason. The invariant that a
+     * workspace keeps at least one active owner is tenant-wide and lives in MemberService —
+     * an entity cannot count its siblings.
+     */
+    public void changeRole(Role newRole) {
+        this.role = newRole;
+    }
+
+    public void disable() {
+        if (status == UserStatus.DISABLED) {
+            throw new ConflictException("member is already disabled");
+        }
+        this.status = UserStatus.DISABLED;
+    }
+
+    public void enable() {
+        if (status == UserStatus.ACTIVE) {
+            throw new ConflictException("member is already active");
+        }
+        this.status = UserStatus.ACTIVE;
     }
 }

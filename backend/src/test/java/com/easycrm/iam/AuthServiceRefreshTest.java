@@ -12,6 +12,7 @@ import com.easycrm.support.IntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.support.TransactionTemplate;
 
 class AuthServiceRefreshTest extends IntegrationTest {
     @Autowired
@@ -19,6 +20,12 @@ class AuthServiceRefreshTest extends IntegrationTest {
 
     @Autowired
     JwtService jwt;
+
+    @Autowired
+    UserRepository users;
+
+    @Autowired
+    TransactionTemplate tx;
 
     @AfterEach
     void clear() {
@@ -48,5 +55,19 @@ class AuthServiceRefreshTest extends IntegrationTest {
         AuthResponse signed = signup("refresh-b");
         auth.logout(signed.refreshToken());
         assertThrows(UnauthorizedException.class, () -> auth.refresh(signed.refreshToken()));
+    }
+
+    @Test
+    void aDisabledMemberCannotRefresh() {
+        AuthResponse signed = signup("refresh-disabled");
+
+        TenantContext.set(new TenantContext.TenantPrincipal(signed.tenantId(), null, "SYSTEM"));
+        tx.executeWithoutResult(
+                s -> users.findById(signed.userId()).orElseThrow().disable());
+        TenantContext.clear();
+
+        // Same generic message as every other refresh failure: no new enumeration signal.
+        UnauthorizedException ex = assertThrows(UnauthorizedException.class, () -> auth.refresh(signed.refreshToken()));
+        assertEquals("invalid refresh token", ex.getMessage());
     }
 }

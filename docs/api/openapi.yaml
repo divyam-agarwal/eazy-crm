@@ -2013,6 +2013,207 @@ paths:
             inputs
       tags:
       - invitation-controller
+  /api/v1/members:
+    get:
+      operationId: list_10
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
+  /api/v1/members/{id}/disable:
+    post:
+      operationId: disable
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
+  /api/v1/members/{id}/enable:
+    post:
+      operationId: enable
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
+  /api/v1/members/{id}/role:
+    post:
+      operationId: changeRole
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeRoleRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+          description: OK
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - member-controller
   /api/v1/orders:
     get:
       operationId: list_9
@@ -4203,6 +4404,15 @@ components:
           minLength: 1
       required:
       - cancelReason
+    ChangeRoleRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          minLength: 1
+          pattern: OWNER|SALES_MANAGER|SALES_EXEC
+      required:
+      - role
     ContactRequest:
       type: object
       properties:
@@ -4703,6 +4913,23 @@ components:
         userId:
           type: string
           format: uuid
+    MemberResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        email:
+          type: string
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
     NextFollowUpRequest:
       type: object
       properties:

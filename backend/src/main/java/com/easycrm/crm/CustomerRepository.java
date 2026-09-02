@@ -10,4 +10,12 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID>, JpaSp
 
     @Transactional(readOnly = true)
     Optional<Customer> findByGstin(String gstin);
+
+    /**
+     * Tenant-wide, deliberately unfiltered — see AssignedWorkload. Allowlisted in
+     * VisibilityScopingArchTest for the same reason findByGstin is: an invariant check that
+     * cannot see the whole tenant is not an invariant check.
+     */
+    @Transactional(readOnly = true)
+    long countByAssignedToAndActiveTrue(UUID assignedTo);
 }

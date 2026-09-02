@@ -5,6 +5,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +61,20 @@ public class RefreshTokenService {
                 tokens.save(t);
             }
         });
+    }
+
+    /**
+     * Ends every live session a member has. Returns how many were revoked, which
+     * MemberService records in the audit row — "disabled, 3 sessions killed" is a materially
+     * different event from "disabled, was not logged in".
+     */
+    @Transactional
+    public int revokeAllForUser(UUID userId, UUID tenantId) {
+        List<RefreshToken> live = tokens.findByUserIdAndTenantIdAndRevokedAtIsNull(userId, tenantId);
+        Instant now = Instant.now();
+        live.forEach(t -> t.revoke(now, null));
+        tokens.saveAll(live);
+        return live.size();
     }
 
     private String randomToken() {
