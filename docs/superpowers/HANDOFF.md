@@ -1,9 +1,9 @@
 # EasyCRM — Handoff
 
 **Last updated:** 2026-09-02 — **The OpenAPI contract slice is merged to `main` as `bead2f8`.
-Nothing is in flight and `main` is the baseline for new work. **`main` is ahead of `origin/main`:
-this slice and the docs commits around it have never been pushed** — `git status -sb` gives the
-current count.** This API now has a
+Nothing is in flight, `main` is the baseline for new work, and `main` is ahead of `origin/main` —
+this slice and the docs commits around it have never been pushed (`git status -sb` for the
+count).** This API now has a
 document: springdoc 3.1.0 generates it, `docs/api/openapi.yaml` is the committed snapshot, and
 `./gradlew clean check` fails when the two disagree — so the contract stops being "whatever the
 controllers happen to do" and becomes the thing the frontend gets built against. The error envelope
