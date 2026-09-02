@@ -15,9 +15,19 @@ update — nothing already in the codebase (`@Version`, a unique index, `REPEATA
 it, so every member-admin write now takes a `PESSIMISTIC_WRITE` lock on the tenant row first
 (challenge #65). See §3 for the full inventory: the four routes, the port, the lock, the
 `AuthService.refresh` fix that makes `disable` actually revoke access rather than just look like
-it, the `ConflictException` structured-fields addition, and migration `V33`. **561 tests, 0
-failures, 0 errors** on the branch, up from the 519-test baseline, via `./gradlew clean check`
-from a clean state.
+it, the `ConflictException` structured-fields addition, and migration `V33`. **The current
+baseline on `main` is 586 tests, 0 failures, 0 errors** (558 root + 28 `platform-primitives`),
+verified 2026-09-02 by `./gradlew clean check` from a clean state, and CI is green on the tip.
+
+**If you came here expecting 561, read this before you stop and reconcile.** The 561 figure was
+measured *on the branch*, and the branch later merged `main` into itself (`0afe2f8`) to pick up
+the OpenAPI slice — so 561 never included OpenAPI's 25 tests and was obsolete the moment that
+merge happened. The arithmetic closes exactly: 519 (pre-OpenAPI) + 25 (OpenAPI) + 42 (members
+management, of which 37 root and 5 in `platform-primitives`) = **586**. Nothing is missing and
+nothing is double-counted. The general trap, worth carrying: **a test count measured on a branch
+that later merges `main` into itself is not comparable to the post-merge total**, and §0's
+"if that number differs, stop and reconcile" will fire on a perfectly healthy build unless the
+merged number is written down. Restate the count *after* the merge, not before.
 
 **This slice and the OpenAPI contract slice ran concurrently off the same `main`, and that is
 worth knowing before reading either one's history.** Neither could see the other's uncommitted
@@ -86,6 +96,32 @@ its 16 commits were built in a locked worktree by a separate session, reviewed t
 then whole-branch, and verified green before merging. `openapi-contract` was merged as `bead2f8`
 and its branch deleted.
 
+**Housekeeping pass done 2026-09-02, after the members-management merge.** The state below is
+verified, not assumed:
+
+- **`main` is at `5d7c3c6`, fully pushed, and `origin/main` is level with it.** CI run
+  `33611195670` (push, 2m31s) is **green** on that tip — all four gates across both Gradle
+  projects plus the oasdiff step.
+- **Local baseline re-verified from clean: 586 tests, 0 failures, 0 errors.** See the header for
+  why this is not the 561 the previous entry claimed.
+- **The members-management worktree and its branch are gone.** `.claude/worktrees/members-management`
+  was still on disk (every earlier slice deleted its workspace at merge; this one did not), holding
+  branch `worktree-members-management` at `0afe2f8`. Both were verified clean — no uncommitted
+  changes, no stashes, nothing unmerged into `main` — and removed. Its `.superpowers/sdd` ledger
+  was **already empty** (a lone `.gitignore`), so no reasoning was lost that this file, the spec and
+  challenges #65–#67 do not already carry.
+- **One item is deliberately left open:** the remote branch `origin/build-hygiene`
+  (tip `ee4641c`) still exists. It is fully merged into `main` and safe to delete with
+  `git push origin --delete build-hygiene`; the automated session that ran this pass had remote
+  branch deletion blocked by a permission classifier, so it is left for a human. This is the same
+  loose end §0 has carried since the build-hygiene slice — it is now the *only* one.
+
+**A trap this pass walked into, worth one line so the next agent does not repeat it:** a stale
+`origin/main` remote-tracking ref made `git log origin/main..main` report 21 unpushed commits
+when in fact everything was pushed. **`git fetch` before drawing any conclusion from a
+`origin/<branch>..<branch>` range** — the tracking ref is a local cache, not the remote's state,
+and an unfetched one produces a confident, entirely wrong answer.
+
 **The one thing that merge taught, worth carrying:** members management was cut from `e9d694e`,
 *before* the OpenAPI slice landed, so it contained no `docs/api/openapi.yaml` while `main` had
 begun guarding that file — and it adds `MemberController`, four new endpoints. The regenerate-
@@ -104,8 +140,10 @@ sessions run at once — the collision is invisible to both until merge.
 **The OpenAPI contract slice is merged to `main` as `bead2f8`.** Seven tasks plus a
 whole-branch-review fix wave, off `main` at `e9d694e`, every one reviewed, merged `--no-ff` on
 2026-09-02 and the `openapi-contract` branch deleted; the merged result was verified green before
-the branch went away. **`main` is the baseline for new work and is fully pushed — `main` and
-`origin/main` are level at `b239f5f`.** The commit range started at `4a1848b`: two docs
+the branch went away. **`main` is the baseline for new work and is fully pushed** — when this
+paragraph was written that meant `b239f5f`; members management has since landed on top, and the
+current tip is `5d7c3c6` with `origin/main` level with it (see the housekeeping bullet above).
+The commit range started at `4a1848b`: two docs
 commits (`4a1848b` the design spec,
 `e0d0dfb` the plan), then the task commits from `b14c92a` (springdoc plus the OpenAPI metadata bean)
 to `2d681fc` (the oasdiff misreport fix), then the final review wave (six items — the money-schema
@@ -198,8 +236,9 @@ a whole-branch-review fix wave, 25 commits off `main` at `2dc50ba` — was merge
 `docs/superpowers/plans/2026-09-01-build-hygiene.md`. **Its SDD ledger is gone** — deleted with the
 workspace at merge, per the standing practice — so this file, the spec, and challenges #58–#61 are
 now the only record of that slice's reasoning. Two loose ends, neither blocking: the remote branch
-`origin/build-hygiene` still exists and can be deleted (`git push origin --delete build-hygiene`),
-and the four intermediate CI-testing commits inside the merge are deliberate — they are the
+`origin/build-hygiene` (tip `ee4641c`) **still exists as of 2026-09-02** — confirmed fully merged
+into `main`, so `git push origin --delete build-hygiene` is safe and is the one open housekeeping
+item; and the four intermediate CI-testing commits inside the merge are deliberate — they are the
 evidence for challenge #59 and must not be tidied away.
 
 **The new baseline command is `./gradlew clean check`, not `clean test`:** `check` now
@@ -288,9 +327,10 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
    then `cd backend && ./gradlew clean check`. **`clean check` is the baseline command, not
    `clean test`** — it is strictly stronger (adds `spotlessCheck`, `spotbugsMain`,
    `jacocoTestCoverageVerification` across both projects) and is the same command CI runs, so a
-   green local run and a green CI run assert the same thing. On `main` at `b239f5f` this is
-   **544 tests, 0 failures, 0 errors** (521 root + 23 `platform-primitives`), up from 519 before
-   the OpenAPI slice and 464 before the invitations slice.
+   green local run and a green CI run assert the same thing. On `main` at `5d7c3c6` this is
+   **586 tests, 0 failures, 0 errors** (558 root + 28 `platform-primitives`), verified from clean
+   on 2026-09-02 — up from 544 before members management, 519 before the OpenAPI slice and 464
+   before the invitations slice.
    Gradle prints no total for a multi-project build, so count it yourself:
 
    ```bash
@@ -302,9 +342,10 @@ feature branch is deleted, as was `record-visibility` before it (merged as `c81f
    ```
 
    If that number differs, stop and reconcile before writing code — everything below assumes it.
-   **Counting only the root project's XML files produces a phantom 23-test gap** — `find .
-   -path './build/test-results/test/*.xml'` alone reports 521, not 544, and this tripped an
-   implementer on an earlier branch. The unqualified `find . -path '*/build/test-results/test/*.xml'`
+   **Counting only the root project's XML files produces a phantom 28-test gap** — `find .
+   -path './build/test-results/test/*.xml'` alone reports 558, not 586, and this tripped an
+   implementer on an earlier branch. (The gap was 23 until members management added 5 tests to
+   `platform-primitives`; it is the size of that module's suite, so expect it to keep moving.) The unqualified `find . -path '*/build/test-results/test/*.xml'`
    above spans both projects; use it, not a root-only variant.
 
    **A filtered run must now be project-qualified.** Unqualified `./gradlew clean test` deliberately
@@ -589,8 +630,11 @@ All under `docs/superpowers/`:
     a *tenant* lifecycle concern, not a *member* one), but worth naming because this slice
     modified the very same method for a different reason, and the fix is one condition away.
 
-  **561 tests, 0 failures, 0 errors**, up from the 519-test baseline — `./gradlew clean check`
-  green from a clean state, Spotless clean, SpotBugs 0 findings. New challenges **#65–#67** (#65
+  **561 tests, 0 failures, 0 errors** *as measured on the branch*, up from the 519-test baseline
+  it was cut from — `./gradlew clean check` green from a clean state, Spotless clean, SpotBugs 0
+  findings. **The post-merge total on `main` is 586**, because the branch later merged `main` into
+  itself to pick up the OpenAPI slice's 25 tests; use 586 as the baseline and see the header for
+  the arithmetic. New challenges **#65–#67** (#65
   the last-owner write-skew and the tenant-row lock, #66 the invariant-check-must-not-filter
   tension that produced `AssignedWorkload`, #67 the build-process lesson about running the full
   gate only at milestones instead of every task); the annotations reference needed one addition —
@@ -1310,7 +1354,7 @@ Two design points in `plans/2026-07-25-p0-auth-core.md` did not survive contact 
   reformat commit `2616049`; with it set, those lines correctly fall back to the real original
   commit `a855056b`.
 - **Docker** must be running (Testcontainers needs it). Start Docker Desktop: `open -a Docker`, then wait for `docker info` to succeed. Note: a user Postgres container (`langfuse-postgres-1`) runs on `localhost:5432` — leave it alone; Testcontainers uses its own random-port container.
-- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 544 tests on `main`, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
+- **Run tests:** `cd backend && ./gradlew clean check` (the baseline command as of the build-hygiene slice — see §0; `./gradlew test` still runs tests only, but no longer proves what "the build is green" means on this repo). Integration tests spin up one shared Postgres container (singleton pattern) — 586 tests on `main`, run in well under a minute once the image is cached (it was ~4s before the PDF slice; rendering real PDFs is the difference).
 - **The build is two Gradle projects** since 2026-08-27: `backend` (root) and
   `backend/platform/platform-primitives`. Unqualified `./gradlew clean test` spans both and is what
   every "expect N tests" claim in this document means; Gradle prints no combined total, so count it
@@ -1449,6 +1493,15 @@ half PF19 is actually about is still unstarted.
 
 **Suggested ranking — read this before proposing anything. Updated 2026-09-02, after both
 `openapi-contract` and members management.**
+
+**Re-checked 2026-09-02 after the housekeeping pass (§0): the ranking is unchanged.** That pass
+pushed nothing new, verified the baseline and CI, and removed dead branches — no code moved, so
+nothing below was re-weighted. The four-option set stands, and the standing recommendation is
+**Wave 1.5 (supply chain) next, then the frontend**: Wave 1.5 is small, blocked on nothing, and
+has the highest security value on a repo that is now public and ships JWT auth, bcrypt and GST
+data; the frontend is the higher-value step but is large enough to deserve its own session and a
+decomposition before a spec, which is why it sits second rather than first. **This is a
+recommendation, not a decision — §0 step 4 still applies: pick with the user.**
 
 The numbered list above is down to one open item (#4), the correctness backlog is empty, and nine
 slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level
