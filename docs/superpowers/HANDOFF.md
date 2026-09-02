@@ -102,8 +102,8 @@ one test in two modes rather than two tools.
 **One thing in this slice has never run for real, and it must not be written up as though it
 had: the oasdiff CI step.** The workflow fires on `push: [main]` and `pull_request`; a feature-branch
 push triggers neither, and pushing was withheld as the user's decision, so no CI run has ever
-executed the step. Its shell logic *was* verified locally in detail — the absent-base guard
-(`git cat-file -e HEAD~1:…` short-circuiting on a first commit), a structural mutation of the
+executed the step. Its shell logic *was* verified locally in detail — all three absent-base
+branches (all-zero SHA, unreachable base, base predating the snapshot), a structural mutation of the
 snapshot producing a real changelog entry (`api-path-removed-without-deprecation`), and a
 deliberately broken `docker run` producing the explicit "failed to run" line rather than a silently
 empty summary section, which is what the `pipefail` and the `if !` wrappers exist for. So the logic
@@ -530,9 +530,16 @@ All under `docs/superpowers/`:
   claiming it did has been corrected.
 
   **CI reports an API changelog and does not block on it.** A `continue-on-error` oasdiff step
-  (`tufin/oasdiff:latest`, `changelog` then `breaking`) writes into the job summary on every push,
-  with `fetch-depth: 2` on the checkout because the default shallow clone has no `HEAD~1` and the
-  step would otherwise be config that reads as correct and does nothing. It reports rather than
+  (`tufin/oasdiff:latest`, `changelog` then `breaking`) writes into the job summary on every push
+  and pull request. **The base it diffs against is `github.event.before` on a push and
+  `github.event.pull_request.base.sha` on a PR — not `HEAD~1`**, which was the original form and
+  was wrong on both events: on a push it compares only the last commit, so a push carrying N
+  commits reports nothing for the other N-1, and this repo pushes a merge plus its docs
+  follow-ups together as a matter of course. Measured on the real branch: with `HEAD~1` the
+  pending 19-commit push reported "No changes detected"; with `event.before` the same range
+  reports the 187 money-schema changes. That also forces `fetch-depth: 0` on the checkout — the
+  base can be any distance back, and a shallow clone that lacks it fails *silently* into the
+  "nothing to compare" path. It reports rather than
   gates for two reasons: CI here is post-merge (§0), so a blocking gate would fail *after* the
   breaking change landed; and there is no consumer yet, so it would fire regularly, at nobody, on
   correct work — which is how gates get ignored. **Flip `continue-on-error` to `false` when the
