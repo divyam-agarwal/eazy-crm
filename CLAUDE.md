@@ -8,10 +8,13 @@ Scope stops at the **Order** — no invoicing/stock/ledger (that's Tally's job).
 
 - **Handoff (start here if resuming):** `docs/superpowers/HANDOFF.md`
 
+- **Execution roadmap (what's next, and why):** `docs/ROADMAP.md`
+
 - **Design spec:** `docs/superpowers/specs/2026-07-22-easycrm-design.md`
 - **Engineering challenges log:** `docs/superpowers/engineering-challenges.md`
 - **Annotations reference:** `docs/superpowers/annotations-reference.md`
 - **Hunk (agent-diff review) reference:** `docs/superpowers/hunk-reference.md`
+- **Module boundaries (Spring Modulith decision):** `docs/architecture/2026-09-03-spring-modulith-evaluation.md`
 - **P0 plan:** `docs/superpowers/plans/2026-07-24-p0-tenant-isolation-foundation.md`
 
 ## Working agreements

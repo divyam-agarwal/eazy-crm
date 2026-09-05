@@ -90,6 +90,39 @@ the first thing to do when the frontend lands.
 
 ### Nothing is in flight
 
+**Docs-only session, 2026-09-05 — a roadmap now sits above this file.** No code changed; the
+baseline is still 586 tests on `main`. Four files: **`docs/ROADMAP.md`** (new — the programme-level
+plan: eight tracks, six phases, a ranked 16-item priority list, sequencing traps, and the open
+decisions that gate work), **`docs/architecture/2026-09-03-spring-modulith-evaluation.md`** (new —
+adopt Modulith's structure-verification half as Wave 1.6, decline the events half; M1–M7, MF1–MF4),
+plus §8 and `CLAUDE.md` updated to point at both.
+
+**Two findings out of it that change what to do next, both in §8's ranking below:**
+
+1. **Sub-project 1, the buyer snapshot (F11), has never been done and is a live correctness bug.**
+   Verified 2026-09-05: `QuotationVersion` carries no buyer fields, so `QuotationPdfService` still
+   reads `businessName`/`gstin`/`billingAddress` live from `customer` at render time. Both AWS docs
+   say do it first regardless; no §8 ranking had ever mentioned it, because that numbering lives in
+   the architecture thread and this file never picked it up. **It is now item 1.**
+2. **`platform` imports `crm`, `sales` and `tenant` — three dependency cycles**, from
+   `VisibleFinder`/`VisibilityPolicy` (2026-08-29) and `TenantJobRunner` (2026-08-31). Both landed
+   *after* the service-scope doc was last touched (2026-08-24), so S1–S10 could not have seen them,
+   and none of the four ArchUnit tests guards package dependencies. Under the split every service
+   would inherit `sales` entities from the module meant to be shared by all five.
+
+**Domain names: all four obvious candidates are taken** (RDAP, 2026-09-05). `eazycrm.com` (Dynadot,
+on Afternic nameservers, so listed for sale), `easycrm.com` (parked on a GoDaddy lander),
+`eazycrm.in` (expires 2026-12-15), `easycrm.in` (renewed to 2031). `easycrm.co.in` and
+`eazycrm.co.in` are also gone. Available: `geteasycrm.com`, `tryeasycrm.com`, `useeasycrm.com`,
+`easycrmindia.com`, `easycrm.net`. Costs and the full table are in `docs/ROADMAP.md` track H; the
+naming decision is open (D-g) and gates roadmap item 2, **and the domain gates every durable public
+URL the product mints** — `easycrm.public-base-url` feeds both the `/public/q/{token}` share link
+and the `/invite/{token}` accept link, and both get pasted into WhatsApp.
+
+**Nothing challenge-worthy was solved this session** — the cycles are a *finding*, recorded as MF1/
+MF2 in the evaluation. The challenge-log entry is owed when the port inversion actually lands.
+
+
 **`main` now carries both of the branches that were running concurrently, and neither remains
 open.** Members management (this file's top entry) was merged after the OpenAPI contract slice;
 its 16 commits were built in a locked worktree by a separate session, reviewed task-by-task and
@@ -1507,6 +1540,31 @@ data; the frontend is the higher-value step but is large enough to deserve its o
 decomposition before a spec, which is why it sits second rather than first. **This is a
 recommendation, not a decision — §0 step 4 still applies: pick with the user.**
 
+**Updated 2026-09-03 — the ranking changed, and there is now a roadmap above it.**
+Two things moved. **First: `docs/ROADMAP.md` now exists** and is the programme-level sequencing
+document — eight tracks (application, build/CI, local dev, AWS, observability, auth, load+chaos,
+and public presence — a free-hosted static marketing site on a custom domain with TLS),
+six phases, and a ranked priority list with the blockers between items. Read it before proposing a
+next chunk; this section is the session-level view of the same thing, and the roadmap is the one
+that carries the AWS and billing threads too. **Second, and more important: the top of the ranking
+is no longer Wave 1.5.**
+
+**Sub-project 1 — the buyer snapshot (F11) — has never been done, and it is a live correctness
+bug.** `QuotationVersion` freezes items, totals and `placeOfSupply`; `QuotationPdfService` still
+reads `businessName`, `gstin` and `billingAddress` **live** from `customer` at render time
+(verified 2026-09-03: `QuotationVersion` has no buyer fields). Edit a customer's address and a
+`SENT` quotation re-renders differently — including through a public share link the buyer already
+holds. Challenge #28 guarantees byte-determinism across renders, not across customer edits. Both
+AWS docs say to do this **"first regardless of whether anything else happens"**; it has been open
+since 2026-08-19 while nine slices landed around it, and no §8 ranking has ever mentioned it —
+because that thread's numbering lives in the architecture docs and this one never picked it up.
+**Do not read sub-project numbering as priority: SP9 (invitations) is done and SP1 is not.**
+
+**The recommended order is now: SP1 buyer snapshot → Wave 1.5 supply chain → Wave 1.6 module
+boundaries → the frontend.** The first three are all small and none is blocked; the frontend still
+wants its own session and a decomposition pass, which is why it stays fourth. Still a
+recommendation, not a decision — §0 step 4 still applies.
+
 The numbered list above is down to one open item (#4), the correctness backlog is empty, and nine
 slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level
 visibility, activity/follow-up, scheduled auto-expiry, user invitations, build hygiene, the
@@ -1524,6 +1582,21 @@ standing.
   JWT auth, bcrypt and GST data. It is the natural next backend slice for the same reason
   build hygiene was: it finishes a programme already half-built rather than opening a new front. The
   one cost to plan for: Dependency-Check needs an NVD cache that makes CI meaningfully slower.
+- **Wave 1.6, module boundaries (Spring Modulith) — small, unblocked, and it stops a drift that is
+  already happening.** Evaluated 2026-09-03 and **adopted, structure-verification half only**:
+  `ApplicationModules.verify()` as a build gate plus `Documenter` output guarded like the OpenAPI
+  snapshot; the event publication registry and externalisation are **declined** (no `tenant_id`
+  column on `event_publication`, no SNS/SQS artifact, and `2026-08-19-outbox-lld.md` is the more
+  specified design). See `../architecture/2026-09-03-spring-modulith-evaluation.md`, decisions
+  M1–M7. **The finding that decided it: `platform.visibility` imports `crm.Customer` and
+  `sales.{Enquiry,Quotation,Order,FollowUp}`, and `platform.job.TenantJobRunner` imports `tenant`
+  — three dependency cycles, and under the split every service would inherit `sales` entities from
+  the module that is supposed to be shared by all five.** `VisibleFinder` landed 2026-08-29 and
+  `TenantJobRunner` 2026-08-31; the service-scope doc was last touched 2026-08-24, so S1–S10 could
+  not have seen either. None of the four ArchUnit tests guards package dependencies — **nothing in
+  this repo has ever checked a module boundary.** The fix is the `AssignedWorkload` port inversion
+  (challenge #66) applied to `VisibleFinder`, and it is owed regardless of Modulith, because MF1
+  blocks sub-project 8 on its own.
 - **The frontend — the biggest product step, the only one a backend slice cannot finish, and the
   one this slice was for.** Nothing has ever been built. **It now has a contract to build against**:
   `docs/api/openapi.yaml` describes every endpoint, the money-as-JSON-string convention, the shared
@@ -1611,6 +1684,14 @@ re-deriving the reasoning from that spec each time.
   needs an NVD cache that makes CI setup meaningfully slower — bundling it with Spotless/SpotBugs/
   JaCoCo would have blurred one clean slice into two. Higher real security value than anything in
   the deferred list below it.
+- **Wave 1.6 — module boundaries, evaluated and adopted 2026-09-03, not yet started.** Spring
+  Modulith 2.1.1 (the Boot 4 line; 1.x is Boot 3, and Maven Central's *search API* is stale for
+  this coordinate — read `repo1.maven.org`'s `maven-metadata.xml` instead). Take
+  `ApplicationModules.verify()` and `Documenter`; decline the events half. One catalog interaction
+  to decide deliberately: `spring-modulith-core` pulls **ArchUnit 1.4.2 at compile scope** and the
+  repo pins 1.4.1 on purpose — Gradle resolves highest-wins, so the bump happens silently unless it
+  is made in the catalog with a comment. Full reasoning and the unverified list in
+  `../architecture/2026-09-03-spring-modulith-evaluation.md`.
 - **Wave 2 — observability, not yet started.** Structured JSON logging, an MDC correlation filter
   carrying `requestId`/`tenantId`/`userId`, a redaction rule for GSTIN/phone/email, Micrometer
   with `/actuator/prometheus`, and Micrometer Tracing over OTLP. Not academic: the two known
