@@ -90,8 +90,8 @@ the first thing to do when the frontend lands.
 
 ### Nothing is in flight
 
-**Docs-only session, 2026-09-05 — a roadmap now sits above this file.** No code changed; the
-baseline is still 586 tests on `main`. Four files: **`docs/ROADMAP.md`** (new — the programme-level
+**Docs-only session, 2026-09-05 — a roadmap now sits above this file.** Committed as `4df665f`.
+No code changed; the baseline is still 586 tests on `main`. Four files: **`docs/ROADMAP.md`** (new — the programme-level
 plan: eight tracks, six phases, a ranked 16-item priority list, sequencing traps, and the open
 decisions that gate work), **`docs/architecture/2026-09-03-spring-modulith-evaluation.md`** (new —
 adopt Modulith's structure-verification half as Wave 1.6, decline the events half; M1–M7, MF1–MF4),
