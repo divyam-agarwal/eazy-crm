@@ -166,4 +166,69 @@ class QuotationBuyerSnapshotTest extends IntegrationTest {
         mvc.perform(get("/api/v1/quotations/" + qId).header("Authorization", auth))
                 .andExpect(jsonPath("$.status").value("DRAFT"));
     }
+
+    @Test
+    void publicShareLinkRendersIdenticallyAfterTheCustomerIsEdited() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String cId = createCustomer(auth, "27");
+        String qId = draftFor(auth, cId);
+        mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth))
+                .andExpect(status().isOk());
+
+        String publicUrl = JsonPath.read(
+                mvc.perform(post("/api/v1/quotations/" + qId + "/share").header("Authorization", auth))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(),
+                "$.publicUrl");
+        String token = publicUrl.substring(publicUrl.lastIndexOf('/') + 1);
+
+        byte[] before = mvc.perform(get("/public/q/" + token)) // deliberately no auth header
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        updateCustomer(auth, cId, "Bharat Industries LLP", "27EEEEE4444E1ZE", "77 JM Road, Pune", "27");
+
+        byte[] after = mvc.perform(get("/public/q/" + token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        assertArrayEquals(before, after, "a link already in the buyer's hands must not change");
+    }
+
+    @Test
+    void aRevisionFreezesItsOwnBuyerAndTheOldVersionKeepsTheOld() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String cId = createCustomer(auth, "27");
+        String qId = draftFor(auth, cId);
+        mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth))
+                .andExpect(status().isOk());
+
+        // The GSTIN was wrong on the original. Correcting it must reach the buyer somehow,
+        // and a revision is that route — the state code stays put, so the Task 5 guard
+        // does not fire.
+        updateCustomer(auth, cId, "Bharat Industries", "27FFFFF5555F1ZZ", "12 MG Road, Pune", "27");
+
+        mvc.perform(post("/api/v1/quotations/" + qId + "/revise").header("Authorization", auth))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth))
+                .andExpect(status().isOk());
+
+        String v1 = textOf(
+                mvc.perform(get("/api/v1/quotations/" + qId + "/pdf?version=1").header("Authorization", auth))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsByteArray());
+        String v2 = textOf(pdfOf(auth, qId));
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                v1.contains("27AAAAA0000A1Z2"), "version 1 must keep the GSTIN it was sent with");
+        org.junit.jupiter.api.Assertions.assertTrue(
+                v2.contains("27FFFFF5555F1ZZ"), "version 2 must carry the corrected GSTIN");
+    }
 }

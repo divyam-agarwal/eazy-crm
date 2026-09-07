@@ -1,11 +1,11 @@
 package com.easycrm.sales.pdf;
 
-import com.easycrm.crm.Customer;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.format.IndianFormats;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.visibility.VisibleFinder;
+import com.easycrm.sales.BuyerSnapshot;
 import com.easycrm.sales.Quotation;
 import com.easycrm.sales.QuotationItem;
 import com.easycrm.sales.QuotationItemRepository;
@@ -78,10 +78,18 @@ public class QuotationPdfService {
         if (v.getStatus() != VersionStatus.SENT) {
             throw new ValidationException("status", "send the quotation before rendering it");
         }
+        // Frozen at send(), never read live: this is what stops an edited customer from
+        // changing a document that was already issued (F11). Reading `crm` here is also
+        // what would become a synchronous cross-service call to master-data on the most
+        // exposed and most cached route in the system once document-svc is extracted (D10).
+        BuyerSnapshot buyer = v.getBuyer();
+        if (buyer == null) {
+            // Unreachable: V34 backfilled every SENT row and send() freezes every new one.
+            // Loud rather than a PDF with a blank buyer block, if that ever stops holding.
+            throw new IllegalStateException("SENT version " + v.getId() + " has no frozen buyer");
+        }
         Tenant tenant =
                 tenants.findById(TenantContext.tenantId()).orElseThrow(() -> new NotFoundException("tenant not found"));
-        Customer customer =
-                finder.findCustomer(q.getCustomerId()).orElseThrow(() -> new NotFoundException("customer not found"));
         List<QuotationItem> lines = items.findByVersionId(v.getId());
 
         // The version's place of supply is the buyer's state, frozen when it was created.
@@ -97,8 +105,7 @@ public class QuotationPdfService {
                         tenant.getAddress(),
                         tenant.getPhone(),
                         tenant.getEmail()),
-                new QuotationPdfData.Buyer(
-                        customer.getBusinessName(), customer.getGstin(), customer.getBillingAddress()),
+                new QuotationPdfData.Buyer(buyer.getBusinessName(), buyer.getGstin(), buyer.getBillingAddress()),
                 new QuotationPdfData.Doc(
                         q.getQuoteNo(),
                         v.getVersionNo(),
