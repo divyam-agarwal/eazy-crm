@@ -146,4 +146,24 @@ class QuotationBuyerSnapshotTest extends IntegrationTest {
         org.junit.jupiter.api.Assertions.assertFalse(
                 text.contains("Renamed Entirely"), "the PDF must not show the edited customer");
     }
+
+    @Test
+    void sendRejectsAQuotationWhoseCustomerChangedState() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String cId = createCustomer(auth, "27");
+        String qId = draftFor(auth, cId);
+
+        // The customer moves to Karnataka. The draft's per-line tax was computed as
+        // intra-state Maharashtra and is now wrong — sending it would print a Karnataka
+        // address beside a CGST/SGST breakup that no longer applies.
+        updateCustomer(auth, cId, "Bharat Industries", "29DDDDD3333D1ZP", "5 Residency Road, Bengaluru", "29");
+
+        mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fields.placeOfSupply").exists());
+
+        // Nothing was frozen and nothing was sent: the quotation is still a usable DRAFT.
+        mvc.perform(get("/api/v1/quotations/" + qId).header("Authorization", auth))
+                .andExpect(jsonPath("$.status").value("DRAFT"));
+    }
 }

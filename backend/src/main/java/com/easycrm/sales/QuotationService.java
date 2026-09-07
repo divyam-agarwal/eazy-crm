@@ -153,6 +153,15 @@ public class QuotationService {
         // the corrected one. From here the version renders the same document forever (F11).
         Customer customer =
                 finder.findCustomer(q.getCustomerId()).orElseThrow(() -> new NotFoundException("customer not found"));
+        // placeOfSupply froze at creation because the per-line CGST/SGST/IGST was computed
+        // against it then. Buyer identity has no such coupling — which is what makes
+        // freezing it late safe — but a customer who MOVED STATE breaks the coupling that
+        // does exist, and a new address on an old tax split is a contradictory GST
+        // document. revise() copies both the stale place of supply and the frozen items
+        // forward, so it cannot fix this; only a new quotation recomputes the split.
+        if (!customer.getStateCode().equals(v.getPlaceOfSupply())) {
+            throw new ValidationException("placeOfSupply", "the customer's state has changed; raise a new quotation");
+        }
         v.freezeBuyer(customer.getBusinessName(), customer.getGstin(), customer.getBillingAddress());
         return toResponse(q);
     }
