@@ -72,6 +72,8 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Transient` | `jakarta.persistence` | Field is **not** persisted (backs `Tenant`'s `isNew` flag for `Persistable`). | — |
 | `@PostPersist` | `jakarta.persistence` | Lifecycle callback run after INSERT; clears `Tenant.isNew` so a re-save updates. | — |
 | `@PostLoad` | `jakarta.persistence` | Lifecycle callback run after a row is loaded; clears `Tenant.isNew` for managed entities. | — |
+| `@Embeddable` | `jakarta.persistence` | Marks a class whose fields map into the *owning* entity's table rather than a table of its own. No identity, no `@Id`, no lifecycle of its own — a value object, loaded and saved with its owner. First used for `BuyerSnapshot`, which freezes a quotation's buyer onto `QuotationVersion` (F11). | — |
+| `@Embedded` | `jakarta.persistence` | Marks the field in the owning entity that holds an `@Embeddable`. Column names come from the `@Column` annotations inside the embeddable unless overridden with `@AttributeOverride`. First used on `QuotationVersion.buyer` (a `BuyerSnapshot`). | — |
 
 ## 3. Persistence — Hibernate (org.hibernate.annotations)
 

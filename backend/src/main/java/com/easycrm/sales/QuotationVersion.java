@@ -2,6 +2,7 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.persistence.TenantScopedEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -58,6 +59,10 @@ public class QuotationVersion extends TenantScopedEntity {
     @Column(name = "sent_at")
     private Instant sentAt;
 
+    /** Null until send() freezes it — see BuyerSnapshot. */
+    @Embedded
+    private BuyerSnapshot buyer;
+
     protected QuotationVersion() {}
 
     public QuotationVersion(UUID quotationId, int versionNo, String placeOfSupply) {
@@ -83,6 +88,10 @@ public class QuotationVersion extends TenantScopedEntity {
     public void markSent(Instant sentAt) {
         this.status = VersionStatus.SENT;
         this.sentAt = sentAt;
+    }
+
+    public void freezeBuyer(String businessName, String gstin, String billingAddress) {
+        this.buyer = new BuyerSnapshot(businessName, gstin, billingAddress);
     }
 
     public UUID getQuotationId() {
@@ -131,5 +140,9 @@ public class QuotationVersion extends TenantScopedEntity {
 
     public Instant getSentAt() {
         return sentAt;
+    }
+
+    public BuyerSnapshot getBuyer() {
+        return buyer;
     }
 }
