@@ -9,6 +9,8 @@ import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
 import com.jayway.jsonpath.JsonPath;
 import java.util.UUID;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -113,5 +115,35 @@ class QuotationBuyerSnapshotTest extends IntegrationTest {
         updateCustomer(auth, cId, "Bharat Industries Pvt Ltd", "27BBBBB1111B1ZN", "99 FC Road, Pune", "27");
 
         assertArrayEquals(before, pdfOf(auth, qId), "a SENT version must not re-render after a customer edit");
+    }
+
+    /** Same approach as QuotationPdfEndpointTest: assert on text, not on raw PDF bytes. */
+    private String textOf(byte[] pdf) throws Exception {
+        try (PDDocument doc = PDDocument.load(pdf)) {
+            return new PDFTextStripper().getText(doc);
+        }
+    }
+
+    @Test
+    void sendFreezesTheBuyerAndDraftHasNone() throws Exception {
+        String auth = "Bearer " + tokens.provisionOwner("27").token();
+        String cId = createCustomer(auth, "27");
+        String qId = draftFor(auth, cId);
+
+        // A DRAFT has nothing frozen: the PDF route is the only reader, and it refuses a
+        // draft outright, so the observable proof is that rendering is still rejected.
+        mvc.perform(get("/api/v1/quotations/" + qId + "/pdf").header("Authorization", auth))
+                .andExpect(status().isUnprocessableEntity());
+
+        mvc.perform(post("/api/v1/quotations/" + qId + "/send").header("Authorization", auth))
+                .andExpect(status().isOk());
+
+        // The frozen values survive the customer being renamed out from under them.
+        updateCustomer(auth, cId, "Renamed Entirely", "27CCCCC2222C1Z8", "Somewhere Else", "27");
+        String text = textOf(pdfOf(auth, qId));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                text.contains("Bharat Industries"), "the PDF must show the buyer frozen at send, not the live one");
+        org.junit.jupiter.api.Assertions.assertFalse(
+                text.contains("Renamed Entirely"), "the PDF must not show the edited customer");
     }
 }

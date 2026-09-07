@@ -148,6 +148,12 @@ public class QuotationService {
         }
         q.markSent();
         v.markSent(Instant.now());
+        // Freeze the buyer as they are NOW, not as they were when the draft was created:
+        // a draft that sat for two weeks while someone corrected a typo'd GSTIN must send
+        // the corrected one. From here the version renders the same document forever (F11).
+        Customer customer =
+                finder.findCustomer(q.getCustomerId()).orElseThrow(() -> new NotFoundException("customer not found"));
+        v.freezeBuyer(customer.getBusinessName(), customer.getGstin(), customer.getBillingAddress());
         return toResponse(q);
     }
 
