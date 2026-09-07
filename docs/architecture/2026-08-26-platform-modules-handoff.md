@@ -127,7 +127,7 @@ tables; all three surfaced from writing the per-service surface down.
 | # | Blocker | Blocks |
 |---|---|---|
 | **S1** | `/api/v1/tenant` (GET + PATCH, both built) is **absent from the ALB routing table**. Under the split it 404s at the edge, so the seller cannot edit the business name, GSTIN and address that appear on every PDF letterhead | sub-project 2 |
-| **S2** | `ShareLinkService.whatsappLink()` reads the customer's primary `Contact` — a fifth cross-service call site the AWS doc's table of four misses. F13 solves the render path and leaves the share path with a live dependency on a schema `document_app` cannot reach. **Recommended fix:** fold the primary contact into the `QuotationSent` render payload, same migration as the buyer snapshot | sub-project 8 |
+| **S2** | `ShareLinkService.whatsappLink()` reads the customer's primary `Contact` — a fifth cross-service call site the AWS doc's table of four misses. F13 solves the render path and leaves the share path with a live dependency on a schema `document_app` cannot reach. **Recommended fix:** was to fold the primary contact into the same migration as the buyer snapshot; V34 shipped without that fold (declined, see the buyer-snapshot design spec §7) and the fix now belongs with SP6/SP8, taken up if either actually needs it | sub-project 8 |
 | **S5** | `notification-svc` is given **no schema**, but it consumes at-least-once and must write `processed_event` somewhere | sub-project 6 |
 
 **Two live bugs in code that exists today, independent of all module work:**

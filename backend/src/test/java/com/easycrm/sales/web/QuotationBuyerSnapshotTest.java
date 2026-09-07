@@ -125,13 +125,14 @@ class QuotationBuyerSnapshotTest extends IntegrationTest {
     }
 
     @Test
-    void sendFreezesTheBuyerAndDraftHasNone() throws Exception {
+    void sendFreezesTheBuyerAgainstLaterEdits() throws Exception {
         String auth = "Bearer " + tokens.provisionOwner("27").token();
         String cId = createCustomer(auth, "27");
         String qId = draftFor(auth, cId);
 
-        // A DRAFT has nothing frozen: the PDF route is the only reader, and it refuses a
-        // draft outright, so the observable proof is that rendering is still rejected.
+        // Not a check on the snapshot: QuotationPdfService.render() already refused any
+        // non-SENT version before this branch existed, so this only pins that pre-existing
+        // rule, not "a DRAFT has no buyer snapshot" (there is no route that observes that).
         mvc.perform(get("/api/v1/quotations/" + qId + "/pdf").header("Authorization", auth))
                 .andExpect(status().isUnprocessableEntity());
 
