@@ -4165,3 +4165,205 @@ one who finally runs the gate inherits a diff too large to attribute cleanly. Th
 beside challenges #58–#61 as a build-process lesson from the same run of slices: a gate is
 only as protective as the discipline of running it at the granularity it was designed to
 catch problems at.
+
+---
+
+## Challenge 68 — A backfill migration under FORCEd RLS silently updates nothing, and the obvious check passes vacuously
+
+**Phase:** Design and implementation (buyer-snapshot slice, migration `V34`)
+
+### The problem
+
+`V34` adds three nullable columns to `quotation_version` and then has to backfill them for
+every already-`SENT` version in every tenant. The obvious migration is a single cross-tenant
+`UPDATE ... FROM quotation JOIN customer`. It is wrong, and nothing in the system says so.
+
+Flyway connects as `easycrm_owner` (`spring.flyway.user` in `application.yml`), which **owns**
+the tables. Ordinarily that would be the end of the story — Postgres exempts a table's owner
+from its own row-level security. Except `V26__force_rls.sql` applied `FORCE ROW LEVEL
+SECURITY` to precisely this table family, and FORCE binds the owner too. That was V26's whole
+purpose: layer 3 of challenge #1's defence in depth is worthless if the one role that runs
+against production on every deploy is the one role it does not apply to.
+
+So the migration runs *inside* the policy. Every tenant policy in this schema reads:
+
+```sql
+USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+```
+
+The second argument to `current_setting` is `missing_ok`. It is `true` here so that a session
+which has never set the GUC gets `NULL` back rather than an error — which is what keeps an
+unrelated connection from blowing up, and is exactly what makes this trap. In a Flyway session
+nothing sets `app.current_tenant`, so `current_setting` returns `NULL`, `NULLIF(NULL, '')::uuid`
+is `NULL`, and `tenant_id = NULL` evaluates to `NULL`, which is not `true`. The predicate
+excludes every row in the table.
+
+A plain cross-tenant `UPDATE` therefore **matches zero rows, commits, and reports success.**
+No error. No warning. No log line. Flyway records the version as applied, the deploy goes
+green, and every `SENT` quotation in production keeps rendering live from `crm.Customer` —
+the exact bug the slice exists to fix, still there, now with a migration on record claiming it
+was fixed.
+
+**What makes this genuinely hard is the second layer of silence.** The natural defence is to
+assert afterwards: count the `SENT` versions still holding a `NULL` snapshot, `RAISE EXCEPTION`
+if any remain. Written in the obvious place — after the update, at the end of the migration —
+that `SELECT count(*)` runs in the same session, under the same absent GUC, through the same
+policy. It sees zero rows, finds zero of them unfrozen, and passes. **The guard fails in
+exactly the same way as the thing it guards, so it certifies the failure instead of catching
+it.** A verification query written under the same assumption as the code it verifies is not
+verification; it is the same bug typed twice.
+
+And no test in the repo can catch it either. Testcontainers starts from an empty database, so
+the backfill iterates zero rows under test whether it is written correctly or not — the one
+part of this migration that cannot be proven by the test suite is the part that is subtly
+wrong.
+
+V26's own header had predicted the shape of this by name, eight migrations earlier: *"It stops
+holding the moment any process connects as the owner — a migration tool reused for a
+backfill."* `V1`–`V33` contain no DML at all, so `V34` is simply the first migration in the
+repo's history to walk into it.
+
+### The solution
+
+Drive the backfill **per tenant, from inside the policy**, and put the assertion inside the
+loop:
+
+```sql
+DO $$
+DECLARE t uuid; stale int;
+BEGIN
+  FOR t IN SELECT id FROM tenant LOOP
+    PERFORM set_config('app.current_tenant', t::text, true);
+    UPDATE quotation_version v SET ... ;                 -- now inside the policy
+    SELECT count(*) INTO stale
+      FROM quotation_version
+     WHERE status = 'SENT' AND buyer_business_name IS NULL;
+    IF stale > 0 THEN
+      RAISE EXCEPTION 'tenant %: % SENT versions left unfrozen', t, stale;
+    END IF;
+  END LOOP;
+  PERFORM set_config('app.current_tenant', '', true);
+END $$;
+```
+
+Three things make this work. `tenant` is the registry table: it has no `tenant_id` column and
+V26 deliberately does not force RLS on it, so the loop can enumerate tenants freely — the one
+readable foothold from which every other read becomes possible. `set_config(..., true)` is
+transaction-local and Flyway wraps each migration in a transaction, so the GUC cannot survive
+into a pooled connection's next use. And the `RAISE` sits **inside** the loop, where a tenant
+is set, so it is asking its question through the same open window the `UPDATE` wrote through —
+it can only pass by seeing rows and finding them frozen, never by seeing nothing.
+
+Two alternatives were considered and rejected, both for the same reason in different clothes:
+
+- **`ALTER TABLE ... NO FORCE` around the backfill, then re-`FORCE`.** It works, and if the
+  migration fails anywhere between the two statements the table is left permanently unforced.
+  That trades a loud, self-announcing failure for a silent isolation hole — introducing a
+  second silent bug as the fix for the first one, in the security layer specifically.
+- **`BYPASSRLS` on `easycrm_owner`.** A permanent role attribute, requiring superuser to
+  grant, that would weaken layer 3 forever in order to serve one migration on one afternoon.
+  The point of V26 was to close this exact exemption.
+
+### Lesson
+
+Under FORCEd RLS a migration is **not a privileged context**. It is just another session that
+happens to have no tenant set, and "no tenant set" is not "all tenants" — it is *no rows*.
+Every future DML migration in this repo follows the `V34` shape: enumerate `tenant`,
+`set_config` per tenant, write inside the policy, assert inside the loop.
+
+The transferable half is about the guard, not the RLS. A check that shares an assumption with
+the code it checks does not fail independently of it — it fails identically, and therefore
+reports success at exactly the moment it was supposed to speak up. When writing a
+verification, the question to ask is not "does this assert the right thing?" but "which
+assumption is this check standing on, and is it the same one that could be wrong?" Here the
+answer was yes, and moving four lines of SQL inside a loop was the entire difference between a
+guard and a rubber stamp.
+
+---
+
+## Challenge 69 — Two fields on the same frozen document have different correct freeze points
+
+**Phase:** Design (buyer-snapshot slice)
+
+### The problem
+
+`QuotationVersion` is the frozen document. It freezes the line items, the three totals, the
+header terms and `placeOfSupply` — all at version **creation**. It did not freeze the buyer at
+all: `QuotationPdfService.render()` read `businessName`, `gstin` and `billingAddress` live from
+`crm.Customer` every time. So an ordinary, entirely correct edit to a customer's billing
+address silently changed a quotation that had already been sent, under the same quotation
+number, with no audit trail and without touching the version's `@Version` column, because the
+version was never written to. This is worst through `/public/q/{token}` — a pre-auth link
+sitting in someone else's WhatsApp history indefinitely, which is to say a GST document that
+changes after issue in the hands of the counterparty.
+
+Fixing *that* is obvious. The non-obvious question is **where** to freeze, and the obvious
+answer is wrong.
+
+The intuitive rule is "snapshot everything at the same moment" — the buyer should freeze at
+creation, like `placeOfSupply` and everything else, because a frozen document should have one
+consistent as-of instant. But a quotation can sit as a `DRAFT` for two weeks while someone
+notices and corrects a typo'd GSTIN. Freezing at creation would capture the typo and silently
+discard the correction: the document would go out wrong, and the edit that fixed it would have
+been applied to a field nobody reads any more. The document means *the buyer as of when this
+was sent*, so `send()` is the correct freeze point.
+
+Which raises the harder question: if late freezing is more correct for the buyer, why is
+`placeOfSupply` not also wrong at creation? It is not, and the difference is the whole lesson.
+**`placeOfSupply` has dependents.** The per-line `cgst`/`sgst`/`igst` on every `QuotationItem`
+were computed against it at creation, in the same moment, and are themselves frozen. Buyer
+identity has no such dependents — nothing already stored was derived from the business name or
+the address, which is precisely what makes freezing it later safe.
+
+But now the two fields can disagree. A customer who **moves state** between create and send
+has a `stateCode` that no longer matches the version's frozen `placeOfSupply`. Freeze the new
+address late and it rides on top of a tax split computed for the old state: a GST document
+printing a Maharashtra address beside a Karnataka intra-state CGST/SGST breakup. Internally
+contradictory, legally wrong, and — the dangerous part — it *looks* fine. Every number on the
+page is individually correct; only their combination is nonsense, and nothing in the system is
+positioned to notice.
+
+### The solution
+
+Freeze late, but guard. `QuotationService.send()` reads the customer, freezes the three buyer
+fields onto the version, and first refuses outright when the coupling has broken:
+
+```java
+if (!customer.getStateCode().equals(v.getPlaceOfSupply())) {
+    throw new ValidationException(
+            "placeOfSupply", "the customer's state has changed; raise a new quotation");
+}
+```
+
+422, naming the field, with nothing frozen. `placeOfSupply` stays frozen at creation — it is
+correct there — and the guard protects it rather than moving it.
+
+The escape hatch is deliberately **a new quotation, not `revise()`**. `revise()` copies
+`prev.getPlaceOfSupply()` forward and copies the frozen items verbatim, so a revision inherits
+the stale split and the guard correctly fires again on it; only `create()` re-reads the
+customer and recomputes the split from scratch. The message says so, in the vocabulary
+`accept()` already uses for the cancelled-order case. `revise()` itself needs no change at
+all: the new version is a `DRAFT` with no snapshot that freezes its own buyer at its own
+`send()`, which is exactly the mechanism by which a corrected GSTIN reaches a revision.
+
+The same reasoning, applied a third time, is why the primary contact was **not** frozen in
+this slice (design spec §7). The `wa.me` link looks like the PDF's sibling but is built at
+*share* time and is a routing address, not a document — freezing it would make a mistyped
+phone number uncorrectable without burning a version number.
+
+### Lesson
+
+"Snapshot everything at the same moment" is the intuitive rule for a frozen document and it is
+wrong. What actually determines a field's freeze point is a dependency question: **has anything
+already frozen been derived from this field?** Fields with no such dependents should freeze as
+late as possible, because late is strictly more correct — it captures every legitimate
+correction made in the meantime. Fields with dependents must freeze together with them, and
+the price of that is a guard: any divergence discovered later has to be **refused**, never
+absorbed, because absorbing it produces an artefact that is internally inconsistent while
+looking entirely plausible.
+
+Challenge #28 established that a version renders byte-identically across renders. That
+guarantee held the *renderer* deterministic and said nothing about its *inputs* moving
+underneath it. F11 lived in the gap between those two, and the general form of the gap is that
+immutability of a record is not the same property as immutability of everything the record
+points at.

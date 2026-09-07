@@ -132,8 +132,11 @@ tables; all three surfaced from writing the per-service surface down.
 
 **Two live bugs in code that exists today, independent of all module work:**
 
-- **F11** (from the earlier thread, still open) — `QuotationPdfService` reads buyer name/GSTIN/address
-  live while `QuotationVersion` freezes everything else. Sub-project 1.
+- ~~**F11**~~ — **CLOSED 2026-09-07 — `c24ae5e`.** `QuotationPdfService` read buyer name/GSTIN/address live
+  while `QuotationVersion` froze everything else. Sub-project 1 shipped: `V34` adds three flat
+  columns, `QuotationService.send()` freezes them, and the renderer reads the snapshot. See
+  [`../superpowers/specs/2026-09-07-buyer-snapshot-design.md`](../superpowers/specs/2026-09-07-buyer-snapshot-design.md).
+  **S2 above stays open** — the contact freeze was declined and rescheduled, not done.
 - **MF1** (new) — **the seller's GSTIN is never validated**, and the seller's state code is checked
   only as `@Pattern("\\d{2}")`. A *buyer's* GSTIN goes through `Gstin.parse` **and**
   `StateCode.requireValid` in `CustomerService`; the seller's goes through neither at signup. Since

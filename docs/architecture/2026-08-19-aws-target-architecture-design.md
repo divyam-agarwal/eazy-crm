@@ -1030,7 +1030,7 @@ Each is independently specifiable and independently shippable. Dependencies note
 
 | # | Sub-project | Depends on | Notes |
 |---|---|---|---|
-| 1 | **Buyer snapshot** (D10/F11) | — | Pure application change. Fixes a live correctness bug. No AWS work. **Do this first regardless of whether anything else happens** |
+| ~~1~~ | ~~**Buyer snapshot** (D10/F11)~~ — **DONE 2026-09-07, `c24ae5e`** | — | Pure application change. Fixed the live correctness bug and deleted the last live `crm` read from the render path. No AWS work |
 | 2 | **AWS foundation** — VPC, ECS cluster, RDS + Proxy, CloudFront/ALB/WAF, ECR, CI/CD; deploy today's monolith unchanged | — | The largest and most valuable piece. Delivers a production deployment on its own |
 | 3 | **Observability** — OTel agent, ADOT sidecar, structured logs, EMF metrics, dashboards, alarms | 2 | |
 | 4 | **Scaling policies** — target tracking and scheduled scaling | 3 | You cannot scale on metrics you do not emit |
@@ -1068,7 +1068,7 @@ consumed message.
 | F8 | The outbox breaks trace continuity. `traceparent` must be stored, re-injected, and attached as a span **link**, not a parent |
 | F9 | The autoscaler's real ceiling is `max_tasks × pool ≤ proxy connection budget`. Without it, autoscaling relocates the outage to Postgres |
 | F10 | The `/api/*` CloudFront cache policy is a tenant-isolation control and must be tested as one |
-| F11 | `QuotationVersion` does not snapshot the buyer, so re-rendering a sent quotation after a customer edit produces a different document. A live bug, independent of this design |
+| F11 | ~~`QuotationVersion` does not snapshot the buyer, so re-rendering a sent quotation after a customer edit produces a different document. A live bug, independent of this design~~ **CLOSED 2026-09-07 — `c24ae5e`.** Sub-project 1 shipped; D10's JSONB column was reversed to three flat columns, see [`../superpowers/specs/2026-09-07-buyer-snapshot-design.md`](../superpowers/specs/2026-09-07-buyer-snapshot-design.md) §3.1 |
 | F12 | The relay must read across tenants, but RLS returns zero rows to a `@Scheduled` method with no tenant context — silently. Needs a `BYPASSRLS` relay role bounded by grants to `*.outbox` |
 | F12b | `BYPASSRLS` fixes only the *database* layer. Hibernate's `@TenantId` appends its own tenant predicate from the session identifier, which the relay does not have — so a JPA read still returns zero rows. The relay's read path must use `JdbcTemplate` on a separate `relay_app` DataSource. See the outbox LLD, OF1 |
 | F13 | `document-svc` cannot reach the `sales` data it renders. Resolved by freezing an immutable render payload into its own schema at send time, which also makes the CloudFront cache correct by construction |

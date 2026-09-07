@@ -1,6 +1,46 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-02 — **Members management is merged to `main` as `f2465b8`.** Eight task commits
+**Last updated:** 2026-09-07 — **The buyer snapshot is done.** Branch `buyer-snapshot`, tip
+`c24ae5e`, branched from `main` at `82733f1`; six task commits (`a3d89f1`..`c24ae5e`) plus this
+docs commit. **Sub-project 1 / F11 / roadmap item 1 / hazard H1 — the repo's only live correctness
+bug — is closed.** `QuotationVersion` now carries a `BuyerSnapshot` (`@Embeddable`, three flat
+columns added by `V34`) frozen at `send()`, and `QuotationPdfService` renders from it:
+`import com.easycrm.crm.Customer` is **deleted** from the render path, which is simultaneously the
+bug fix and D10's architectural payoff — the last live `crm` read is gone from the most exposed,
+most cached route in the system (`/public/q/{token}`). The slice started, per the repo's practice,
+with a deliberately failing test (`a3d89f1`) that renders a `SENT` quotation, edits the customer,
+re-renders, and asserts the bytes are identical. **The baseline is now 591 tests, 0 failures, 0
+errors** (563 root + 28 `platform-primitives`), verified 2026-09-07 by `./gradlew clean check` from
+clean; the previous baseline was 586.
+
+**Three decisions in it are worth knowing before touching quotations again.** The buyer freezes at
+`send()`, not at version creation like everything else on the version, because a draft that sits
+for two weeks while someone corrects a typo'd GSTIN must send the *corrected* one — but
+`placeOfSupply` still freezes at creation, because the per-line CGST/SGST/IGST were computed
+against it, so `send()` now **rejects with 422** when the customer's `stateCode` no longer matches
+the frozen `placeOfSupply` (the escape is a *new* quotation, not `revise()`, which copies the stale
+split forward). D10's `buyer_snapshot JSONB` column was **reversed** to three flat columns, matching
+`QuotationItem`'s `name_snapshot`/`hsn_snapshot`/`uom_snapshot` precedent and keeping
+`ddl-auto: validate` able to see them. And the service-scope doc's Appendix A fold of **S2** (freeze
+the primary contact in the same migration) was **declined and rescheduled** — the `wa.me` link is
+built at share time and is a routing address, not a document. All three are recorded with reasons in
+[`specs/2026-09-07-buyer-snapshot-design.md`](specs/2026-09-07-buyer-snapshot-design.md); §7 is the
+S2 one. **No API surface moved:** `QuotationVersionResponse` and `docs/api/openapi.yaml` are
+untouched and `OpenApiSnapshotTest` is green as written.
+
+**This slice owed two challenge-log entries and paid both.** **Challenge 68** — `V34` is the
+repo's *first* DML migration (`V1`–`V33` contain none), and under `V26`'s `FORCE ROW LEVEL
+SECURITY` a plain cross-tenant backfill `UPDATE` run by Flyway as `easycrm_owner` matches zero
+rows, commits, and reports success; worse, the obvious post-check counts unfrozen rows through the
+same absent-GUC policy and passes vacuously, so the guard fails exactly the way the thing it guards
+fails. The backfill loops over `tenant`, `set_config`s per tenant, and puts the `RAISE EXCEPTION`
+**inside** the loop. Every future DML migration in this repo follows that shape. **Challenge 69** —
+why two fields on the same frozen document have different correct freeze points: what decides is
+whether anything already frozen was *derived* from the field. **One test gap, stated rather than
+papered over:** Testcontainers starts empty, so the backfill loop iterates zero tenants under test
+and no test in this repo can prove it works — its only real check is the in-migration `RAISE`.
+
+**Before it, members management was merged to `main` as `f2465b8`.** Eight task commits
 (`0d80e9b`..`f0ce72c`, one per task) plus two intermediate fix-ups folded in along the way
 (`2a11fa7` a Spotless reformat, `1577d50` a defensive copy for a new SpotBugs finding —
 challenge #67 is about how those two came to be needed), every task reviewed clean. A tenant's
@@ -15,9 +55,10 @@ update — nothing already in the codebase (`@Version`, a unique index, `REPEATA
 it, so every member-admin write now takes a `PESSIMISTIC_WRITE` lock on the tenant row first
 (challenge #65). See §3 for the full inventory: the four routes, the port, the lock, the
 `AuthService.refresh` fix that makes `disable` actually revoke access rather than just look like
-it, the `ConflictException` structured-fields addition, and migration `V33`. **The current
-baseline on `main` is 586 tests, 0 failures, 0 errors** (558 root + 28 `platform-primitives`),
-verified 2026-09-02 by `./gradlew clean check` from a clean state, and CI is green on the tip.
+it, the `ConflictException` structured-fields addition, and migration `V33`. **The baseline it
+left on `main` was 586 tests, 0 failures, 0 errors** (558 root + 28 `platform-primitives`),
+verified 2026-09-02 by `./gradlew clean check` from a clean state, with CI green on the tip — since
+superseded by the 591 above.
 
 **If you came here expecting 561, read this before you stop and reconcile.** The 561 figure was
 measured *on the branch*, and the branch later merged `main` into itself (`0afe2f8`) to pick up
@@ -88,7 +129,39 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight
+### `buyer-snapshot` is finished but not yet integrated
+
+**Read this first.** Branch `buyer-snapshot` (tip `c24ae5e`, off `main` at `82733f1`) carries the
+completed sub-project 1. It is green — `./gradlew clean check` from clean gives **591 tests, 0
+failures, 0 errors** (563 root + 28 `platform-primitives`) — and every task was reviewed clean, but
+it has **not been merged**. The next action on it is
+**superpowers:finishing-a-development-branch**, not more implementation. Nothing else is in flight.
+
+Six task commits, one per task, in the order they were built:
+
+| Commit | What it did |
+|---|---|
+| `a3d89f1` | The deliberately failing test: send a quotation, render, edit the customer's `businessName`/`gstin`/`billingAddress`, render again, assert the bytes are identical. This is F11, reproduced |
+| `0452cda` | `V34` — three nullable columns on `quotation_version` (`buyer_business_name`, `buyer_gstin`, `buyer_billing_address`), widths mirroring `customer` exactly, plus the per-tenant backfill (challenge 68) |
+| `e19fded` | `BuyerSnapshot` `@Embeddable` and the `@Embedded` mapping on `QuotationVersion`; `annotations-reference.md` rows for `@Embeddable` and `@Embedded` |
+| `b29fec7` | `QuotationService.send()` freezes the buyer |
+| `45d43e0` | `send()` rejects with **422** when the customer's `stateCode` no longer matches the version's frozen `placeOfSupply` |
+| `c24ae5e` | `QuotationPdfService` renders from the snapshot; `import com.easycrm.crm.Customer` deleted from the render path |
+
+The columns stay **nullable** deliberately: a `DRAFT` genuinely has no buyer yet, so the invariant
+is *not-null when `SENT`*, enforced in code, and a `SENT` version with a null snapshot throws an
+`IllegalStateException` naming the invariant rather than rendering a blank buyer block. `revise()`,
+`create()` and `ShareLinkService` are all untouched — a revision is a `DRAFT` with no snapshot that
+freezes its own buyer at its own `send()`, which is exactly how a corrected GSTIN reaches a
+revision.
+
+**What the backfill can and cannot recover.** For a `SENT` version whose customer was already
+edited, the true historical buyer was never stored and is unrecoverable. The backfill writes the
+*current* customer — which is precisely what that version renders today — so it changes no rendered
+output. It freezes the status quo and stops it moving again. That is the honest ceiling on this
+fix, and it is why the fix was urgent rather than merely tidy.
+
+### Before that: nothing was in flight
 
 **Docs-only session, 2026-09-05 — a roadmap now sits above this file.** Committed as `4df665f`.
 No code changed; the baseline is still 586 tests on `main`. Four files: **`docs/ROADMAP.md`** (new — the programme-level
@@ -99,11 +172,13 @@ plus §8 and `CLAUDE.md` updated to point at both.
 
 **Two findings out of it that change what to do next, both in §8's ranking below:**
 
-1. **Sub-project 1, the buyer snapshot (F11), has never been done and is a live correctness bug.**
-   Verified 2026-09-05: `QuotationVersion` carries no buyer fields, so `QuotationPdfService` still
-   reads `businessName`/`gstin`/`billingAddress` live from `customer` at render time. Both AWS docs
-   say do it first regardless; no §8 ranking had ever mentioned it, because that numbering lives in
-   the architecture thread and this file never picked it up. **It is now item 1.**
+1. ~~**Sub-project 1, the buyer snapshot (F11), has never been done and is a live correctness
+   bug.**~~ **RESOLVED 2026-09-07 — `c24ae5e`.** It was verified open on 2026-09-05
+   (`QuotationVersion` carried no buyer fields, so `QuotationPdfService` read
+   `businessName`/`gstin`/`billingAddress` live from `customer` at render time); it was made item 1
+   on the strength of that, and it is now done. H1 is struck from `docs/ROADMAP.md` §1.5 and F11 is
+   closed in all three architecture handoffs. See the top of this section for the branch. **Item 2
+   below is now the head of the queue.**
 2. **`platform` imports `crm`, `sales` and `tenant` — three dependency cycles**, from
    `VisibleFinder`/`VisibilityPolicy` (2026-08-29) and `TenantJobRunner` (2026-08-31). Both landed
    *after* the service-scope doc was last touched (2026-08-24), so S1–S10 could not have seen them,
@@ -576,7 +651,89 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: members management** — **merged to `main` as `f2465b8`**, off `main` at
+- **Latest code work: the buyer snapshot** — branch `buyer-snapshot`, tip `c24ae5e`, off `main` at
+  `82733f1`, **green at 591 tests but not yet merged** (see §0). Six task commits
+  (`a3d89f1`..`c24ae5e`), TDD, one per task, each reviewed clean. Closes F11 / hazard H1 /
+  sub-project 1 — the repo's only live correctness bug — and, in the same edit, D10's architectural
+  prerequisite for extracting `document-svc`.
+
+  **Schema.** `V34__quotation_version_buyer_snapshot.sql` adds `buyer_business_name VARCHAR(255)`,
+  `buyer_gstin VARCHAR(15)` and `buyer_billing_address VARCHAR(512)` to `quotation_version` —
+  widths mirroring `customer` exactly, because a snapshot narrower than its source truncates on
+  freeze. All three nullable (B6: a `DRAFT` has no buyer yet; a `NOT NULL` placeholder would make
+  "unset" indistinguishable from a real value). **Flat columns, not the `buyer_snapshot JSONB` D10
+  specified** — the precedent in this exact table family is flat (`QuotationItem` freezes
+  `name_snapshot`/`hsn_snapshot`/`uom_snapshot`), and `ddl-auto: validate` checks columns but not
+  blob contents, so inside JSONB every future field would land unvalidated by anything.
+  `AuditLog.detail` remains the codebase's only JSONB column, correctly so: its shape varies per
+  event by design, and the buyer snapshot has exactly one shape. RLS needed no change — these are
+  columns on an already-enabled, already-forced, already-policied table, and
+  `RlsCoverageIntegrationTest` keys on `tenant_id`.
+
+  **The backfill is the interesting half, and it is challenge 68.** Flyway connects as
+  `easycrm_owner`, which owns the tables — and `V26` `FORCE`d RLS precisely so the owner is bound
+  too. Every policy reads
+  `tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid`; `missing_ok = true`
+  makes that `NULL` in a session with no GUC, so a plain cross-tenant `UPDATE` in a migration
+  **matches zero rows, commits, and reports success** — no error, no warning, no log line. The
+  natural post-check (`count(*)` of unfrozen `SENT` rows, written after the loop) runs under the
+  same absent GUC, sees zero rows and passes vacuously; the guard fails identically to the thing it
+  guards. `V34` therefore loops `FOR t IN SELECT id FROM tenant` (that table has no `tenant_id` and
+  V26 deliberately leaves it unforced), `set_config`s per tenant, updates inside the policy, and
+  puts the `RAISE EXCEPTION` **inside** the loop. `NO FORCE`-and-re-`FORCE` was rejected (a
+  mid-migration failure leaves a silent isolation hole) and `BYPASSRLS` on `easycrm_owner` was
+  rejected (a permanent role attribute, superuser to grant, weakening layer 3 forever for one
+  migration). **Every future DML migration in this repo follows the `V34` shape.**
+
+  **Domain and write path.** `com.easycrm.sales.BuyerSnapshot` is the codebase's first
+  `@Embeddable` — three `String` fields, no identity, mapped into `quotation_version` via an
+  `@Embedded` field on `QuotationVersion` alongside a `freezeBuyer(...)` method that sits beside the
+  existing `markSent(...)`. `QuotationService.send()` gained one read (through the already-injected
+  `VisibleFinder`) and one guard. **The buyer freezes at `send()`, not at creation**, unlike every
+  other frozen field on the version: the document means "the buyer as of when this was sent", and a
+  draft that sits for two weeks while someone corrects a typo'd GSTIN must send the corrected one.
+  That is safe only because buyer identity has no dependents — nothing already frozen was derived
+  from it. `placeOfSupply` **does** have dependents (the per-line `cgst`/`sgst`/`igst` on
+  `QuotationItem` were computed against it), so it still freezes at creation, and `send()` now
+  throws a 422 `ValidationException` naming `placeOfSupply` when `customer.stateCode` no longer
+  matches it — otherwise a customer who moves state gets a GST document showing one state's address
+  beside another state's tax breakup, which is internally contradictory and looks fine. **The escape
+  hatch is a new quotation, not `revise()`**: `revise()` copies the stale `placeOfSupply` and the
+  frozen items forward, so it cannot recompute the split and the guard correctly fires again;
+  `create()` re-reads the customer and recomputes from scratch. `accept()` already uses the same
+  phrasing for the cancelled-order case. Challenge 69 records the general rule.
+
+  **Render path.** `QuotationPdfService.render()` reads `v.getBuyer()` and no longer calls
+  `finder.findCustomer(...)`; **`import com.easycrm.crm.Customer` is deleted**, and
+  `grep -rn "com.easycrm.crm" backend/src/main/java/com/easycrm/sales/pdf/` returns nothing. That
+  deletion is D10's payoff: under the service split, `document-svc` cannot reach `master-data`'s
+  schema, so every live `crm` read on the render path would have become a synchronous cross-service
+  call on the most latency-sensitive and most cached route in the system. Freezing the buyer deletes
+  the call rather than making it fast. A `SENT` version with a null snapshot throws an
+  `IllegalStateException` naming the invariant — unreachable after the backfill and the write path,
+  and a loud 500 is the right answer for a violated invariant.
+
+  **No API surface (B7).** `QuotationVersionResponse` is unchanged, `docs/api/openapi.yaml` does not
+  move, `OpenApiSnapshotTest` stays green as written, and oasdiff records no change. Nothing consumes
+  the snapshot — the frontend is zero lines — and adding it later is additive and cheap.
+
+  **`ShareLinkService` is unchanged, deliberately.** The service-scope doc's Appendix A folded S2
+  (freeze the customer's primary `Contact`, which `waMeUrl()` reads live) into this slice; it was
+  declined and Appendix A amended in place. `ALTER TABLE ... ADD COLUMN` with no default is O(1) on
+  modern Postgres, so the "second migration over the same table" the fold was meant to avoid costs
+  one extra Flyway file — while freezing the number would make a mistyped phone uncorrectable
+  without burning a version number via `revise()`, on a path used daily, for a payoff that lands
+  only at SP8 (itself conditional on a §4.5 trigger that may never fire). **The S2 finding stands;
+  only its scheduling moved**, so its row in `2026-08-26-platform-modules-handoff.md` is still open.
+
+  **One test gap, stated rather than closed.** Testcontainers starts from an empty database, so the
+  backfill loop iterates zero tenants and updates zero rows under test. **No test in this repo can
+  prove the backfill works** — its only real check is the in-migration `RAISE`, which runs wherever
+  there is data. Every environment from Phase 3 onward is built from `V1` on an empty database, so
+  the loop will only ever do real work against a developer's local Postgres. That is why the gap is
+  acceptable, not a reason to pretend it is closed.
+
+- **Previous code work: members management** — **merged to `main` as `f2465b8`**, off `main` at
   `e9d694e` (branch `worktree-members-management`). Eight task commits (`0d80e9b`..`f0ce72c`) plus
   two intermediate fix-up commits folded in along the way (`2a11fa7` a Spotless reformat,
   `1577d50` a defensive copy for a new SpotBugs finding — challenge #67), every task reviewed
@@ -1549,21 +1706,22 @@ next chunk; this section is the session-level view of the same thing, and the ro
 that carries the AWS and billing threads too. **Second, and more important: the top of the ranking
 is no longer Wave 1.5.**
 
-**Sub-project 1 — the buyer snapshot (F11) — has never been done, and it is a live correctness
-bug.** `QuotationVersion` freezes items, totals and `placeOfSupply`; `QuotationPdfService` still
-reads `businessName`, `gstin` and `billingAddress` **live** from `customer` at render time
-(verified 2026-09-03: `QuotationVersion` has no buyer fields). Edit a customer's address and a
-`SENT` quotation re-renders differently — including through a public share link the buyer already
-holds. Challenge #28 guarantees byte-determinism across renders, not across customer edits. Both
-AWS docs say to do this **"first regardless of whether anything else happens"**; it has been open
-since 2026-08-19 while nine slices landed around it, and no §8 ranking has ever mentioned it —
+~~**Sub-project 1 — the buyer snapshot (F11) — has never been done, and it is a live correctness
+bug.**~~ **DONE 2026-09-07 — branch `buyer-snapshot`, tip `c24ae5e`, awaiting integration.**
+`QuotationVersion` froze items, totals and `placeOfSupply` while `QuotationPdfService` read
+`businessName`, `gstin` and `billingAddress` **live** from `customer` at render time (verified open
+2026-09-03), so editing a customer's address re-rendered a `SENT` quotation differently — including
+through a public share link the buyer already holds. Challenge #28 guaranteed byte-determinism
+across renders, not across customer edits; F11 was exactly that gap, and the buyer now freezes onto
+the version at `send()`. It had been open since 2026-08-19 while nine slices landed around it,
 because that thread's numbering lives in the architecture docs and this one never picked it up.
-**Do not read sub-project numbering as priority: SP9 (invitations) is done and SP1 is not.**
+**The lesson survives the fix: do not read sub-project numbering as priority.**
 
-**The recommended order is now: SP1 buyer snapshot → Wave 1.5 supply chain → Wave 1.6 module
-boundaries → the frontend.** The first three are all small and none is blocked; the frontend still
-wants its own session and a decomposition pass, which is why it stays fourth. Still a
-recommendation, not a decision — §0 step 4 still applies.
+**The recommended order is now: ~~SP1 buyer snapshot~~ → Wave 1.5 supply chain → Wave 1.6 module
+boundaries → the frontend**, with the domain and static site runnable in parallel since it consumes
+none of the backend queue. Wave 1.5 is the head of the queue. Both remaining backend items are
+small and neither is blocked; the frontend still wants its own session and a decomposition pass,
+which is why it stays last. Still a recommendation, not a decision — §0 step 4 still applies.
 
 The numbered list above is down to one open item (#4), the correctness backlog is empty, and nine
 slices in a row have hardened or extended the backend (RLS forcing, rate limiting, record-level

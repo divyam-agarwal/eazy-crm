@@ -183,9 +183,11 @@ two-level DAG from becoming a knot. Each of the three prevented a cycle.
 
 Unchanged from the previous handoff unless noted, and none of them needs the split to matter:
 
-- **F11** — `QuotationPdfService` reads buyer name/GSTIN/address live while `QuotationVersion` freezes
-  everything else. Re-rendering a `SENT` quotation after a customer edit produces a different
-  document.
+- ~~**F11**~~ — **CLOSED 2026-09-07 — `c24ae5e`.** `QuotationPdfService` read buyer name/GSTIN/address live
+  while `QuotationVersion` froze everything else, so re-rendering a `SENT` quotation after a
+  customer edit produced a different document. The buyer now freezes onto the version at `send()`
+  (`V34`); see
+  [`../superpowers/specs/2026-09-07-buyer-snapshot-design.md`](../superpowers/specs/2026-09-07-buyer-snapshot-design.md).
 - **MF1** — the seller's GSTIN is never validated and the state code is only `@Pattern("\\d{2}")`,
   while a buyer's goes through `Gstin.parse` **and** `StateCode.requireValid`. Since `isInterState`
   compares the two, a bad seller state code silently decides CGST+SGST vs IGST on every quotation

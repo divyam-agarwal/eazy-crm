@@ -80,10 +80,15 @@ Full rationale and rejected alternatives are in each doc's Part 0 / decision tab
 
 **Three that are about the code as it exists today, not the AWS design:**
 
-- **F11 — a live bug.** `QuotationVersion` freezes items, totals and `placeOfSupply`, but
-  `QuotationPdfService` reads buyer name/GSTIN/address *live*. Edit a customer's address and a
-  re-rendered `SENT` quotation differs from the one they received — including through a public
-  share link they already hold. Fix is a frozen `buyer_snapshot`. Independent of all AWS work.
+- ~~**F11 — a live bug.**~~ **CLOSED 2026-09-07 — `c24ae5e`.** `QuotationVersion` froze items, totals and
+  `placeOfSupply`, but `QuotationPdfService` read buyer name/GSTIN/address *live*, so editing a
+  customer's address made a re-rendered `SENT` quotation differ from the one they received —
+  including through a public share link they already hold. Fixed by freezing a `BuyerSnapshot`
+  onto `QuotationVersion` at `send()` (`V34`, three flat columns rather than D10's JSONB — see
+  [`../superpowers/specs/2026-09-07-buyer-snapshot-design.md`](../superpowers/specs/2026-09-07-buyer-snapshot-design.md)
+  §3.1), with a 422 guard when the customer's `stateCode` no longer matches the version's frozen
+  `placeOfSupply`. `import com.easycrm.crm.Customer` is gone from the render path, which is D10's
+  architectural payoff as well as the bug fix.
 - **BF5/BF6** — `tenant.plan` is in the design spec's data model but no migration ever added it,
   and nothing in the codebase ever transitions a tenant out of `TRIAL`.
 - **BF7** — user invitations don't exist, so per-seat billing has an unbuilt hard prerequisite.
@@ -125,7 +130,7 @@ Sub-projects are numbered continuously across the two design docs (parent Part 5
 
 | # | Sub-project | Depends on |
 |---|---|---|
-| 1 | **Buyer snapshot** (F11) | — |
+| ~~1~~ | ~~**Buyer snapshot** (F11)~~ — **DONE 2026-09-07, `c24ae5e`** | — |
 | 2 | AWS foundation — VPC, ECS, RDS + Proxy, CloudFront/ALB/WAF, CI/CD; deploy today's monolith | — |
 | 3 | Observability | 2 |
 | 4 | Scaling policies | 3 |

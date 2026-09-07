@@ -468,9 +468,22 @@ The parent doc's recommendation stands: **#1 buyer snapshot → #2 AWS foundatio
 Two amendments, both small:
 
 1. **S1 folds into sub-project 2.** It is a one-line ALB rule and it must be right the first time.
-2. **S2 folds into sub-project 1.** The buyer snapshot is already a `QuotationVersion` change; the
-   primary contact belongs in the same frozen payload, for the same reason, in the same migration.
-   Doing it later means a second migration over the same table.
+2. ~~**S2 folds into sub-project 1.**~~ **Amended 2026-09-07 (`c24ae5e`) — S2 does *not* fold in.**
+   Sub-project 1 shipped without a contact snapshot; S2 is rescheduled to whenever SP6 or SP8
+   actually needs it. The original argument was that doing it later means a second migration over
+   the same table — but `ALTER TABLE ... ADD COLUMN` with no default is O(1) on modern Postgres, so
+   that second migration costs one extra Flyway file and no table rewrite. That is not a cost worth
+   paying anything for, and there is something to pay: **the PDF and the `wa.me` link look alike
+   and are not alike.** The PDF is a document that must not change after issue, so freezing it is
+   the whole point. The `wa.me` link is built at **share** time, not send time, and it is a
+   *routing address* — how the salesperson reaches the buyer right now. Freeze the number at send
+   and a mistyped phone becomes uncorrectable without `revise()`, burning a version number on the
+   quotation to fix a contact's digits: a real regression on a path used daily, traded for an
+   architectural payoff that only lands at **SP8**, which the roadmap marks conditional on a §4.5
+   trigger that may never fire. Reasoning in full:
+   [`../superpowers/specs/2026-09-07-buyer-snapshot-design.md`](../superpowers/specs/2026-09-07-buyer-snapshot-design.md) §7.
+   **The S2 finding itself stands unchanged** — the cross-service call site is real and is still
+   blocking for sub-project 8. Only its scheduling moved.
 
 `notification-svc` should not be scheduled until Part 1.5's four open questions are answered. It is
 the only service whose scope is a name.

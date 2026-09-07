@@ -2,7 +2,8 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `main` at `28f9ac8` — 586 tests, 0 failures, verified by `./gradlew clean check`.
+**Code baseline:** `buyer-snapshot` at `c24ae5e` — 591 tests, 0 failures, verified by `./gradlew clean check`.
+(Branched from `main` at `82733f1`; the previous baseline was 586.)
 
 This is the layer **above** `docs/superpowers/plans/`. Those are per-slice TDD implementation plans;
 this is the programme that decides which slice is next and why. Every numbered item here gets its
@@ -36,10 +37,10 @@ pass when it starts. **Nothing here replaces a spec.**
 | Shape | One Spring Boot monolith. Boot 4.1.0, Java 25, Gradle. One extra Gradle module: `platform-primitives` |
 | Packages | `sales` (88 classes), `iam` (38), `platform` (37), `catalog` (20), `crm` (15), `tenant` (7), `demo` (4) |
 | Surface | 17 controllers. Two unauthenticated routes: `GET /public/q/{token}`, the invitation accept pair |
-| Schema | 33 Flyway migrations, latest `V33__assigned_to_indexes.sql` |
+| Schema | 34 Flyway migrations, latest `V34__quotation_version_buyer_snapshot.sql` |
 | Wedge | enquiry → versioned GST quotation → order — **complete end to end and hardened**, plus activity/follow-up, nightly auto-expiry, PDF render and WhatsApp share |
 | Multi-user | Invitations, accept, revoke, pending list; members list / change-role / disable / enable |
-| Tests | 586 (558 root + 28 primitives), 0 failures |
+| Tests | 591 (563 root + 28 primitives), 0 failures |
 
 ## 1.2 Tenant isolation — the thing that is actually finished
 
@@ -71,7 +72,7 @@ nothing serves the URL that gets pasted into WhatsApp) · **outbox, SNS/SQS, any
 
 | # | Item | Where |
 |---|---|---|
-| **H1** | **`QuotationVersion` does not freeze the buyer.** `QuotationPdfService` reads `businessName`, `gstin`, `billingAddress` **live** from `customer` at render time. Edit a customer's address and a `SENT` quotation renders differently — through a public share link the buyer already holds | F11 · **live correctness bug** |
+| ~~**H1**~~ | ~~**`QuotationVersion` does not freeze the buyer.** `QuotationPdfService` reads `businessName`, `gstin`, `billingAddress` **live** from `customer` at render time. Edit a customer's address and a `SENT` quotation renders differently — through a public share link the buyer already holds~~ **FIXED 2026-09-07** — `c24ae5e`. `QuotationVersion` carries a `BuyerSnapshot` frozen at `send()`, the render path reads it, and `import com.easycrm.crm.Customer` is gone from `sales/pdf/`. F11 closed. See [`superpowers/specs/2026-09-07-buyer-snapshot-design.md`](superpowers/specs/2026-09-07-buyer-snapshot-design.md) | F11 · ~~live correctness bug~~ **closed** |
 | **H2** | Rate-limit store is in-process. N app instances multiply every configured limit by N, silently | HANDOFF §8 |
 | **H3** | The 00:30 IST expiry sweep takes no distributed lock. N instances all sweep every tenant. Fails safe (`@Version` blocks double-writes) but duplicates all the work | HANDOFF §8 |
 | **H4** | `platform.visibility` and `platform.job` import `crm`/`sales`/`tenant` — three dependency cycles. Blocks service extraction | MF1/MF2 |
@@ -85,9 +86,9 @@ nothing serves the URL that gets pasted into WhatsApp) · **outbox, SNS/SQS, any
 What "finished" means per track. Tracks run concurrently; Part 3 sequences them.
 
 ### A — Application
-The product a distributor uses. Wedge complete; remaining: buyer snapshot (H1), cursor pagination,
-the `SALES_MANAGER` tier (H6), password reset and self-service profile, and whatever the frontend
-demands once it is real.
+The product a distributor uses. Wedge complete, buyer snapshot done (H1 closed, 2026-09-07);
+remaining: cursor pagination, the `SALES_MANAGER` tier (H6), password reset and self-service
+profile, and whatever the frontend demands once it is real.
 
 ### B — Build and CI
 Wave 1 done. **1.5** supply chain (`gitleaks`, Dependabot/Renovate, OWASP Dependency-Check,
@@ -208,9 +209,13 @@ contradiction of anything.
 Each phase ends somewhere it is safe to stop.
 
 ## Phase 0 — Close the gaps on `main` *(no new infrastructure)*
-1. **Buyer snapshot (SP1)** — freeze `buyer_snapshot` JSONB into `QuotationVersion`. Fixes H1;
-   prerequisite for extracting `document-svc`; also folds in S2's primary-contact freeze so the
-   share path stops reading `crm` live. One migration, done once.
+1. ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`.** Three flat columns on
+   `quotation_version` (`V34`) behind a `BuyerSnapshot` `@Embeddable`, frozen at `send()` and read
+   by the PDF renderer. Fixes H1, closes F11, and removes the live `crm` read from the public
+   render path — the prerequisite for extracting `document-svc`. **S2's primary-contact freeze is
+   *not* folded in:** it was declined and rescheduled to whenever SP6 or SP8 needs it — see
+   [design spec §7](superpowers/specs/2026-09-07-buyer-snapshot-design.md) and Appendix A of the
+   service-scope doc. Design reversed D10's JSONB column to flat columns; see §3.1 of the spec.
 2. **Wave 1.5 — supply chain.** Cheapest real security value on a public repo shipping JWT auth,
    bcrypt and GST data.
 3. **Wave 1.6 — module boundaries.** Modulith `verify()` + `Documenter`, and the H4 cycle fix that
@@ -321,7 +326,7 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 
 | Track | Have | Left |
 |---|---|---|
-| **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, 586 tests | Buyer snapshot (H1), cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
+| **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 591 tests | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
 | **Frontend** | Nothing. A drift-guarded contract to build against | Everything. `/invite/{token}` first |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
 | **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog | Wave 1.5, Wave 1.6, blocking oasdiff, branch protection, 32 SpotBugs findings |
@@ -340,7 +345,7 @@ Ranked. **Effort** is relative, not calendar.
 
 | # | Item | Why now | Effort | Blocked by |
 |---|---|---|---|---|
-| **1** | **Buyer snapshot (SP1)** | The only **live correctness bug**. A `SENT` quotation silently re-renders differently after a customer edit, through a link the buyer holds. Both AWS docs say do it first "regardless of whether anything else happens", and it has been open since 2026-08-19 while nine slices landed around it | S | — |
+| ~~**1**~~ | ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`** | Was the only **live correctness bug**: a `SENT` quotation silently re-rendered differently after a customer edit, through a link the buyer holds. Open since 2026-08-19 while nine slices landed around it. Closed by freezing the buyer onto `QuotationVersion` at `send()`; H1 and F11 are both closed. **Item 2 is now next.** | S | — |
 | **2** | **Domain + static marketing site** | **The only item on this list that acquires a customer.** A weekend, ~₹1,000/yr, free hosting. It also settles the domain, and `easycrm.public-base-url` feeds the share and invite links that get pasted into WhatsApp and stay in other people's chat history — picking it after the frontend ships means stranding them. **Parallel: consumes none of the backend queue** | S | — |
 | **3** | **Wave 1.5 — supply chain** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
 | **4** | **Wave 1.6 — Modulith + cycle fix** | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. Cost rises with every slice added first | S–M | — |
