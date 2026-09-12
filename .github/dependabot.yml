@@ -1,0 +1,44 @@
+# Weekly dependency update PRs. See docs/superpowers/specs/2026-09-12-supply-chain-design.md section 7.
+#
+# Dependabot rather than Renovate (spec D3): native to GitHub, so no third-party app with write
+# access to a repo that now holds an NVD_API_KEY secret. Revisit Renovate if PR volume becomes
+# unmanageable or buildSrc's own plugin versions start drifting.
+version: 2
+
+updates:
+  # The Gradle root is backend/, NOT the repository root. Pointed at "/" this finds nothing and
+  # reports nothing -- silently, which is the worst way for a scanner to be wrong.
+  - package-ecosystem: gradle
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Asia/Kolkata
+    # A repo that has never run dependency updates has a backlog. Cap the first wave rather than
+    # deferring the bot.
+    open-pull-requests-limit: 5
+    groups:
+      # Boot's modules move in lockstep; one PR per module would be noise for a single upgrade.
+      spring-boot:
+        patterns:
+          - "org.springframework.boot:*"
+          - "org.springframework:*"
+      test-tooling:
+        patterns:
+          - "org.testcontainers:*"
+          - "org.junit*:*"
+          - "com.tngtech.archunit:*"
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
