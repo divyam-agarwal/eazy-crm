@@ -158,13 +158,14 @@ merging the branch has to bring both along, and neither is on the remote today.
 The current work is **roadmap item 2, Wave 1.5 (supply-chain hardening)**, on local branch
 `supply-chain`. **Nothing from `5191cf6` onward has reached `origin/main`.** The slice's own
 commit sequence is the seven implementation commits below, followed by this file's documentation
-commit (`c2df8fe`, an eighth) and now this fix (a ninth, correcting the false "fully in sync"
-claim a previous pass of this file made). Added to the two `main`-ahead commits above (`5191cf6`,
-`3b00188`), that puts **eleven commits total between `origin/main`'s tip and `supply-chain`'s**
-after this fix is committed — ten before it. A reader diffing `git log --oneline
-origin/main..supply-chain` against that arithmetic should find exactly that many commits and no
-unexplained extras; if the count differs, re-run the two commands above before trusting either
-this file or your memory of it. The seven implementation commits:
+commit (`c2df8fe`), a fix correcting the false "fully in sync" claim a previous pass of this file
+made, and the whole-branch final fix wave.
+
+**The count, measured rather than derived.** `git rev-list --count origin/main..supply-chain`
+read **twelve** immediately before the final-fix-wave commit was made, which takes it to
+**thirteen**. Do not extend that arithmetic by hand: this number has now been stated wrongly twice
+in this file, both times by adding up commits someone remembered instead of running the one
+command that answers it. Run it. The seven implementation commits:
 
 | Commit | What it did |
 |---|---|
@@ -176,8 +177,11 @@ this file or your memory of it. The seven implementation commits:
 | `25b6e5c` | ci: scan dependencies for published CVEs (OWASP Dependency-Check) |
 | `0f139ce` | fix: correct the false NVD-key diagnostic and make the check blank-safe |
 
-**599 tests, 0 failures, 0 errors** (591 before this slice + 8 new in `SupplyChainWorkflowTest`),
-verified by `./gradlew clean check` from clean.
+**604 tests, 0 failures, 0 errors** (576 root + 28 `platform-primitives`), verified by
+`./gradlew clean check` from clean after the final fix wave — 591 before this slice, plus 13 in
+`SupplyChainWorkflowTest` (8 from the implementation commits, 5 more from the fix wave: the `if:`
+guard, the exit-status-swallowing guard, the `fetch-depth: 0` guard, the moving-tag sweep, and a
+continue-on-error guard that checks the key is absent rather than merely not `true`).
 
 **Two things this slice recorded as unverified, honestly, rather than guessed:**
 - **Dependabot's coverage of `buildSrc`.** The `gh api` check for this repo's Dependabot alerts
@@ -197,6 +201,12 @@ verified by `./gradlew clean check` from clean.
 - The design spec preferred a checksummed release binary over `npm install -g` for squawk; the
   implementation pins `squawk-cli@2.65.0` instead. The reproducibility concern is met, but the
   stated preference was never revisited.
+- **Nothing updates the three tool pins this slice added.** Dependabot covers the `gradle` and
+  `github-actions` ecosystems; `zricethezav/gitleaks:v8.30.1`, `rhysd/actionlint:1.7.12` and
+  `squawk-cli@2.65.0` all live inside `run:` blocks, which no Dependabot ecosystem reads. Same for
+  `tufin/oasdiff:v1.31.0`, pinned in the fix wave. They are exact, and they will rot silently —
+  `SupplyChainWorkflowTest` asserts the exact coordinates, so bumping one means editing the test
+  too, which is the only reminder that exists. Bump them by hand when touching this workflow.
 - `dependency-check` is a non-blocking job, so a failed run (a missing or invalid `NVD_API_KEY`
   secret) leaves the overall workflow green. Its summary step is honest about that — it writes "No
   report produced — see the step log" and never fabricates a zero-findings result — but nobody is

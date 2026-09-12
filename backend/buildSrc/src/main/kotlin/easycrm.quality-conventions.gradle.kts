@@ -165,34 +165,53 @@ tasks.named("check") { dependsOn(tasks.named("jacocoTestCoverageVerification")) 
 // when invoked directly -- matching the CI job's continue-on-error (spec D1). The flip trigger
 // for both is branch protection: at that point a finding lands in a PR queue with someone to
 // triage it, rather than on a main branch that deploys itself.
+
+// Two sources, one wiring. CI supplies the environment variable from the repository secret;
+// a local run supplies the Gradle property from ~/.gradle/gradle.properties, which is
+// outside the repository and therefore outside both git and gitleaks.
+//
+// Blank-safe deliberately: an unconfigured GitHub secret can still materialise NVD_API_KEY
+// as an empty string, which `Provider.isPresent` sees as present -- so a naive check would
+// skip straight past the diagnostic below into the plugin's own opaque failure with no hint why.
+val nvdKey = providers.gradleProperty("nvdApiKey")
+    .orElse(providers.environmentVariable("NVD_API_KEY"))
+    .orElse("")
+    .map { it.trim() }
+
 dependencyCheck {
     // CVSS v3 tops out at 10.0. 11 means "never fail", which is the documented idiom.
     failBuildOnCVSS = 11f
     formats = listOf("HTML", "JSON")
 
-    // Two sources, one wiring. CI supplies the environment variable from the repository secret;
-    // a local run supplies the Gradle property from ~/.gradle/gradle.properties, which is
-    // outside the repository and therefore outside both git and gitleaks.
-    //
-    // Blank-safe deliberately: an unconfigured GitHub secret can still materialise NVD_API_KEY
-    // as an empty string, which `Provider.isPresent` sees as present -- so a naive check would
-    // skip straight past this diagnostic into the plugin's own opaque failure with no hint why.
-    val nvdKey = providers.gradleProperty("nvdApiKey")
-        .orElse(providers.environmentVariable("NVD_API_KEY"))
-        .orElse("")
-        .map { it.trim() }
     if (nvdKey.get().isNotEmpty()) {
         nvd { apiKey = nvdKey.get() }
-    } else {
-        // NOT graceful degradation: plugin 13.0.0's NVD API 2.0 client rejects an unauthenticated
-        // request outright (NvdApiException: Invalid API Key) rather than falling back to a slow
-        // anonymous sync -- proved by running dependencyCheckAggregate with no key configured.
-        // Set nvdApiKey in ~/.gradle/gradle.properties for a local run, or the NVD_API_KEY
-        // repository secret for CI.
-        logger.lifecycle(
-            "No nvdApiKey property or NVD_API_KEY env var (or it is blank) - the OWASP scan below " +
-                "will FAIL outright, not run slowly. Set nvdApiKey in ~/.gradle/gradle.properties " +
-                "locally, or the NVD_API_KEY repository secret in CI."
-        )
+    }
+}
+
+// The missing-key diagnostic fires from doFirst, NOT from the configuration block above.
+// Configuration runs on EVERY Gradle invocation, in every project: emitted there, the line
+// printed twice for `./gradlew help` -- announcing that "the scan will FAIL" when no scan was
+// in the task graph at all. A warning that appears when nothing is wrong is a warning people
+// learn to scroll past, and this one also polluted any log grep for "dependencyCheck".
+//
+// `matching` rather than a named lookup, and Purge is excluded by name: the plugin contributes
+// four tasks, and dependencyCheckPurge only deletes the local database copy -- it never calls the
+// NVD, so telling its user their scan is about to fail would be the same category of untrue
+// statement this fix exists to remove.
+tasks.matching {
+    it.name.startsWith("dependencyCheck") && it.name != "dependencyCheckPurge"
+}.configureEach {
+    doFirst {
+        if (nvdKey.get().isEmpty()) {
+            // NOT graceful degradation: plugin 13.0.0's NVD API 2.0 client rejects an
+            // unauthenticated request outright (NvdApiException: Invalid API Key) rather than
+            // falling back to a slow anonymous sync -- proved by running dependencyCheckAggregate
+            // with no key configured.
+            logger.lifecycle(
+                "No nvdApiKey property or NVD_API_KEY env var (or it is blank) - this scan will " +
+                    "FAIL outright, not run slowly. Set nvdApiKey in ~/.gradle/gradle.properties " +
+                    "locally, or the NVD_API_KEY repository secret in CI."
+            )
+        }
     }
 }

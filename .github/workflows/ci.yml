@@ -121,7 +121,7 @@ jobs:
           if ! docker run --rm \
             -v /tmp/openapi-base.yaml:/base.yaml:ro \
             -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
-            tufin/oasdiff:latest changelog /base.yaml /head.yaml \
+            tufin/oasdiff:v1.31.0 changelog /base.yaml /head.yaml \
             | tee -a "$GITHUB_STEP_SUMMARY"; then
             echo "oasdiff changelog failed to run -- see the step log." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -133,7 +133,7 @@ jobs:
           if ! docker run --rm \
             -v /tmp/openapi-base.yaml:/base.yaml:ro \
             -v "$PWD/$SNAPSHOT:/head.yaml:ro" \
-            tufin/oasdiff:latest breaking /base.yaml /head.yaml \
+            tufin/oasdiff:v1.31.0 breaking /base.yaml /head.yaml \
             | tee -a "$GITHUB_STEP_SUMMARY"; then
             echo "oasdiff breaking failed to run -- see the step log." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -221,7 +221,10 @@ jobs:
           npm install -g squawk-cli@2.65.0
           # xargs rather than an unquoted expansion: multiple paths must word-split, and doing it
           # this way keeps shellcheck (and therefore the actionlint step above) satisfied.
-          echo "$CHANGED" | xargs squawk
+          # -c: squawk auto-discovers only `.squawk.toml`, and only relative to the files it
+          # is linting, so the repo's config has to be named explicitly. It records which
+          # rules are off for this schema and why -- see backend/squawk.toml.
+          echo "$CHANGED" | xargs squawk -c backend/squawk.toml
 
   # Published-CVE scanning. Reports, deliberately: a CVE published overnight in a transitive
   # dependency would otherwise redden main with no code change and nobody to attribute it to --

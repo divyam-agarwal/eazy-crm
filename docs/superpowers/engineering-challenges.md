@@ -4560,3 +4560,161 @@ verify empirically that the key you are looking up is the key the parser actuall
 print the parsed map's key set once, don't assume string-in, string-out. The general form is
 challenge #68's: a check is only as good as the assumption it silently shares with the thing it
 checks.
+
+---
+
+## Challenge 73 — A migration linter whose findings are all unactionable is a step someone will delete
+
+### The problem
+
+The squawk step landed with no config at all, on the judgment that no rule deserved to be excluded.
+The branch was green because the step lints only the migrations a push or PR *changed*, and the
+slice changed none. Run the same tool over the tree it actually guards and the picture inverts:
+
+```
+$ npx squawk-cli@2.65.0 backend/src/main/resources/db/migration/*.sql
+267 issues across 34 files
+  95  prefer-robust-stmts
+  70  prefer-text-field
+  33  require-lock-timeout
+  33  require-statement-timeout
+  32  require-concurrent-index-creation
+   4  (prefer-bigint-over-int, constraint-missing-not-valid, disallowed-unique-constraint)
+```
+
+Every one of those is in a file Flyway has checksummed and nobody may edit. So the first person to
+write migration V35 does not meet a gate; they meet a wall of findings on rules this repo's entire
+history violates by choice, on a branch they cannot make green by fixing anything. The cheapest
+escape from that position is deleting the step, and they would be behaving rationally. A gate that
+can only be satisfied by removing it is worse than no gate: it burns the credibility of the next
+one too.
+
+The naive fix — `--exclude` everything that fires — is the failure mode the design spec §11 named
+in advance ("the failure mode to avoid is disabling rules until it passes"). It would also disable
+`adding-required-field`-adjacent rules by accident and leave a step that runs, reports green, and
+catches nothing.
+
+### The solution
+
+`backend/squawk.toml`, built from the *runner's* semantics rather than from the finding list.
+
+The load-bearing move is one line that is not an exclusion at all:
+
+```toml
+assume_in_transaction = true
+```
+
+Flyway wraps each versioned migration in a single transaction (its Postgres default; opting out
+needs an explicit `-- flyway:executeInTransaction=false` header). Telling squawk that is a
+statement of fact, and it removes 124 of the 267 findings on its own — because those rules'
+premises are *false* under a transaction, not merely inconvenient:
+
+- `prefer-robust-stmts` (95) wants `IF NOT EXISTS` so a migration that died half way can be rerun.
+  Inside a transaction there is no half way: the failure rolls back and the retry starts from an
+  untouched schema. `IF NOT EXISTS` would actively hurt — it turns "this object already exists,
+  something has drifted" from an error into a silent no-op, and surfacing drift is the entire
+  point of a checksummed, run-once migration model.
+- `require-concurrent-index-creation` (29 of 32) wants `CREATE INDEX CONCURRENTLY`, which Postgres
+  **forbids inside a transaction block**. The rule was demanding something the runner makes
+  impossible. The 3 findings that survive are indexes over pre-existing tables — the real hazard —
+  and the rule stays on for them.
+
+Only three rules are then excluded, each with a written reason about this schema, not about noise:
+`prefer-text-field` (widths are load-bearing here — V34's buyer snapshot mirrors `customer`'s
+widths exactly so a freeze cannot truncate, and the rule's actual hazard, *altering* a varchar's
+width, is still caught by `changing-column-type`), and `require-lock-timeout` /
+`require-statement-timeout` (genuine hazards, wrong location: all 34 frozen migrations omit them
+and all 34 run at the Phase 3 cutover, so the setting belongs on the migration role or Flyway's
+connection init SQL where it covers every file at once — a per-file `SET` would protect only
+migrations written after today and would arrive as copy-pasted boilerplate).
+
+The last four findings are handled by `excluded_paths` on five named frozen files rather than by
+excluding their rules, so `prefer-bigint-over-int`, `constraint-missing-not-valid` and
+`disallowed-unique-constraint` stay enforceable on every migration still capable of being fixed.
+
+**The config was then proved in both directions**, which is the part that matters:
+
+```
+$ npx squawk-cli@2.65.0 -c backend/squawk.toml backend/src/main/resources/db/migration/*.sql
+Found 0 issues in 29 files 🎉                                      # exit 0
+
+$ printf 'ALTER TABLE customer ADD COLUMN probe text NOT NULL;\n' > /tmp/squawk-probe/V35__probe.sql
+$ npx squawk-cli@2.65.0 -c backend/squawk.toml /tmp/squawk-probe/V35__probe.sql
+warning[adding-required-field]: Adding a new column that is `NOT NULL` and has no default
+value to an existing table effectively makes it required.
+Found 1 issue in 1 file                                            # exit 1
+```
+
+A one-direction proof ("the repo is green") is exactly what a fully-excluded config would also
+produce.
+
+### Lesson
+
+When a linter is scoped to *changed* files, a green build says nothing about whether the tool is
+survivable — run it over the whole corpus it guards before believing the configuration is done.
+And when the findings are all in files that are frozen by design, the question to ask is not "which
+rules do I switch off" but "which of these rules' *premises* does my runner already make false."
+Three of the four largest rule counts here dissolved into one true statement about Flyway's
+transaction model; only what was left needed a judgment call, and a judgment call on three rules is
+something a reader can audit. A config with a written reason per exclusion is a document; a config
+with `--exclude` and a green build is a deletion with extra steps.
+
+---
+
+## Challenge 74 — A test that guards a CI scan must assert on how scans actually get disabled, not on whether they exist
+
+### The problem
+
+`SupplyChainWorkflowTest` is the whole safety net for a deliberate decision (spec D4): gitleaks,
+actionlint and squawk run in CI only, never in `./gradlew check`, so nothing but this test stops a
+scan disappearing without anyone noticing locally. Its eight original assertions checked that each
+step existed, named a pinned image, and did not carry `continue-on-error: true`.
+
+Every one of the following edits leaves all eight green while the scan in question stops finding
+anything:
+
+| Edit | What it does | Why the test missed it |
+|---|---|---|
+| `if: false`, or `if: github.event_name == 'schedule'`, on the job or any step | the step never runs | nothing asserted on `if` at all |
+| `continue-on-error: ${{ true }}` | GitHub expands and honours it | SnakeYAML yields the **String** `"${{ true }}"`, so `assertNotEquals(Boolean.TRUE, …)` passes |
+| delete `fetch-depth: 0` from the checkout | gitleaks on `push` scans one commit, finds nothing, exits 0 | nothing asserted on the checkout |
+| append `\|\| true` to a `run:` body, or `--exit-code 0` to gitleaks | the step cannot fail | `bodyOf()` only ever asked `contains(…)`, never "contains none of" |
+
+Three of the four are one line, look innocuous in review, and produce a green CI badge. The fourth
+is the most interesting: `assertNotEquals(Boolean.TRUE, …)` is the *natural* way to write "must not
+be softened," and it is wrong for any YAML value a user can write as an expression — the assertion
+and the workflow disagree about the value's type, and the assertion loses quietly.
+
+### The solution
+
+Assert **absence of the key**, not inequality of its value, and assert the negative space:
+
+```java
+static void assertBlocks(Map<String, Object> node, String what) {
+    assertFalse(node.containsKey("continue-on-error"), …);   // any value counts
+}
+static void assertUnconditional(Map<String, Object> node, String what) {
+    assertFalse(node.containsKey("if"), …);                  // no value worth allowing
+}
+```
+
+`assertUnconditional` is applied to the job and to **every** step in it, including the checkout —
+an `if:` there disables all three scans at once. Escape hatches are a "contains none of" sweep
+(`|| true`, `|| exit 0`, `--exit-code 0`). And the spec's §9.4 pinning assertion, implemented as a
+regex sweep over the raw workflow text for moving tags (`:latest`, `:main`, `:stable`, …) rather
+than as three hardcoded coordinates, immediately found `tufin/oasdiff:latest` in two places — a
+Wave 3 line that predated this slice and that no per-tool assertion would ever have reached.
+
+Each of the five new assertions was verified by making the exact edit it guards against and
+watching this class go red, then reverting. That is the only evidence that distinguishes a guard
+from a comment.
+
+### Lesson
+
+A guard test's assertions should be derived from an attack list — "how would someone turn this off
+without deleting it?" — not from an inventory of what is currently in the file. Existence checks
+answer a question nobody was going to get wrong. Two specific forms recur: **assert the key is
+absent rather than not-equal-to-a-value**, because config formats let any literal be written as an
+expression of a different type; and **prefer a general sweep over an enumeration**, because the
+enumeration only covers what existed the day it was written — the general one found a two-year-old
+`:latest` in a block this slice never touched.

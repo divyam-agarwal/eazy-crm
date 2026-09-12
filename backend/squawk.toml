@@ -1,0 +1,96 @@
+# squawk configuration for this repo's Flyway migrations.
+#
+# Read with `squawk -c backend/squawk.toml ...` from the repository root (see the
+# "Migration lint" step in .github/workflows/ci.yml). Squawk auto-discovers only
+# `.squawk.toml`, and only relative to the paths it is linting, so the flag is not
+# optional here.
+#
+# The bar for anything switched off below: a written reason that is about THIS repo's
+# schema or THIS repo's migration runner. "It was noisy" is not a reason, and a rule is
+# never disabled merely because the existing migrations violate it -- three of the four
+# rule-level exclusions below would be made the same way for a greenfield schema.
+#
+# Everything not named here stays on. In particular `adding-required-field`,
+# `ban-drop-column`, `ban-drop-table`, `ban-drop-not-null`, `changing-column-type`,
+# `renaming-column`, `renaming-table` and `adding-serial-primary-key-field` are the rules
+# that actually catch a migration that would break a live database, and they are live.
+
+# Flyway runs each versioned migration inside a single transaction (its Postgres default;
+# opting out needs an explicit `-- flyway:executeInTransaction=false` header). Telling
+# squawk that is a statement of fact about the runner, not a relaxation -- but it has two
+# consequences worth naming, because together they account for 124 of the 267 findings the
+# unconfigured tool reports against this repo's 34 migrations:
+#
+#   * prefer-robust-stmts (95 findings) asks for `IF NOT EXISTS` so a migration that died
+#     half way can be rerun. Inside a transaction there is no half way: the failure rolls
+#     back, Flyway records it in flyway_schema_history without marking the version applied,
+#     and the retry starts from an untouched schema. Worse, `IF NOT EXISTS` would actively
+#     hurt here -- it turns "this object already exists, something has drifted" from an
+#     error into a silent no-op, and drift is exactly what a checksummed, run-once migration
+#     model exists to surface.
+#
+#   * require-concurrent-index-creation (29 of its 32 findings) asks for CREATE INDEX
+#     CONCURRENTLY, which Postgres forbids inside a transaction block. The rule stays ON:
+#     the three findings it keeps, on indexes over pre-existing tables, are the real hazard,
+#     and the honest fix for a future one is the executeInTransaction=false header plus a
+#     deliberate trade of whole-migration atomicity for a shorter write lock. That is a
+#     decision to make per migration, not a rule to switch off.
+assume_in_transaction = true
+
+excluded_rules = [
+  # This schema uses varchar(n) deliberately, and the widths carry meaning.
+  # V34__quotation_version_buyer_snapshot.sql is the clearest case: it freezes the buyer
+  # onto quotation_version at send time, and its header says "Widths mirror `customer`
+  # exactly. A snapshot narrower than its source truncates on freeze." Under `text` that
+  # invariant has nowhere to live -- the snapshot column and the column it copies would be
+  # the same unbounded type whether or not anyone had thought about it. The widths are also
+  # the schema-side half of the Bean Validation @Size limits on the entities; moving them
+  # out of the schema leaves one copy of each limit, in Java, enforceable only by code that
+  # remembered to run.
+  #
+  # The rule's real hazard is narrower than its name: ALTERING a varchar's width takes an
+  # ACCESS EXCLUSIVE lock. That specific move is still caught -- `changing-column-type`
+  # stays enabled.
+  "prefer-text-field",
+
+  # Both of these are genuine live-database hazards, and Phase 3 does put this schema in
+  # front of a real database. They are switched off here because a per-migration
+  # `SET lock_timeout` is the wrong place to solve it for this repo, not because the
+  # hazard is imaginary:
+  #
+  #   * All 34 existing migrations omit both, and Flyway checksums make them uneditable.
+  #     Enforcing the rule on new files only produces a schema where file 35 opens with two
+  #     lines that files 1-34 do not have, copied forward by everyone after -- the shape
+  #     boilerplate takes when it is satisfied rather than reasoned about.
+  #   * It would protect only the migrations written after today. At the Phase 3 cutover all
+  #     35 run against the live database, and the 34 that cannot carry the setting are
+  #     exactly the ones that create every table.
+  #
+  # The setting that covers all of them at once belongs on the migration connection --
+  # `lock_timeout`/`statement_timeout` on the easycrm_owner role, or Flyway's connection
+  # init SQL -- and it is a Phase 3 deployment task, not a lint rule. Tracked as roadmap item 10
+  # (docs/ROADMAP.md, Phase 3 -- SP2 AWS foundation), where the cutover actually happens.
+  "require-lock-timeout",
+  "require-statement-timeout",
+]
+
+# Path-level, not rule-level, and deliberately so: each rule below stays ON for every new
+# migration. These five files are frozen by Flyway checksums -- editing one breaks every
+# database that has already applied it -- so their findings are ones nobody is permitted to
+# act on. Listing the files keeps the rules enforceable where action is still possible.
+#
+#   V10__customer.sql, V16__quotation_version.sql       prefer-bigint-over-int
+#   V22__quotation_enquiry_unique.sql                   constraint-missing-not-valid,
+#                                                       disallowed-unique-constraint
+#   V32__app_user_case_insensitive_email.sql,           require-concurrent-index-creation
+#   V33__assigned_to_indexes.sql
+#
+# Nothing may be added to this list for a migration that has not yet shipped: the entry is
+# an admission that the file can no longer be fixed, and a file being written can.
+excluded_paths = [
+  "*/V10__customer.sql",
+  "*/V16__quotation_version.sql",
+  "*/V22__quotation_enquiry_unique.sql",
+  "*/V32__app_user_case_insensitive_email.sql",
+  "*/V33__assigned_to_indexes.sql",
+]

@@ -270,6 +270,12 @@ change.*
 10. **SP2 — AWS foundation, dev environment.** VPC, ECS, RDS + Proxy, CloudFront/ALB/WAF, ECR,
    Terraform, and CD. **Deploy today's monolith unchanged.** Fix S1 here — `/api/v1/tenant` is
    missing from the ALB routing table and it must be right the first time.
+   Also set `lock_timeout` and `statement_timeout` on the migration connection here (the
+   `easycrm_owner` role, or Flyway's connection init SQL). `backend/squawk.toml` switches off
+   squawk's `require-lock-timeout`/`require-statement-timeout` on the argument that this is the
+   right place for them — all 34 existing migrations are frozen by Flyway checksums and cannot
+   carry a per-file `SET`, and all 34 run at this cutover. Until this is done, nothing enforces a
+   lock timeout on this schema.
 11. **Branch protection.** The moment step 10 auto-deploys `main`, post-merge CI stops being
     defensible. PRs and a required green `check`.
 12. **SP7 — security hardening.** RS256 + JWKS, IAM auth to Proxy, WAF rules, cache-policy tests.
