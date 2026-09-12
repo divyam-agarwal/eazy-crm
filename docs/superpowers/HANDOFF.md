@@ -131,14 +131,36 @@ the first thing to do when the frontend lands.
 
 ### In flight: Wave 1.5 — supply chain, on local branch `supply-chain` — not merged, not pushed
 
-**`main` is at `ac2fc63` and is fully in sync with `origin/main`.** The push warning this section
-used to carry — twelve unpushed commits including the whole buyer-snapshot slice — is resolved:
-that push happened, CI has seen all of it, and there is nothing left to reconcile from it. Don't go
-looking for it again.
+**The old push warning here — twelve commits including the whole buyer-snapshot slice — is
+resolved:** that push happened, `origin/main` reached `ac2fc63`, and CI has seen all of it.
+
+**But local `main` has since moved past `origin/main` again, unpushed — verify this directly
+rather than trusting the last thing written here:**
+
+```
+$ git rev-parse --short main origin/main
+3b00188
+ac2fc63
+$ git log --oneline origin/main..main
+3b00188 docs: plan the supply-chain slice (Wave 1.5)
+5191cf6 docs: design the supply-chain slice (Wave 1.5)
+```
+
+`main` is **two commits ahead of `origin/main`, both unpushed**: `5191cf6` (the design) and
+`3b00188` (the plan) — **this very slice's own spec and plan.** `supply-chain` branches from
+`main` at that same `3b00188`, so the branch and these two docs commits move together: pushing or
+merging the branch has to bring both along, and neither is on the remote today.
 
 The current work is **roadmap item 2, Wave 1.5 (supply-chain hardening)**, on local branch
-`supply-chain`, branched from `3b00188`. **Nothing on this branch has been merged into `main` or
-pushed to `origin`.** Seven commits:
+`supply-chain`. **Nothing from `5191cf6` onward has reached `origin/main`.** The slice's own
+commit sequence is the seven implementation commits below, followed by this file's documentation
+commit (`c2df8fe`, an eighth) and now this fix (a ninth, correcting the false "fully in sync"
+claim a previous pass of this file made). Added to the two `main`-ahead commits above (`5191cf6`,
+`3b00188`), that puts **eleven commits total between `origin/main`'s tip and `supply-chain`'s**
+after this fix is committed — ten before it. A reader diffing `git log --oneline
+origin/main..supply-chain` against that arithmetic should find exactly that many commits and no
+unexplained extras; if the count differs, re-run the two commands above before trusting either
+this file or your memory of it. The seven implementation commits:
 
 | Commit | What it did |
 |---|---|
@@ -175,6 +197,18 @@ verified by `./gradlew clean check` from clean.
   secret) leaves the overall workflow green. Its summary step is honest about that — it writes "No
   report produced — see the step log" and never fabricates a zero-findings result — but nobody is
   prompted to open that job. PR-level visibility is a follow-up worth a roadmap note.
+
+**A pattern worth naming, the most transferable thing this slice produced: three separate written
+claims turned out not to match reality, and all three were caught only by someone actually
+checking, not by reading.** The `.gitleaks.toml` allowlist comment claimed a hardcoded value would
+still fail the scan — untested, and false (challenge #71). The Dependency-Check log message
+diagnosed a slow scan where the real failure was a hard `NvdApiException` in ~4 seconds. And this
+very section, in an earlier pass, asserted `main` was "fully in sync with `origin/main`" — it
+was not, by two commits, and calling that resolved rather than re-verifying it is exactly the
+mistake it claimed not to be making. None of these were caught by re-reading the claim; all three
+were caught by running the command the claim was supposedly backed by. Treat any confident
+statement about tool behavior or repo state in this codebase as a claim to verify, not a fact to
+relay — especially the ones that sound most reassuring.
 
 Engineering-challenges log entries **70–72** came out of this slice; read them before touching
 `.github/workflows/ci.yml` or `.gitleaks.toml` again.

@@ -2,10 +2,15 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `main` at `ac2fc63`, fully pushed to `origin/main` — 591 tests, 0 failures,
-verified by `./gradlew clean check`. (The buyer-snapshot branch merged fast-forward on 2026-09-08
-and was deleted; the previous baseline was 586. `ac2fc63` is docs-only — the reprioritisation
-commit — so the test count is unchanged from `4baa4b4`.)
+**Code baseline:** `main` at `3b00188` — 591 tests, 0 failures, verified by `./gradlew clean
+check`. **`main` is two commits ahead of `origin/main` (`ac2fc63`), both unpushed and both
+docs-only:** `5191cf6` (design) and `3b00188` (plan) — this roadmap's own item 2, Wave 1.5. The
+test count is unchanged from `4baa4b4`/`ac2fc63` because neither of those two commits, nor the
+reprioritisation commit before them, touched code. (The buyer-snapshot branch merged fast-forward
+on 2026-09-08 and was deleted; the previous baseline was 586.) **Verify before relying on this —
+`git rev-parse --short main origin/main` and `git log --oneline origin/main..main` — rather than
+trusting the line above; an earlier pass of this file claimed `main` was fully pushed and was
+wrong.**
 
 This is the layer **above** `docs/superpowers/plans/`. Those are per-slice TDD implementation plans;
 this is the programme that decides which slice is next and why. Every numbered item here gets its
@@ -30,7 +35,8 @@ pass when it starts. **Nothing here replaces a spec.**
 
 # Part 1 — Where we are today
 
-**Verified at `ac2fc63`, not assumed.**
+**Verified at `3b00188`, not assumed — see the code-baseline note above: `main` is two commits
+ahead of pushed `origin/main` (`ac2fc63`), both docs-only.**
 
 ## 1.1 Application
 
