@@ -4499,3 +4499,64 @@ something: the allowlist can only be as meaningful as the rule it is attached to
 seeing the thing being allowed. Writing "X would still fail the scan" without having made X
 happen and watched it fail is indistinguishable, from the next reader's perspective, from a
 guarantee that was verified — until the day someone relies on it.
+
+---
+
+## Challenge 72 — SnakeYAML parses the bare token `on` as a boolean, and a check built on the string key passes vacuously
+
+**Phase:** Implementation (supply-chain slice, `SupplyChainWorkflowTest`, used across Tasks 1–5)
+
+### The problem
+
+`SupplyChainWorkflowTest` asserts against the real `ci.yml` by parsing it with SnakeYAML and
+reading the result as an ordinary `Map` — the natural way to check "does this workflow trigger on
+`schedule`" is `workflow().get("on")`, then look inside that map for `schedule`. Written that way,
+the assertion **passes on every workflow file, including one with no triggers at all, and even one
+where the whole `on:` block was deleted** — `get("on")` returns `null` either way, and a
+subsequent `containsKey(...)`/`assertNotNull` guard against `null` reads as "nothing to check
+here" rather than "the file is malformed." A test built on it would be green for the wrong reason,
+never red for the right one.
+
+The cause is not a bug in SnakeYAML — it is doing exactly what YAML 1.1 (the version it
+implements) specifies. YAML 1.1 resolves a set of bare scalar tokens to booleans by convention:
+`y`, `yes`, `on`, `true` all resolve to `Boolean.TRUE`; `n`, `no`, `off`, `false` to
+`Boolean.FALSE`. GitHub Actions' own workflow schema calls its trigger key `on`, unquoted, in
+every example in its documentation and in this repo's own `ci.yml` — which is precisely the bare
+token YAML 1.1 treats specially. So every GitHub Actions workflow in existence parses, under
+SnakeYAML, with its trigger block keyed by `Boolean.TRUE`, not the string `"on"`. This is the same
+failure shape as challenge #68: a guard that fails in exactly the way the thing it guards fails,
+so it certifies the absence of a problem instead of detecting one. It is also easy to miss in code
+review, because `wf.get("on")` reads as obviously correct to anyone who has not specifically hit
+YAML 1.1's boolean-resolution table — the workflow file's own author writes `on:` and never
+notices Actions' own tooling doesn't share SnakeYAML's opinion about what that token means.
+
+### The solution
+
+`SupplyChainWorkflowTest.triggers()` checks both keys explicitly and documents why:
+
+```java
+Object on = wf.containsKey("on") ? wf.get("on") : wf.get(Boolean.TRUE);
+assertNotNull(on, "no trigger block found under either \"on\" or the YAML 1.1 boolean key");
+```
+
+`containsKey("on")` (not `get("on") != null`) is deliberate — it lets a future workflow that
+somehow legitimately quotes `"on":` still resolve correctly, rather than always preferring the
+boolean key. Every other helper built on `workflow()` (`jobNamed`, `stepsOf`, `stepNamed`) reads
+ordinary string-keyed maps (`jobs`, `steps`, `name`, `run`/`uses`) where YAML 1.1's boolean
+resolution never applies, so the trap is confined to the one key GitHub Actions happens to spell
+the same way YAML 1.1 special-cases — `triggers()` is the only helper that needs the double
+lookup, and it is factored out once rather than repeated at each call site (used to assert the
+`schedule` trigger exists for the nightly Dependency-Check refresh).
+
+### Lesson
+
+A parser that is *correct for its declared spec version* can still silently defeat a check written
+against a different, unstated assumption about what a key means — here, "YAML" was assumed to
+mean "keys are the strings I typed," when SnakeYAML's YAML 1.1 has its own opinion about a small,
+easy-to-forget table of bare tokens (`on`/`off`/`yes`/`no`/`y`/`n`/`true`/`false`). Whenever a
+test parses a config format and then does a **negative-shaped check** (`assertNull`,
+`containsKey` used to justify skipping something, or any assertion that a missing key is fine),
+verify empirically that the key you are looking up is the key the parser actually produced —
+print the parsed map's key set once, don't assume string-in, string-out. The general form is
+challenge #68's: a check is only as good as the assumption it silently shares with the thing it
+checks.

@@ -129,24 +129,64 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### Nothing is in flight. `main` is at `4baa4b4` and is **12 commits ahead of `origin/main`**
+### In flight: Wave 1.5 — supply chain, on local branch `supply-chain` — not merged, not pushed
 
-**Read the push warning below before anything else.** Sub-project 1 — the buyer snapshot — is
-**done and merged**. The `buyer-snapshot` branch fast-forwarded into `main` on 2026-09-08 and was
-deleted; `main` is at `4baa4b4`, verified green from clean with **591 tests, 0 failures, 0 errors**
-(563 root + 28 `platform-primitives`), up from the 586 baseline. Every task was reviewed clean, the
-whole-branch review approved it for merge, and the merged result was re-verified before the branch
-was deleted.
+**`main` is at `ac2fc63` and is fully in sync with `origin/main`.** The push warning this section
+used to carry — twelve unpushed commits including the whole buyer-snapshot slice — is resolved:
+that push happened, CI has seen all of it, and there is nothing left to reconcile from it. Don't go
+looking for it again.
 
-> ### ⚠ `origin/main` is at `2d58300`. CI has never seen any of this.
->
-> Twelve local commits are unpushed. **Eight are this slice; four predate it** — the roadmap, the
-> Modulith evaluation and two docs commits were already unpushed when the slice started. The repo's
-> CI is a post-merge smoke alarm on `push: [main]` (§0's "What CI does and does not do"), so right
-> now *nothing* has been validated on a clean-checkout Testcontainers run on JDK 25 — only on this
-> machine. **Pushing is the first thing to discuss with the user**, and it will fire CI across all
-> twelve at once. It was left unpushed deliberately: the user asked for a merge, and pushing is a
-> separate outward-facing act.
+The current work is **roadmap item 2, Wave 1.5 (supply-chain hardening)**, on local branch
+`supply-chain`, branched from `3b00188`. **Nothing on this branch has been merged into `main` or
+pushed to `origin`.** Seven commits:
+
+| Commit | What it did |
+|---|---|
+| `5053d42` | ci: scan for committed secrets (gitleaks) |
+| `a6edff6` | fix(ci): gitleaks — default ruleset is blind to `${VAR:default}`, add a rule that isn't |
+| `78a01e5` | ci: lint the workflow and its shell (actionlint) |
+| `81aa631` | ci: lint new migrations for unsafe DDL (squawk) |
+| `6c2728d` | build: open weekly dependency update PRs (Dependabot) |
+| `25b6e5c` | ci: scan dependencies for published CVEs (OWASP Dependency-Check) |
+| `0f139ce` | fix: correct the false NVD-key diagnostic and make the check blank-safe |
+
+**599 tests, 0 failures, 0 errors** (591 before this slice + 8 new in `SupplyChainWorkflowTest`),
+verified by `./gradlew clean check` from clean.
+
+**Two things this slice recorded as unverified, honestly, rather than guessed:**
+- **Dependabot's coverage of `buildSrc`.** The `gh api` check for this repo's Dependabot alerts
+  returned HTTP 403 ("Dependabot alerts are disabled for this repository"), and no scan cycle has
+  run yet. Whether Dependabot's weekly update PRs actually reach `buildSrc`'s own dependencies (as
+  opposed to just the root and `backend` catalogs) is **unverified — not assumed either way.**
+- **The Dependency-Check finding count.** There is no local NVD API key, and plugin 13.0.0
+  hard-fails in ~4 seconds with `NvdApiException: Invalid API Key` rather than running slowly, so
+  no finding count exists anywhere yet. The first real CI run, with a valid `NVD_API_KEY` secret in
+  place, produces it. **Acting on whatever it reports is explicitly the next decision — it is not
+  something this slice did.**
+
+**Three deferred, minor findings, recorded so they aren't silently lost:**
+- The custom gitleaks rule's keyword list (`password|secret|token|credential|creds|passwd|
+  api[-_]?key`) does not cover a bare `key` property such as `signing-key:`. Nothing in the repo
+  uses that shape today.
+- The design spec preferred a checksummed release binary over `npm install -g` for squawk; the
+  implementation pins `squawk-cli@2.65.0` instead. The reproducibility concern is met, but the
+  stated preference was never revisited.
+- `dependency-check` is a non-blocking job, so a failed run (a missing or invalid `NVD_API_KEY`
+  secret) leaves the overall workflow green. Its summary step is honest about that — it writes "No
+  report produced — see the step log" and never fabricates a zero-findings result — but nobody is
+  prompted to open that job. PR-level visibility is a follow-up worth a roadmap note.
+
+Engineering-challenges log entries **70–72** came out of this slice; read them before touching
+`.github/workflows/ci.yml` or `.gitleaks.toml` again.
+
+### Before that: buyer snapshot (SP1) — done, merged, and pushed
+
+Sub-project 1 — the buyer snapshot — is **done, merged, and pushed**. The `buyer-snapshot` branch
+fast-forwarded into `main` on 2026-09-08 and was deleted; `main` reached `4baa4b4` at that point,
+verified green from clean with **591 tests, 0 failures, 0 errors** (563 root + 28
+`platform-primitives`), up from the 586 baseline. Every task was reviewed clean, the whole-branch
+review approved it for merge, and the merged result was re-verified before the branch was deleted.
+That merge and everything since (through `ac2fc63`) is now pushed — see above.
 
 Eight commits, in the order they were built:
 

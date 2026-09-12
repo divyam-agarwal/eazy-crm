@@ -2,8 +2,10 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `main` at `4baa4b4` — 591 tests, 0 failures, verified by `./gradlew clean check`.
-(The buyer-snapshot branch merged fast-forward on 2026-09-08 and was deleted; the previous baseline was 586.)
+**Code baseline:** `main` at `ac2fc63`, fully pushed to `origin/main` — 591 tests, 0 failures,
+verified by `./gradlew clean check`. (The buyer-snapshot branch merged fast-forward on 2026-09-08
+and was deleted; the previous baseline was 586. `ac2fc63` is docs-only — the reprioritisation
+commit — so the test count is unchanged from `4baa4b4`.)
 
 This is the layer **above** `docs/superpowers/plans/`. Those are per-slice TDD implementation plans;
 this is the programme that decides which slice is next and why. Every numbered item here gets its
@@ -28,7 +30,7 @@ pass when it starts. **Nothing here replaces a spec.**
 
 # Part 1 — Where we are today
 
-**Verified at `4baa4b4`, not assumed.**
+**Verified at `ac2fc63`, not assumed.**
 
 ## 1.1 Application
 
@@ -55,7 +57,7 @@ a single `VisibleFinder` and guarded by `VisibilityScopingArchTest`.
 | | State |
 |---|---|
 | Gate | `./gradlew clean check` = test + Spotless + SpotBugs (+find-sec-bugs) + JaCoCo, both projects |
-| CI | GitHub Actions, `push: [main]` and `pull_request`, JDK 25, Testcontainers |
+| CI | GitHub Actions, `push: [main]` and `pull_request`, JDK 25, Testcontainers. **Wave 1.5 (branch `supply-chain`, not yet merged) adds two more jobs, three total: `check` (above), `supply-chain` (gitleaks + actionlint + squawk, blocking), `dependency-check` (OWASP Dependency-Check, non-blocking — it reports rather than gates, same reasoning as oasdiff below)** |
 | Contract | `docs/api/openapi.yaml` committed, byte-for-byte drift-guarded by `OpenApiSnapshotTest`; oasdiff changelog in CI, `continue-on-error: true` |
 | Debt | 32 baselined SpotBugs findings (26 are the defensive-copy family) |
 | **Nature** | **Post-merge smoke alarm, not a pre-merge gate.** The repo has never used a PR for real work |
@@ -284,9 +286,9 @@ change.*
 *Exit: known behaviour under load and under failure, with the numbers to prove it.*
 
 ## Phase 5 — Production
-18. Prod environment, blue/green deploys (F17: it doubles the connection budget, not just compute),
+19. Prod environment, blue/green deploys (F17: it doubles the connection budget, not just compute),
     backup/restore rehearsed (R7), alarms routed, a runbook that exists.
-19. Pilot tenants.
+20. Pilot tenants.
 
 *Exit: real users. **The AWS design's own recommendation is to stop here.***
 
@@ -339,7 +341,7 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 | **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 591 tests | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
 | **Frontend** | Nothing. A drift-guarded contract to build against | Everything. `/invite/{token}` first |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
-| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog | Wave 1.5, Wave 1.6, blocking oasdiff, branch protection, 32 SpotBugs findings |
+| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, **Wave 1.5 supply chain (done on branch `supply-chain`, not yet merged)** | Wave 1.6, blocking oasdiff, branch protection, 32 SpotBugs findings |
 | **Local dev** | Gradle + Testcontainers + ngrok | Dockerfile, compose stack, seed data |
 | **AWS** | Design only. Zero resources | SP2, SP3, SP4, SP7, all three environments, CD |
 | **Observability** | Nothing | Wave 2 (app), SP3 (AWS) |
@@ -356,7 +358,7 @@ Ranked. **Effort** is relative, not calendar.
 | # | Item | Why now | Effort | Blocked by |
 |---|---|---|---|---|
 | ~~**1**~~ | ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`** | Was the only **live correctness bug**: a `SENT` quotation silently re-rendered differently after a customer edit, through a link the buyer holds. Open since 2026-08-19 while nine slices landed around it. Closed by freezing the buyer onto `QuotationVersion` at `send()`; H1 and F11 are both closed. **Item 2 is now next.** | S | — |
-| **2** | **Wave 1.5 — supply chain** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
+| ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **implementation done 2026-09-12**, on local branch `supply-chain` (seven commits, `5053d42`..`0f139ce`; 599 tests, 0 failures) — **not yet merged into `main`, not yet pushed** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
 | **3** | **Wave 1.6 — Modulith + cycle fix** | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. Cost rises with every slice added first | S–M | — |
 | **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse | **L** | — (wants decomposing before a spec) |
 | **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
@@ -375,11 +377,12 @@ Ranked. **Effort** is relative, not calendar.
 
 ## 6.1 If you only do three things
 
-**2, 3, and settling D-g.** Item 1 is done. Wave 1.5 and Wave 1.6 are both small and unblocked, and
-together they scan a public repo's supply chain and stop the module graph drifting further before
-the frontend doubles the surface. Settling D-g is not a build item at all — it is a decision plus a
-registrar checkout, and it is the one thing on this page that gets more expensive the longer it
-waits, because every public link minted before it is a link you later have to strand or redirect.
+**3 and settling D-g.** Items 1 and 2 are done — item 2's implementation landed 2026-09-12 on
+branch `supply-chain`, not yet merged. Wave 1.6 is small and unblocked, and closes the module
+graph drifting further before the frontend doubles the surface. Settling D-g is not a build item
+at all — it is a decision plus a registrar checkout, and it is the one thing on this page that
+gets more expensive the longer it waits, because every public link minted before it is a link you
+later have to strand or redirect.
 
 Then take **4 (frontend)** with its own session and a decomposition pass.
 
