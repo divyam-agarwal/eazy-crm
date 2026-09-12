@@ -184,3 +184,37 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.12 -color
+
+      - name: Migration lint (squawk)
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          # Scope: migrations changed in this push or PR, never the whole directory. The 34
+          # existing migrations are frozen by Flyway checksums -- editing one breaks every
+          # database that has already applied it -- so a finding in one of them is a finding
+          # nobody is permitted to act on. The diff is also the rule actually being enforced:
+          # NEW ddl must be safe to run against a live database.
+          if [ -z "${BASE_SHA:-}" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base commit for this event - no migrations to lint."
+            exit 0
+          fi
+          if ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            echo "Base $BASE_SHA is unreachable (force-push?) - no migrations to lint."
+            exit 0
+          fi
+          # --diff-filter=AM: added and modified. A modified migration is itself a Flyway
+          # checksum violation, so squawk flagging it is a second, cheaper alarm on a problem
+          # the application would otherwise discover at startup.
+          CHANGED=$(git diff --name-only --diff-filter=AM "$BASE_SHA" HEAD \
+            -- 'backend/src/main/resources/db/migration/*.sql')
+          if [ -z "$CHANGED" ]; then
+            echo "No migrations changed in this range."
+            exit 0
+          fi
+          echo "Linting:"
+          echo "$CHANGED"
+          npm install -g squawk-cli@2.65.0
+          # xargs rather than an unquoted expansion: multiple paths must word-split, and doing it
+          # this way keeps shellcheck (and therefore the actionlint step above) satisfied.
+          echo "$CHANGED" | xargs squawk

@@ -124,4 +124,34 @@ class SupplyChainWorkflowTest {
                 bodyOf(step).contains("rhysd/actionlint:1.7.12"),
                 "the actionlint image must be pinned to an exact tag");
     }
+
+    // --- squawk -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("the migration lint runs and blocks")
+    void migrationLintBlocks() throws Exception {
+        var step = stepNamed("supply-chain", "Migration lint");
+        assertNotEquals(Boolean.TRUE, step.get("continue-on-error"), "the migration lint must block");
+        assertTrue(
+                bodyOf(step).contains("squawk-cli@2.65.0"),
+                "squawk must be installed at an exact version, not floating");
+    }
+
+    @Test
+    @DisplayName("the migration lint scopes itself to migrations changed in this push or PR")
+    void migrationLintScopesToChangedFiles() throws Exception {
+        String body = bodyOf(stepNamed("supply-chain", "Migration lint"));
+        // Flyway checksums make the 34 existing migrations immutable: editing one breaks every
+        // database that has applied it. Linting them could only produce findings nobody is
+        // permitted to act on, so the scope is the diff -- which is also the rule actually being
+        // enforced, that NEW ddl must be safe against a live database.
+        assertTrue(body.contains("git diff --name-only"), "squawk must lint the changed set, not the tree");
+        assertTrue(
+                body.contains("--diff-filter=AM"),
+                "added and modified: a modified migration is itself a Flyway checksum violation, "
+                        + "so flagging it is a second and cheaper alarm on that problem");
+        assertTrue(
+                body.contains("0000000000000000000000000000000000000000"),
+                "a branch's first push has an all-zeros base and must pass, not error");
+    }
 }
