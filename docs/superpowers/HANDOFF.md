@@ -129,43 +129,41 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### In flight: Wave 1.5 — supply chain, on local branch `supply-chain` — not merged, not pushed
+### Nothing is in flight. Wave 1.5 — supply chain — is merged into `main`, and `main` is unpushed
 
-**The old push warning here — twelve commits including the whole buyer-snapshot slice — is
-resolved:** that push happened, `origin/main` reached `ac2fc63`, and CI has seen all of it.
+**Roadmap item 2 is done.** The `supply-chain` branch merged into `main` fast-forward on
+2026-09-12 and was deleted; there is no branch to resume and no work half-finished. `main` is at
+`7f6a700`, verified green from clean at **604 tests, 0 failures, 0 errors**.
 
-**But local `main` has since moved past `origin/main` again, unpushed — verify this directly
-rather than trusting the last thing written here:**
+> ### ⚠ `origin/main` is at `ac2fc63`. Thirteen commits are unpushed, and CI has seen none of them.
+>
+> This is the same shape as the warning the buyer-snapshot slice left here, and it matters more
+> this time: **the three blocking scans this slice added have only ever run on one macOS laptop.**
+> `gitleaks`, `actionlint` and `squawk` were each proven able to fail locally, but no GitHub
+> Actions runner has executed the `supply-chain` job even once. The first push fires CI across all
+> thirteen commits at once, and it is the real debut of every gate in this slice.
+>
+> Pushing is an outward-facing act and was deliberately left to the user. **Discuss it before
+> doing it.**
+
+**Verify the position directly rather than trusting the last thing written here** — this file has
+stated it wrongly twice:
 
 ```
 $ git rev-parse --short main
-3b00188
+7f6a700
 $ git rev-parse --short origin/main
 ac2fc63
-$ git log --oneline origin/main..main
-3b00188 docs: plan the supply-chain slice (Wave 1.5)
-5191cf6 docs: design the supply-chain slice (Wave 1.5)
+$ git rev-list --count origin/main..main
+13
 ```
 
 (`git rev-parse --short main origin/main` as a single combined invocation fails outright on this
 git — `fatal: Needed a single revision` — so resolve each ref separately, as above.)
 
-`main` is **two commits ahead of `origin/main`, both unpushed**: `5191cf6` (the design) and
-`3b00188` (the plan) — **this very slice's own spec and plan.** `supply-chain` branches from
-`main` at that same `3b00188`, so the branch and these two docs commits move together: pushing or
-merging the branch has to bring both along, and neither is on the remote today.
-
-The current work is **roadmap item 2, Wave 1.5 (supply-chain hardening)**, on local branch
-`supply-chain`. **Nothing from `5191cf6` onward has reached `origin/main`.** The slice's own
-commit sequence is the seven implementation commits below, followed by this file's documentation
-commit (`c2df8fe`), a fix correcting the false "fully in sync" claim a previous pass of this file
-made, and the whole-branch final fix wave.
-
-**The count, measured rather than derived.** `git rev-list --count origin/main..supply-chain`
-read **twelve** immediately before the final-fix-wave commit was made, which takes it to
-**thirteen**. Do not extend that arithmetic by hand: this number has now been stated wrongly twice
-in this file, both times by adding up commits someone remembered instead of running the one
-command that answers it. Run it. The seven implementation commits:
+The thirteen include this slice's own design spec (`5191cf6`) and implementation plan (`3b00188`),
+which were committed to `main` before the branch was cut, plus the eleven below. The seven
+implementation commits:
 
 | Commit | What it did |
 |---|---|
@@ -176,6 +174,23 @@ command that answers it. Run it. The seven implementation commits:
 | `6c2728d` | build: open weekly dependency update PRs (Dependabot) |
 | `25b6e5c` | ci: scan dependencies for published CVEs (OWASP Dependency-Check) |
 | `0f139ce` | fix: correct the false NVD-key diagnostic and make the check blank-safe |
+
+…followed by four documentation and hardening commits:
+
+| Commit | What it did |
+|---|---|
+| `c2df8fe` | docs: record the supply-chain slice |
+| `36fd495` | docs: correct the main/origin sync claim in the handoff and roadmap |
+| `3b9d1e6` | docs: stop presenting a command that never ran as a transcript |
+| `7f6a700` | fix(ci): make the supply-chain scans survivable and the guard test load-bearing |
+
+**`7f6a700` is the one to read if you only read one.** The whole-branch review found the guard
+test did not guard: `if: false` on the `supply-chain` job disabled every scan while all eight
+assertions passed, `|| true` on a scan body swallowed its exit status undetected, and deleting
+`fetch-depth: 0` silently collapsed gitleaks to a single commit. It also found `squawk` would have
+failed the *next* migration PR on 267 pre-existing findings across rules this repo has always
+violated by choice — a gate whose cheapest escape is deletion. `backend/squawk.toml` and five more
+assertions came out of that.
 
 **604 tests, 0 failures, 0 errors** (576 root + 28 `platform-primitives`), verified by
 `./gradlew clean check` from clean after the final fix wave — 591 before this slice, plus 13 in
@@ -194,7 +209,7 @@ continue-on-error guard that checks the key is absent rather than merely not `tr
   place, produces it. **Acting on whatever it reports is explicitly the next decision — it is not
   something this slice did.**
 
-**Three deferred, minor findings, recorded so they aren't silently lost:**
+**Four deferred, minor findings, recorded so they aren't silently lost:**
 - The custom gitleaks rule's keyword list (`password|secret|token|credential|creds|passwd|
   api[-_]?key`) does not cover a bare `key` property such as `signing-key:`. Nothing in the repo
   uses that shape today.
@@ -212,20 +227,72 @@ continue-on-error guard that checks the key is absent rather than merely not `tr
   report produced — see the step log" and never fabricates a zero-findings result — but nobody is
   prompted to open that job. PR-level visibility is a follow-up worth a roadmap note.
 
-**A pattern worth naming, the most transferable thing this slice produced: three separate written
-claims turned out not to match reality, and all three were caught only by someone actually
-checking, not by reading.** The `.gitleaks.toml` allowlist comment claimed a hardcoded value would
-still fail the scan — untested, and false (challenge #71). The Dependency-Check log message
-diagnosed a slow scan where the real failure was a hard `NvdApiException` in ~4 seconds. And this
-very section, in an earlier pass, asserted `main` was "fully in sync with `origin/main`" — it
-was not, by two commits, and calling that resolved rather than re-verifying it is exactly the
-mistake it claimed not to be making. None of these were caught by re-reading the claim; all three
-were caught by running the command the claim was supposedly backed by. Treat any confident
-statement about tool behavior or repo state in this codebase as a claim to verify, not a fact to
-relay — especially the ones that sound most reassuring.
+**A pattern worth naming, the most transferable thing this slice produced: six separate written
+claims turned out not to match reality, and every one was caught by someone running the claim
+rather than reading it.**
 
-Engineering-challenges log entries **70–72** came out of this slice; read them before touching
-`.github/workflows/ci.yml` or `.gitleaks.toml` again.
+1. The `.gitleaks.toml` allowlist comment claimed a hardcoded value on those lines would still
+   fail the scan. False — gitleaks is structurally blind inside `${VAR:default}` (challenge #71).
+2. The Dependency-Check log message diagnosed a slow, rate-limited scan where the real failure is
+   a hard `NvdApiException` in ~4 seconds.
+3. That same message, after being corrected, still fired at **configuration time on every Gradle
+   invocation** — `./gradlew help` printed it twice with no scan in the task graph. The wording was
+   fixed; the trigger was not, until the final fix wave.
+4. This very section, in an earlier pass, asserted `main` was "fully in sync with `origin/main`".
+   It was not, by two commits.
+5. The correction to (4) shipped a **fabricated transcript** — it showed
+   `git rev-parse --short main origin/main` printing two SHAs, in the paragraph warning about
+   untested claims. That command errors and prints nothing.
+6. **Still open:** challenge #74's Lesson calls the swept-up `tufin/oasdiff:latest` "a two-year-old
+   `:latest`". It was introduced in `85a4b69` on 2026-09-02 — ten days before that sentence was
+   written. Left unfixed deliberately rather than silently: it was found after the fix wave closed,
+   and it is a one-line correction whenever someone next touches that file.
+
+Not one of these was caught by re-reading the claim. Treat any confident statement about tool
+behaviour or repo state in this codebase as a claim to verify, not a fact to relay — and be most
+suspicious of the ones that sound reassuring.
+
+Engineering-challenges log entries **70–74** came out of this slice; read them before touching
+`.github/workflows/ci.yml`, `.gitleaks.toml` or `backend/squawk.toml` again. **#73** (a migration
+linter whose findings are all unactionable is a step someone will delete) and **#74** (a test that
+guards a CI scan must assert on how scans actually get disabled, not on whether they exist) are the
+two with the widest application beyond this slice.
+
+### So what do I do next?
+
+**Three things are owed before new feature work, and the first two are decisions, not slices.**
+
+1. **Push, or decide not to.** Thirteen commits, CI has run none of them, and the scans this slice
+   added have never executed on a runner. Raise it with the user; do not push unasked.
+2. **Two follow-ups that only the first CI run can settle** — enable Dependabot alerts on the repo
+   (the `gh api` probe returns 403 today, which is why `buildSrc` coverage is unverified), and
+   watch the first `dependency-check` job. It is non-blocking, so if `NVD_API_KEY` is wrong the job
+   fails while the workflow stays green; the summary says "No report produced", but only to someone
+   who opens it. That run also produces the CVE count that does not exist yet.
+3. **Then roadmap item 3 — Wave 1.6, Modulith plus the H4 cycle fix.** Small, unblocked, and it
+   settles decision **D-e** (packages or Gradle modules as the boundary source of truth) inside the
+   slice. Two version traps are already recorded in
+   `../architecture/2026-09-03-spring-modulith-evaluation.md`: Modulith 2.1.1 is the Boot 4 line
+   (1.x is Boot 3), and Maven Central's *search API* is stale for that coordinate — read
+   `repo1.maven.org`'s `maven-metadata.xml` instead. `spring-modulith-core` also pulls ArchUnit
+   1.4.2 at compile scope while this repo pins 1.4.1 deliberately; Gradle resolves highest-wins, so
+   that bump happens silently unless it is made explicitly in the catalog with a comment.
+
+**Running alongside all of it: D-g, the domain name.** It is not a build item — a decision plus a
+registrar checkout — and it is the one open thing that gets more expensive the longer it waits,
+because every public link minted before it is settled is a link that later has to be stranded or
+permanently redirected. Since the 2026-09-12 reprioritisation it gates **item 4, the frontend**,
+not the marketing site. The RDAP results in `../ROADMAP.md` track H were checked on 2026-09-05 and
+`eazycrm.in` expires 2026-12-15 — re-check before deciding.
+
+**Two more parked findings, real but not blocking:**
+- `backend/squawk.toml`'s `excluded_paths` disables **all** rules on the five frozen migration
+  files it names, while the comment above it reads as though only the listed rules are excluded.
+  Harmless — those files cannot change without breaking a Flyway checksum — but the comment is
+  narrower than the mechanism.
+- A PR touching **only** one of those five excluded files makes squawk exit 1 with
+  `Failed to find files for provided patterns`. That reddens the job in the safe direction, but the
+  message has nothing to do with the real problem (a Flyway checksum violation).
 
 ### Before that: buyer snapshot (SP1) — done, merged, and pushed
 
@@ -789,8 +856,35 @@ All under `docs/superpowers/`:
 
 ## 3. Current state
 
-- **Latest code work: the buyer snapshot** — branch `buyer-snapshot`, tip `c24ae5e`, off `main` at
-  `82733f1`, **green at 591 tests but not yet merged** (see §0). Six task commits
+- **Latest code work: Wave 1.5, supply chain** — merged at `7f6a700`, 604 tests. Four scanners, one
+  guard test, and one decision that shapes all of it: **none of the scanners is wired into
+  `./gradlew check`.** They are Go/Rust/npm binaries, and wrapping them in Exec tasks would make
+  every local build slower and demand three installs. The cost of that choice — a green local run
+  no longer implying a green CI — is bounded by
+  `backend/src/test/java/com/easycrm/platform/supplychain/SupplyChainWorkflowTest.java`, which
+  parses the real `.github/workflows/ci.yml` and fails `check` if a scan is deleted **or weakened**.
+  Weakened is the operative word: its 13 assertions cover `if:` (a scan skipped by condition),
+  `continue-on-error` asserted *absent* rather than merely not `true` (because `${{ true }}` parses
+  as a String), `|| true` / `--exit-code 0` swallowing a scan's exit status, a shallow
+  `fetch-depth` silently reducing gitleaks to one commit, and any floating image tag. Add a scan
+  step and you must add its assertions too — that is the intended friction.
+  - **`.gitleaks.toml`** carries a custom rule, `easycrm-default-credential`, because gitleaks'
+    default ruleset cannot see inside Spring's `${VAR:default}` syntax at all — its capture group
+    cannot begin at `$`. The three dev defaults in `application.yml` are allowlisted against that
+    rule specifically, so a real credential put in the same position still fails. Challenge #71.
+  - **`backend/squawk.toml`** sets `assume_in_transaction = true` — a fact about how Flyway runs
+    migrations, not a relaxation — which removes 124 of 267 findings on its own, and excludes three
+    rules with written reasons. The CI step lints only migrations **changed** in the push or PR,
+    because Flyway checksums make the existing 34 immutable. Challenge #73.
+  - **Dependency-Check reports, it does not block** (spec D1), in both places: `continue-on-error`
+    on the job and `failBuildOnCVSS = 11f` above the maximum possible score. Its flip trigger is
+    branch protection, roadmap item 8.
+  - Design: [`specs/2026-09-12-supply-chain-design.md`](specs/2026-09-12-supply-chain-design.md).
+    Plan: [`plans/2026-09-12-supply-chain.md`](plans/2026-09-12-supply-chain.md).
+
+- **The buyer snapshot** — branch `buyer-snapshot`, tip `c24ae5e`, off `main` at
+  `82733f1`, **merged fast-forward 2026-09-08 and pushed; the branch is gone.** It was green at 591
+  tests, which was the baseline until Wave 1.5 took it to 604 (see §0). Six task commits
   (`a3d89f1`..`c24ae5e`), TDD, one per task, each reviewed clean. Closes F11 / hazard H1 /
   sub-project 1 — the repo's only live correctness bug — and, in the same edit, D10's architectural
   prerequisite for extracting `document-svc`.

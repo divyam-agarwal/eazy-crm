@@ -2,16 +2,20 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `main` at `3b00188` — 591 tests, 0 failures, verified by `./gradlew clean
-check`. **`main` is two commits ahead of `origin/main` (`ac2fc63`), both unpushed and both
-docs-only:** `5191cf6` (design) and `3b00188` (plan) — this roadmap's own item 2, Wave 1.5. The
-test count is unchanged from `4baa4b4`/`ac2fc63` because neither of those two commits, nor the
-reprioritisation commit before them, touched code. (The buyer-snapshot branch merged fast-forward
-on 2026-09-08 and was deleted; the previous baseline was 586.) **Verify before relying on this —
-`git rev-parse --short main`, `git rev-parse --short origin/main` (as two separate invocations;
-passing both refs to one `git rev-parse --short` call fails with `fatal: Needed a single
-revision` on this git), and `git log --oneline origin/main..main` — rather than trusting the line
-above; an earlier pass of this file claimed `main` was fully pushed and was wrong.**
+**Code baseline:** `main` at `7f6a700` — **604 tests, 0 failures**, verified by `./gradlew clean
+check` from clean on the merged result. Wave 1.5 (item 2) merged fast-forward on 2026-09-12 and
+the `supply-chain` branch was deleted; 591 before it, plus 13 in `SupplyChainWorkflowTest`. (The
+buyer-snapshot branch merged the same way on 2026-09-08; the baseline before that was 586.)
+
+**`main` is thirteen commits ahead of `origin/main` (`ac2fc63`) and none of it has been pushed** —
+including every scan Wave 1.5 added, so **CI has never executed any of them**. They were each
+proven able to fail locally; no GitHub Actions runner has run the `supply-chain` job once.
+
+**Verify before relying on any of this** — `git rev-parse --short main`,
+`git rev-parse --short origin/main` (as two separate invocations; passing both refs to one
+`git rev-parse --short` call fails with `fatal: Needed a single revision` on this git), and
+`git rev-list --count origin/main..main`. An earlier pass of this file claimed `main` was fully
+pushed and was wrong, and a later pass got the commit count wrong twice.
 
 This is the layer **above** `docs/superpowers/plans/`. Those are per-slice TDD implementation plans;
 this is the programme that decides which slice is next and why. Every numbered item here gets its
@@ -36,8 +40,8 @@ pass when it starts. **Nothing here replaces a spec.**
 
 # Part 1 — Where we are today
 
-**Verified at `3b00188`, not assumed — see the code-baseline note above: `main` is two commits
-ahead of pushed `origin/main` (`ac2fc63`), both docs-only.**
+**Verified at `7f6a700`, not assumed — see the code-baseline note above: `main` is thirteen
+commits ahead of pushed `origin/main` (`ac2fc63`), and CI has run none of them.**
 
 ## 1.1 Application
 
@@ -49,7 +53,7 @@ ahead of pushed `origin/main` (`ac2fc63`), both docs-only.**
 | Schema | 34 Flyway migrations, latest `V34__quotation_version_buyer_snapshot.sql` |
 | Wedge | enquiry → versioned GST quotation → order — **complete end to end and hardened**, plus activity/follow-up, nightly auto-expiry, PDF render and WhatsApp share |
 | Multi-user | Invitations, accept, revoke, pending list; members list / change-role / disable / enable |
-| Tests | 591 (563 root + 28 primitives), 0 failures |
+| Tests | 604 (576 root + 28 primitives), 0 failures |
 
 ## 1.2 Tenant isolation — the thing that is actually finished
 
@@ -64,7 +68,7 @@ a single `VisibleFinder` and guarded by `VisibilityScopingArchTest`.
 | | State |
 |---|---|
 | Gate | `./gradlew clean check` = test + Spotless + SpotBugs (+find-sec-bugs) + JaCoCo, both projects |
-| CI | GitHub Actions, `push: [main]` and `pull_request`, JDK 25, Testcontainers. **Wave 1.5 (branch `supply-chain`, not yet merged) adds two more jobs, three total: `check` (above), `supply-chain` (gitleaks + actionlint + squawk, blocking), `dependency-check` (OWASP Dependency-Check, non-blocking — it reports rather than gates, same reasoning as oasdiff below)** |
+| CI | GitHub Actions, `push: [main]` and `pull_request`, JDK 25, Testcontainers. **Wave 1.5 (merged 2026-09-12) added two more jobs, three total: `check` (above), `supply-chain` (gitleaks + actionlint + squawk, blocking), `dependency-check` (OWASP Dependency-Check, non-blocking — it reports rather than gates, same reasoning as oasdiff below)** |
 | Contract | `docs/api/openapi.yaml` committed, byte-for-byte drift-guarded by `OpenApiSnapshotTest`; oasdiff changelog in CI, `continue-on-error: true` |
 | Debt | 32 baselined SpotBugs findings (26 are the defensive-copy family) |
 | **Nature** | **Post-merge smoke alarm, not a pre-merge gate.** The repo has never used a PR for real work |
@@ -100,8 +104,8 @@ remaining: cursor pagination, the `SALES_MANAGER` tier (H6), password reset and 
 profile, and whatever the frontend demands once it is real.
 
 ### B — Build and CI
-Wave 1 done. **1.5** supply chain (`gitleaks`, Dependabot/Renovate, OWASP Dependency-Check,
-`squawk`, `actionlint`, and Trivy once a Dockerfile exists). **1.6** module boundaries (Modulith,
+Waves 1 and 1.5 done — supply chain landed 2026-09-12 with `gitleaks`, `actionlint`, `squawk`,
+Dependabot and OWASP Dependency-Check; Trivy still waits on a Dockerfile. **1.6** module boundaries (Modulith,
 M1–M7). **Then the character change:** CI must become a *pre-merge gate* — PRs plus branch
 protection — the moment CD exists, because from that moment a red `main` deploys itself.
 
@@ -229,8 +233,10 @@ Each phase ends somewhere it is safe to stop.
    *not* folded in:** it was declined and rescheduled to whenever SP6 or SP8 needs it — see
    [design spec §7](superpowers/specs/2026-09-07-buyer-snapshot-design.md) and Appendix A of the
    service-scope doc. Design reversed D10's JSONB column to flat columns; see §3.1 of the spec.
-2. **Wave 1.5 — supply chain.** Cheapest real security value on a public repo shipping JWT auth,
-   bcrypt and GST data.
+2. ~~**Wave 1.5 — supply chain.**~~ **DONE 2026-09-12, merged at `7f6a700`.** `gitleaks`,
+   `actionlint` and `squawk` blocking; Dependabot weekly; OWASP Dependency-Check reporting. See
+   [`superpowers/specs/2026-09-12-supply-chain-design.md`](superpowers/specs/2026-09-12-supply-chain-design.md).
+   **Not yet pushed — CI has never run these gates.**
 3. **Wave 1.6 — module boundaries.** Modulith `verify()` + `Documenter`, and the H4 cycle fix that
    comes with it.
 4. **Settle D-g and register the domain — the name only, not the site.** The marketing site moved
@@ -351,10 +357,10 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 
 | Track | Have | Left |
 |---|---|---|
-| **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 591 tests | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
+| **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 604 tests | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
 | **Frontend** | Nothing. A drift-guarded contract to build against | Everything. `/invite/{token}` first |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
-| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, **Wave 1.5 supply chain (done on branch `supply-chain`, not yet merged)** | Wave 1.6, blocking oasdiff, branch protection, 32 SpotBugs findings |
+| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, **Wave 1.5 supply chain (merged 2026-09-12, never yet run in CI)** | Wave 1.6, blocking oasdiff, branch protection, 32 SpotBugs findings |
 | **Local dev** | Gradle + Testcontainers + ngrok | Dockerfile, compose stack, seed data |
 | **AWS** | Design only. Zero resources | SP2, SP3, SP4, SP7, all three environments, CD |
 | **Observability** | Nothing | Wave 2 (app), SP3 (AWS) |
@@ -370,8 +376,8 @@ Ranked. **Effort** is relative, not calendar.
 
 | # | Item | Why now | Effort | Blocked by |
 |---|---|---|---|---|
-| ~~**1**~~ | ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`** | Was the only **live correctness bug**: a `SENT` quotation silently re-rendered differently after a customer edit, through a link the buyer holds. Open since 2026-08-19 while nine slices landed around it. Closed by freezing the buyer onto `QuotationVersion` at `send()`; H1 and F11 are both closed. **Item 2 is now next.** | S | — |
-| ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **implementation done 2026-09-12**, on local branch `supply-chain` (seven commits, `5053d42`..`0f139ce`; 599 tests, 0 failures) — **not yet merged into `main`, not yet pushed** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
+| ~~**1**~~ | ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`** | Was the only **live correctness bug**: a `SENT` quotation silently re-rendered differently after a customer edit, through a link the buyer holds. Open since 2026-08-19 while nine slices landed around it. Closed by freezing the buyer onto `QuotationVersion` at `send()`; H1 and F11 are both closed. **Item 2 is done too, as of 2026-09-12; item 3 is next.** | S | — |
+| ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **DONE 2026-09-12, merged fast-forward at `7f6a700`** (eleven commits, `5053d42`..`7f6a700`; 604 tests, 0 failures). `gitleaks`, `actionlint` and `squawk` block; Dependabot opens weekly PRs; OWASP Dependency-Check reports without blocking (D1, flip trigger = branch protection). None is wired into `./gradlew check` — `SupplyChainWorkflowTest`'s 13 assertions are what make that safe, and they guard against `if:`, `continue-on-error`, `\|\| true`, a shallow `fetch-depth` and floating tags, not merely against a step's absence. **Still unpushed, so CI has never run any of it.** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
 | **3** | **Wave 1.6 — Modulith + cycle fix** | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. Cost rises with every slice added first | S–M | — |
 | **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse | **L** | — (wants decomposing before a spec) |
 | **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
@@ -390,12 +396,15 @@ Ranked. **Effort** is relative, not calendar.
 
 ## 6.1 If you only do three things
 
-**3 and settling D-g.** Items 1 and 2 are done — item 2's implementation landed 2026-09-12 on
-branch `supply-chain`, not yet merged. Wave 1.6 is small and unblocked, and closes the module
-graph drifting further before the frontend doubles the surface. Settling D-g is not a build item
-at all — it is a decision plus a registrar checkout, and it is the one thing on this page that
-gets more expensive the longer it waits, because every public link minted before it is a link you
-later have to strand or redirect.
+**3, settling D-g, and pushing.** Items 1 and 2 are both done and merged. Wave 1.6 is small and
+unblocked, and stops the module graph drifting further before the frontend doubles the surface.
+Settling D-g is not a build item at all — a decision plus a registrar checkout — and it is the one
+thing on this page that gets more expensive the longer it waits, because every public link minted
+before it is settled is a link you later have to strand or permanently redirect.
+
+**The third is not a slice: push.** Thirteen commits sit on local `main`, including every scan
+Wave 1.5 added, and CI has executed none of them. Until that push happens the supply-chain gates
+exist only on one laptop, which is very nearly the same as not existing.
 
 Then take **4 (frontend)** with its own session and a decomposition pass.
 
