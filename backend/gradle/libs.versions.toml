@@ -18,7 +18,7 @@ junit = "5.13.4"
 # 2026-09-01. The 8.x line exists upstream (latest 8.10.1) but the brief calls out 7.x
 # as the known-good major line for Gradle 9.6.1; 7.2.1 is the newest patch on that line.
 # Documented floor was 7.0.2 -- this is a verified-latest-on-the-known-good-line pick.
-spotless = "7.2.1"
+spotless = "8.10.2"
 # Verified against plugins.gradle.org/m2 on 2026-09-01: 6.5.11 is both the newest release
 # overall and still the known-good 6.x major line called out in the brief (no 7.x exists
 # yet upstream). Documented floor was 6.1.13 -- this is a verified-latest pick.
