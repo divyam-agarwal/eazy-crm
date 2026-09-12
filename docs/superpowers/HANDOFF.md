@@ -138,13 +138,17 @@ resolved:** that push happened, `origin/main` reached `ac2fc63`, and CI has seen
 rather than trusting the last thing written here:**
 
 ```
-$ git rev-parse --short main origin/main
+$ git rev-parse --short main
 3b00188
+$ git rev-parse --short origin/main
 ac2fc63
 $ git log --oneline origin/main..main
 3b00188 docs: plan the supply-chain slice (Wave 1.5)
 5191cf6 docs: design the supply-chain slice (Wave 1.5)
 ```
+
+(`git rev-parse --short main origin/main` as a single combined invocation fails outright on this
+git — `fatal: Needed a single revision` — so resolve each ref separately, as above.)
 
 `main` is **two commits ahead of `origin/main`, both unpushed**: `5191cf6` (the design) and
 `3b00188` (the plan) — **this very slice's own spec and plan.** `supply-chain` branches from

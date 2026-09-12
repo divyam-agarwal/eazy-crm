@@ -8,9 +8,10 @@ docs-only:** `5191cf6` (design) and `3b00188` (plan) — this roadmap's own item
 test count is unchanged from `4baa4b4`/`ac2fc63` because neither of those two commits, nor the
 reprioritisation commit before them, touched code. (The buyer-snapshot branch merged fast-forward
 on 2026-09-08 and was deleted; the previous baseline was 586.) **Verify before relying on this —
-`git rev-parse --short main origin/main` and `git log --oneline origin/main..main` — rather than
-trusting the line above; an earlier pass of this file claimed `main` was fully pushed and was
-wrong.**
+`git rev-parse --short main`, `git rev-parse --short origin/main` (as two separate invocations;
+passing both refs to one `git rev-parse --short` call fails with `fatal: Needed a single
+revision` on this git), and `git log --oneline origin/main..main` — rather than trusting the line
+above; an earlier pass of this file claimed `main` was fully pushed and was wrong.**
 
 This is the layer **above** `docs/superpowers/plans/`. Those are per-slice TDD implementation plans;
 this is the programme that decides which slice is next and why. Every numbered item here gets its
