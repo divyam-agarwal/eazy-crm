@@ -8,4 +8,5 @@ repositories { gradlePluginPortal() }
 dependencies {
     implementation("com.diffplug.spotless:spotless-plugin-gradle:${libs.versions.spotless.get()}")
     implementation("com.github.spotbugs:com.github.spotbugs.gradle.plugin:${libs.versions.spotbugs.get()}")
+    implementation("org.owasp.dependencycheck:org.owasp.dependencycheck.gradle.plugin:${libs.versions.dependencyCheck.get()}")
 }

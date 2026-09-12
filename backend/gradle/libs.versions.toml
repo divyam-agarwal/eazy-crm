@@ -43,6 +43,11 @@ findsecbugs = "1.14.0"
 # spring-boot-starter-parent 4.1.0, matching springBoot above. The 2.x line (latest 2.9.0)
 # is the Boot 3 line and will NOT work here; every pre-2026 tutorial names it.
 springdoc = "3.1.0"
+# --- supply chain, added by the Wave 1.5 slice ---
+# Verified against plugins.gradle.org/m2 on 2026-09-12: latest and release are both 13.0.0,
+# published 2026-08-03. Version 9 onward requires an NVD API key for a usable sync rate --
+# NVD_API_KEY is a repository secret, and ~/.gradle/gradle.properties holds nvdApiKey locally.
+dependencyCheck = "13.0.0"
 
 [libraries]
 openhtmltopdf-pdfbox = { module = "com.openhtmltopdf:openhtmltopdf-pdfbox", version.ref = "openhtmltopdf" }
@@ -62,3 +67,4 @@ springBoot = { id = "org.springframework.boot", version.ref = "springBoot" }
 springDependencyManagement = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 spotbugs = { id = "com.github.spotbugs", version.ref = "spotbugs" }
+dependencyCheck = { id = "org.owasp.dependencycheck", version.ref = "dependencyCheck" }

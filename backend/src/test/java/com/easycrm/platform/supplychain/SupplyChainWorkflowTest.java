@@ -154,4 +154,28 @@ class SupplyChainWorkflowTest {
                 body.contains("0000000000000000000000000000000000000000"),
                 "a branch's first push has an all-zeros base and must pass, not error");
     }
+
+    // --- dependency-check -----------------------------------------------------------------
+
+    @Test
+    @DisplayName("the dependency scan reports rather than blocks, and says so in the workflow")
+    void dependencyScanReportsAndDoesNotBlock() throws Exception {
+        // The inverse of every other assertion in this class, and deliberately so (spec D1). A
+        // CVE published overnight in a transitive dependency would otherwise redden main with no
+        // code change and nobody to attribute it to -- which is how gates get ignored. The flip
+        // trigger is branch protection, at which point there is a PR queue to triage in.
+        assertEquals(
+                Boolean.TRUE,
+                jobNamed("dependency-check").get("continue-on-error"),
+                "dependency-check must NOT block while CI is post-merge only");
+    }
+
+    @Test
+    @DisplayName("the dependency scan refreshes its vulnerability database nightly")
+    void dependencyScanRunsOnASchedule() throws Exception {
+        assertTrue(
+                triggers().containsKey("schedule"),
+                "without a schedule the NVD database only refreshes when someone pushes, so a "
+                        + "quiet week reports against a stale database");
+    }
 }

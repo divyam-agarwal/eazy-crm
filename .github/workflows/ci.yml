@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Nightly, for the NVD database refresh. 01:30 UTC is ~07:00 IST. Without this the database
+  # only refreshes when someone pushes, so a quiet week reports against a stale database.
+  schedule:
+    - cron: '30 1 * * *'
 
 # GITHUB_TOKEN only needs to read the repo checkout and let actions/upload-artifact write
 # the failure-report artifact -- both covered by the default `contents: read` scope.
@@ -218,3 +222,64 @@ jobs:
           # xargs rather than an unquoted expansion: multiple paths must word-split, and doing it
           # this way keeps shellcheck (and therefore the actionlint step above) satisfied.
           echo "$CHANGED" | xargs squawk
+
+  # Published-CVE scanning. Reports, deliberately: a CVE published overnight in a transitive
+  # dependency would otherwise redden main with no code change and nobody to attribute it to --
+  # the same reasoning that made the oasdiff step non-blocking. Flip continue-on-error to false
+  # when branch protection exists (roadmap item 8) and findings land in a PR queue.
+  dependency-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # The NVD database is large and slow to build from cold. A miss is slow, not broken, so
+      # this must never be the reason the job fails.
+      - name: Cache the NVD database
+        uses: actions/cache@v6
+        with:
+          path: backend/build/dependency-check-data
+          key: nvd-${{ github.run_id }}
+          restore-keys: nvd-
+
+      - name: Dependency-Check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: ./gradlew dependencyCheckAggregate --no-daemon --console=plain
+
+      - name: Summarise findings
+        if: always()
+        run: |
+          set -euo pipefail
+          REPORT=build/reports/dependency-check-report.json
+          echo "## Dependency-Check" >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -f "$REPORT" ]; then
+            echo "No report produced - see the step log." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Count vulnerable dependencies rather than raw CVEs: one bad library with forty CVEs
+          # is one thing to upgrade, and a CVE count would report it as forty problems.
+          COUNT=$(python3 -c "import json;d=json.load(open('$REPORT'));print(sum(1 for x in d.get('dependencies',[]) if x.get('vulnerabilities')))")
+          echo "Vulnerable dependencies: **$COUNT**" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-check-report
+          path: backend/build/reports/dependency-check-report.*
+          retention-days: 7

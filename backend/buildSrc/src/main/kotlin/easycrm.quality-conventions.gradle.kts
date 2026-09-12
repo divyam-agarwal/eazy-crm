@@ -24,6 +24,7 @@ plugins {
     jacoco
     id("com.diffplug.spotless")
     id("com.github.spotbugs")
+    id("org.owasp.dependencycheck")
 }
 
 spotless {
@@ -153,3 +154,30 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
 
 // JaCoCo does not wire verification into check by default, unlike Spotless and SpotBugs.
 tasks.named("check") { dependsOn(tasks.named("jacocoTestCoverageVerification")) }
+
+// Published-CVE scanning over the dependency tree. Two things about this are deliberate.
+//
+// It is NOT wired into `check` (spec D7). Every other gate in this file runs on every build;
+// this one would put an NVD database sync in front of it. Invoke it explicitly:
+//     ./gradlew dependencyCheckAggregate
+//
+// And failBuildOnCVSS is set above the maximum possible score, so it never fails the build even
+// when invoked directly -- matching the CI job's continue-on-error (spec D1). The flip trigger
+// for both is branch protection: at that point a finding lands in a PR queue with someone to
+// triage it, rather than on a main branch that deploys itself.
+dependencyCheck {
+    // CVSS v3 tops out at 10.0. 11 means "never fail", which is the documented idiom.
+    failBuildOnCVSS = 11f
+    formats = listOf("HTML", "JSON")
+
+    // Two sources, one wiring. CI supplies the environment variable from the repository secret;
+    // a local run supplies the Gradle property from ~/.gradle/gradle.properties, which is
+    // outside the repository and therefore outside both git and gitleaks. Without either, the
+    // scan still runs -- the NVD sync is just rate-limited into the tens of minutes.
+    val nvdKey = providers.gradleProperty("nvdApiKey").orElse(providers.environmentVariable("NVD_API_KEY"))
+    if (nvdKey.isPresent) {
+        nvd { apiKey = nvdKey.get() }
+    } else {
+        logger.lifecycle("No nvdApiKey property or NVD_API_KEY env var - the NVD sync will be rate-limited.")
+    }
+}
