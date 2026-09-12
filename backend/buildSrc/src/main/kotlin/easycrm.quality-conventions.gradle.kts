@@ -172,12 +172,27 @@ dependencyCheck {
 
     // Two sources, one wiring. CI supplies the environment variable from the repository secret;
     // a local run supplies the Gradle property from ~/.gradle/gradle.properties, which is
-    // outside the repository and therefore outside both git and gitleaks. Without either, the
-    // scan still runs -- the NVD sync is just rate-limited into the tens of minutes.
-    val nvdKey = providers.gradleProperty("nvdApiKey").orElse(providers.environmentVariable("NVD_API_KEY"))
-    if (nvdKey.isPresent) {
+    // outside the repository and therefore outside both git and gitleaks.
+    //
+    // Blank-safe deliberately: an unconfigured GitHub secret can still materialise NVD_API_KEY
+    // as an empty string, which `Provider.isPresent` sees as present -- so a naive check would
+    // skip straight past this diagnostic into the plugin's own opaque failure with no hint why.
+    val nvdKey = providers.gradleProperty("nvdApiKey")
+        .orElse(providers.environmentVariable("NVD_API_KEY"))
+        .orElse("")
+        .map { it.trim() }
+    if (nvdKey.get().isNotEmpty()) {
         nvd { apiKey = nvdKey.get() }
     } else {
-        logger.lifecycle("No nvdApiKey property or NVD_API_KEY env var - the NVD sync will be rate-limited.")
+        // NOT graceful degradation: plugin 13.0.0's NVD API 2.0 client rejects an unauthenticated
+        // request outright (NvdApiException: Invalid API Key) rather than falling back to a slow
+        // anonymous sync -- proved by running dependencyCheckAggregate with no key configured.
+        // Set nvdApiKey in ~/.gradle/gradle.properties for a local run, or the NVD_API_KEY
+        // repository secret for CI.
+        logger.lifecycle(
+            "No nvdApiKey property or NVD_API_KEY env var (or it is blank) - the OWASP scan below " +
+                "will FAIL outright, not run slowly. Set nvdApiKey in ~/.gradle/gradle.properties " +
+                "locally, or the NVD_API_KEY repository secret in CI."
+        )
     }
 }
