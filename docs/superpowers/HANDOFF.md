@@ -129,15 +129,26 @@ the first thing to do when the frontend lands.
 
 ## 0. Resuming? Start here
 
-### `buyer-snapshot` is finished but not yet integrated
+### Nothing is in flight. `main` is at `4baa4b4` and is **12 commits ahead of `origin/main`**
 
-**Read this first.** Branch `buyer-snapshot` (tip `c24ae5e`, off `main` at `82733f1`) carries the
-completed sub-project 1. It is green — `./gradlew clean check` from clean gives **591 tests, 0
-failures, 0 errors** (563 root + 28 `platform-primitives`) — and every task was reviewed clean, but
-it has **not been merged**. The next action on it is
-**superpowers:finishing-a-development-branch**, not more implementation. Nothing else is in flight.
+**Read the push warning below before anything else.** Sub-project 1 — the buyer snapshot — is
+**done and merged**. The `buyer-snapshot` branch fast-forwarded into `main` on 2026-09-08 and was
+deleted; `main` is at `4baa4b4`, verified green from clean with **591 tests, 0 failures, 0 errors**
+(563 root + 28 `platform-primitives`), up from the 586 baseline. Every task was reviewed clean, the
+whole-branch review approved it for merge, and the merged result was re-verified before the branch
+was deleted.
 
-Six task commits, one per task, in the order they were built:
+> ### ⚠ `origin/main` is at `2d58300`. CI has never seen any of this.
+>
+> Twelve local commits are unpushed. **Eight are this slice; four predate it** — the roadmap, the
+> Modulith evaluation and two docs commits were already unpushed when the slice started. The repo's
+> CI is a post-merge smoke alarm on `push: [main]` (§0's "What CI does and does not do"), so right
+> now *nothing* has been validated on a clean-checkout Testcontainers run on JDK 25 — only on this
+> machine. **Pushing is the first thing to discuss with the user**, and it will fire CI across all
+> twelve at once. It was left unpushed deliberately: the user asked for a merge, and pushing is a
+> separate outward-facing act.
+
+Eight commits, in the order they were built:
 
 | Commit | What it did |
 |---|---|
@@ -147,6 +158,8 @@ Six task commits, one per task, in the order they were built:
 | `b29fec7` | `QuotationService.send()` freezes the buyer |
 | `45d43e0` | `send()` rejects with **422** when the customer's `stateCode` no longer matches the version's frozen `placeOfSupply` |
 | `c24ae5e` | `QuotationPdfService` renders from the snapshot; `import com.easycrm.crm.Customer` deleted from the render path |
+| `09359bd` | The documentation the working agreements owed: challenges **68** and **69**, H1 struck from the roadmap, F11 closed in all four architecture docs that carried it open, S2 recorded as declined |
+| `4baa4b4` | Post-review fix wave: renamed a test that over-claimed (its "draft has none" half asserted a pre-existing rule, not the snapshot — challenge #33's lesson), and de-staled one S2 row |
 
 The columns stay **nullable** deliberately: a `DRAFT` genuinely has no buyer yet, so the invariant
 is *not-null when `SENT`*, enforced in code, and a `SENT` version with a null snapshot throws an
@@ -154,6 +167,42 @@ is *not-null when `SENT`*, enforced in code, and a `SENT` version with a null sn
 `create()` and `ShareLinkService` are all untouched — a revision is a `DRAFT` with no snapshot that
 freezes its own buyer at its own `send()`, which is exactly how a corrected GSTIN reaches a
 revision.
+
+**One open follow-up this slice created, deliberately left unfixed — the zombie draft.** Found by
+the whole-branch review, judged not merge-blocking, and surfaced to the user rather than silently
+fixed. A `DRAFT` quotation whose customer's `stateCode` is *corrected* becomes permanently
+un-actionable: `send()` 422s (the new guard), and `reject()`, `expire()` and `revise()` all require
+`SENT`, and `QuotationController` has **no delete mapping**. The draft sits in the list forever.
+Concretely: a clerk types state `27` instead of `29`, raises a draft, notices the GSTIN's first two
+digits disagree, fixes the customer — that draft is now a zombie.
+
+The guard is still strictly better than what it replaced: `replaceItems()` already recomputed
+per-line tax from the customer's *current* `stateCode` against a creation-time `placeOfSupply`, so
+before this slice that draft would have sent happily as a self-contradictory GST document. Refusing
+is right; only the exit is missing. **The fix is a new feature — either a draft-discard route, or
+re-deriving `placeOfSupply` and rebuilding the tax split when the version is still `DRAFT`** (which
+would make the guard unreachable for drafts and leave it guarding only the revise-inherits-stale-
+split case). Both are out of scope for a slice whose spec did not ask for them. Raise it with the
+user before building either.
+
+### The roadmap was reprioritised on 2026-09-12 — read it before proposing work
+
+At the user's direction, **"Domain + static marketing site" moved from priority 2 to priority 16**,
+and everything between renumbered up by one. The reasoning that had it at 2 (the only item that
+acquires a customer) still holds and was outweighed: there is no product to send an acquired
+customer to until the frontend ships.
+
+**The naming decision did not move with it, and this is the part to not get wrong.** D-g — the
+domain name and DNS provider — is now the gate in front of the **frontend** rather than in front of
+the site. `easycrm.public-base-url` still defaults to `http://localhost:8080` and feeds both
+`/public/q/{token}` and `/invite/{token}`, which get pasted into WhatsApp and stay in other
+people's chat history. Register the name early even though the site waits; the redirect you would
+otherwise owe is permanent. Phase 0 item 4 and the Part 6 sequencing traps both say so explicitly.
+
+**So the next items are: 2 — Wave 1.5 (supply chain), 3 — Wave 1.6 (Modulith + the H4 cycle fix),
+and settling D-g,** which is a decision plus a registrar checkout rather than a build item. Then 4,
+the frontend, with its own session and a decomposition pass. Note the domain table in track H was
+checked by RDAP on 2026-09-05 — **`eazycrm.in` expires 2026-12-15, so re-check before deciding.**
 
 **What the backfill can and cannot recover.** For a `SENT` version whose customer was already
 edited, the true historical buyer was never stored and is unrecoverable. The backfill writes the
@@ -190,8 +239,9 @@ on Afternic nameservers, so listed for sale), `easycrm.com` (parked on a GoDaddy
 `eazycrm.in` (expires 2026-12-15), `easycrm.in` (renewed to 2031). `easycrm.co.in` and
 `eazycrm.co.in` are also gone. Available: `geteasycrm.com`, `tryeasycrm.com`, `useeasycrm.com`,
 `easycrmindia.com`, `easycrm.net`. Costs and the full table are in `docs/ROADMAP.md` track H; the
-naming decision is open (D-g) and gates roadmap item 2, **and the domain gates every durable public
-URL the product mints** — `easycrm.public-base-url` feeds both the `/public/q/{token}` share link
+naming decision is open (D-g) and gates roadmap item 2 *(written 2026-09-05; since the 2026-09-12
+reprioritisation D-g gates item 4, the frontend — see §0)*, **and the domain gates every durable
+public URL the product mints** — `easycrm.public-base-url` feeds both the `/public/q/{token}` share link
 and the `/invite/{token}` accept link, and both get pasted into WhatsApp.
 
 **Nothing challenge-worthy was solved this session** — the cycles are a *finding*, recorded as MF1/
@@ -1588,6 +1638,15 @@ This is **Spring Boot 4.1 + Java 25 + Hibernate 7** — all recent. Watch for:
 - **Tenant isolation is structural:** never hand-write `WHERE tenant_id`; rely on `@TenantId` + RLS; new entities extend `TenantScopedEntity` or get allowlisted (ArchUnit enforces). **There is exactly one deliberate exception in the codebase** — `InvitationService.revoke` filters `invitation` by tenant in code, because a global pre-auth table has no structural mechanism to lean on. Challenge #54 states the rule that governs it: name the exception explicitly, give it the rigor the missing structural check would have had, and make its failure a 404 rather than a 403. Do not treat it as licence to hand-write a filter on a tenant-scoped table.
 
 ## 8. The next chunk — pick one with the user
+
+> **Superseded by `docs/ROADMAP.md` Part 6, and reprioritised 2026-09-12.** This section predates
+> the roadmap and is kept for the *reasoning* it records, not for its ranking. The live queue is:
+> **Wave 1.5 (supply chain) → Wave 1.6 (Modulith + the H4 cycle fix) → the frontend**, with **D-g
+> (the domain name) owed before the frontend mints a public link** and the marketing site moved to
+> the bottom at item 16. Item 4 below (cursor pagination) is now roadmap item 12's dependant — the
+> load baseline decides it on evidence rather than by elimination. Read §0's reprioritisation note,
+> then the roadmap, then come back here only for the qualifications on `SALES_MANAGER` (H6),
+> follow-up scheduling, and PF19.
 
 The wedge (**enquiry → quotation → order**) is functionally complete end-to-end and hardened,
 including the order aggregate's own lifecycle; quotations can be rendered as a PDF and shared over

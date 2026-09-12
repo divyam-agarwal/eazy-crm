@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `buyer-snapshot` at `c24ae5e` — 591 tests, 0 failures, verified by `./gradlew clean check`.
-(Branched from `main` at `82733f1`; the previous baseline was 586.)
+**Code baseline:** `main` at `4baa4b4` — 591 tests, 0 failures, verified by `./gradlew clean check`.
+(The buyer-snapshot branch merged fast-forward on 2026-09-08 and was deleted; the previous baseline was 586.)
 
 This is the layer **above** `docs/superpowers/plans/`. Those are per-slice TDD implementation plans;
 this is the programme that decides which slice is next and why. Every numbered item here gets its
@@ -28,7 +28,7 @@ pass when it starts. **Nothing here replaces a spec.**
 
 # Part 1 — Where we are today
 
-**Verified at `28f9ac8`, not assumed.**
+**Verified at `4baa4b4`, not assumed.**
 
 ## 1.1 Application
 
@@ -159,6 +159,10 @@ Act** — the exact filter that decided the identity-provider evaluation (§2 of
 into a third-party form service outside India reopens a residency question that was closed on
 purpose. A `wa.me` link collects nothing and stores nothing.
 
+**This track is deprioritised as of 2026-09-12 — the *site* is item 16. The *name* is not.** The
+rest of this section still describes what to build when the site's turn comes; the paragraph
+immediately below is the half that stays on the critical path.
+
 **Register the domain before the frontend, not alongside it.** `easycrm.public-base-url` is a single
 property (`application.yml`, defaulting to `http://localhost:8080`) that feeds three things: the
 `/public/q/{token}` share link, the `/invite/{token}` accept link (D10), and the OpenAPI `servers`
@@ -190,7 +194,7 @@ appear to support `.in`** — so a `.in` means a second registrar. Compare *rene
 first-year promotions. **These figures come from vendor pages and search results, not from a
 completed checkout — re-check before buying.**
 
-**The naming decision is therefore open and is now the gating question for item 2.** A prefixed
+**The naming decision is therefore open. It gated item 2 when the site was item 2; since the 2026-09-12 reprioritisation it gates item 4, the frontend** — the site moved, the name did not. A prefixed
 `.com` (`geteasycrm.com`, `tryeasycrm.com`) keeps one registrar and at-cost pricing; a `.in` reads
 as local to the audience but costs more and adds a registrar. Buying `eazycrm.com` off Afternic is
 the third option and the only one with an unknown price.
@@ -220,18 +224,24 @@ Each phase ends somewhere it is safe to stop.
    bcrypt and GST data.
 3. **Wave 1.6 — module boundaries.** Modulith `verify()` + `Documenter`, and the H4 cycle fix that
    comes with it.
-4. **Domain + static marketing site (track H).** Register the domain, stand up Cloudflare Pages with
-   TLS, ship a one-page site with a WhatsApp CTA. **Runs in parallel — it consumes none of the
-   backend queue**, and the domain decision gates every durable public URL the product mints.
+4. **Settle D-g and register the domain — the name only, not the site.** The marketing site moved
+   to the bottom of Part 6 on 2026-09-12; **the naming decision did not move with it.** Registering
+   costs a day and ~₹1,000/yr, and it is a prerequisite of Phase 1 rather than of the site:
+   `easycrm.public-base-url` feeds `/public/q/{token}` and `/invite/{token}`, and both get pasted
+   into WhatsApp where they stay. Buy the name, point DNS at nothing, and let the site come later.
 
 *Exit: the known correctness bug is gone, the supply chain is scanned, the service boundaries are
-enforced by the build rather than asserted in prose, and EasyCRM exists on the internet.*
+enforced by the build rather than asserted in prose, and the product has a name it will not have to
+change.*
 
 ## Phase 1 — Make it a product
 5. **Frontend foundation** — React + TypeScript, client generated from `docs/api/openapi.yaml`,
    auth shell (login/refresh/logout), and **`/invite/{token}` first**, since links are already
    being pasted into WhatsApp with no page behind them. It ships at `app.<domain>`, on the domain
-   item 4 already settled and proved.
+   Phase 0 item 4 already registered. **Note what changed on 2026-09-12:** the marketing site used
+   to be the thing that proved the DNS worked before the frontend needed it. With the site at item
+   16, this is the first consumer of that domain — so the `app.<domain>` CNAME and its certificate
+   get proved here, by this step, rather than inherited already-working.
 6. **Frontend core flows** — customers/contacts, products/price lists, the wedge, PDF and share,
    activity timeline, members admin.
 7. **Flip oasdiff to blocking.** Its documented trigger is "the frontend exists and consumes this
@@ -346,32 +356,37 @@ Ranked. **Effort** is relative, not calendar.
 | # | Item | Why now | Effort | Blocked by |
 |---|---|---|---|---|
 | ~~**1**~~ | ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`** | Was the only **live correctness bug**: a `SENT` quotation silently re-rendered differently after a customer edit, through a link the buyer holds. Open since 2026-08-19 while nine slices landed around it. Closed by freezing the buyer onto `QuotationVersion` at `send()`; H1 and F11 are both closed. **Item 2 is now next.** | S | — |
-| **2** | **Domain + static marketing site** | **The only item on this list that acquires a customer.** A weekend, ~₹1,000/yr, free hosting. It also settles the domain, and `easycrm.public-base-url` feeds the share and invite links that get pasted into WhatsApp and stay in other people's chat history — picking it after the frontend ships means stranding them. **Parallel: consumes none of the backend queue** | S | — |
-| **3** | **Wave 1.5 — supply chain** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
-| **4** | **Wave 1.6 — Modulith + cycle fix** | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. Cost rises with every slice added first | S–M | — |
-| **5** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse | **L** | — (wants decomposing before a spec) |
-| **6** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
-| **7** | **Wave 2 — observability** | Prerequisite for scaling, for reading load tests, and for seeing H2/H3 at all | M | — |
-| **8** | **SP2 — AWS foundation + dev env** | Largest single piece; delivers a production-shaped deployment on its own. Fix S1 inside it | **L** | 6 |
-| **9** | **Branch protection** | The day CD exists, a red `main` deploys itself | S | 8 |
-| **10** | **SP7 — RS256/JWKS + hardening** | Splits token *minting* from *verification* (S7) before five roles could reach one signing key | M | 8 |
-| **11** | **SP3 + staging environment** | Where load and chaos become possible | M | 8 |
-| **12** | **H2 + H3 fixes (Redis store, ShedLock/SP5)** | Must precede any N>1 run, or the load test measures the wrong system | S–M | 11 |
-| **13** | **Load baseline** | Decides cursor pagination and the H5 indexes on evidence rather than by elimination | M | 11, 12 |
-| **14** | **Chaos via AWS FIS** | Task kill, AZ, RDS/Proxy failover; validates graceful shutdown and timeout ordering | M | 11 |
-| **15** | **SP4 — scaling policies** | Scale on metrics you now emit | S | 7, 11 |
-| **16** | **Production + pilot** | **The AWS design recommends stopping here** | L | 13–15 |
+| **2** | **Wave 1.5 — supply chain** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
+| **3** | **Wave 1.6 — Modulith + cycle fix** | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. Cost rises with every slice added first | S–M | — |
+| **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse | **L** | — (wants decomposing before a spec) |
+| **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
+| **6** | **Wave 2 — observability** | Prerequisite for scaling, for reading load tests, and for seeing H2/H3 at all | M | — |
+| **7** | **SP2 — AWS foundation + dev env** | Largest single piece; delivers a production-shaped deployment on its own. Fix S1 inside it | **L** | 5 |
+| **8** | **Branch protection** | The day CD exists, a red `main` deploys itself | S | 7 |
+| **9** | **SP7 — RS256/JWKS + hardening** | Splits token *minting* from *verification* (S7) before five roles could reach one signing key | M | 7 |
+| **10** | **SP3 + staging environment** | Where load and chaos become possible | M | 7 |
+| **11** | **H2 + H3 fixes (Redis store, ShedLock/SP5)** | Must precede any N>1 run, or the load test measures the wrong system | S–M | 10 |
+| **12** | **Load baseline** | Decides cursor pagination and the H5 indexes on evidence rather than by elimination | M | 10, 11 |
+| **13** | **Chaos via AWS FIS** | Task kill, AZ, RDS/Proxy failover; validates graceful shutdown and timeout ordering | M | 10 |
+| **14** | **SP4 — scaling policies** | Scale on metrics you now emit | S | 6, 10 |
+| **15** | **Production + pilot** | **The AWS design recommends stopping here** | L | 12–14 |
+| **16** | **Domain + static marketing site** | **Deprioritised 2026-09-12 at the user's direction** — it acquires a customer but there is no product to send them to yet, so the site waits until there is. **The naming half does NOT wait:** `easycrm.public-base-url` feeds `/public/q/{token}` and `/invite/{token}`, both of which live in other people's WhatsApp history, so **D-g must still be settled before item 4 ships any public link** — otherwise the redirect you owe is permanent. Registering the name is a day; the site is the part that moved | S | — (but see D-g, which gates item 4) |
 | — | SP6 outbox · SP8 extraction · SP10–13 billing · `platform-*` split · notification-svc | **Conditional.** Do not schedule against a date | XL | a §4.5 trigger |
 
-## 6.1 If you only do four things
+## 6.1 If you only do three things
 
-**1, 2, 3, 4.** All small, none blocked. Together they close the only live correctness bug, put
-EasyCRM on the internet under a name that will not change, scan a public repo's supply chain, and
-stop the module graph drifting further before the frontend doubles the surface. Then take **5**
-with its own session and a decomposition pass.
+**2, 3, and settling D-g.** Item 1 is done. Wave 1.5 and Wave 1.6 are both small and unblocked, and
+together they scan a public repo's supply chain and stop the module graph drifting further before
+the frontend doubles the surface. Settling D-g is not a build item at all — it is a decision plus a
+registrar checkout, and it is the one thing on this page that gets more expensive the longer it
+waits, because every public link minted before it is a link you later have to strand or redirect.
 
-**Item 2 is the one to start today if the queue is contended**, because it is the only item that
-brings a customer and the only one that does not touch Java.
+Then take **4 (frontend)** with its own session and a decomposition pass.
+
+**What changed on 2026-09-12:** the domain-and-marketing-site item was item 2 and is now item 16.
+The reasoning that put it at 2 — that it is the only item that acquires a customer — still holds,
+and was outweighed: there is no product to send an acquired customer to until item 4 ships. The
+site waits for the product. The name does not wait for anything.
 
 ## 6.2 Sequencing traps
 
@@ -381,12 +396,16 @@ brings a customer and the only one that does not touch Java.
   nightly sweep. The numbers would be wrong in a direction that looks fine.
 - **Do not extract a service before H4.** `platform` currently imports `sales` entities; every
   service would inherit them.
-- **Do not mint public links on a domain you have not decided.** `easycrm.public-base-url` feeds
-  `/public/q/{token}` and `/invite/{token}`; both end up in someone else's WhatsApp history. The
-  domain is cheap and the redirect you would otherwise owe is permanent.
+- **Do not mint public links on a domain you have not decided** — and note this trap survived the
+  site's deprioritisation unchanged. `easycrm.public-base-url` feeds `/public/q/{token}` and
+  `/invite/{token}`; both end up in someone else's WhatsApp history. The domain is cheap and the
+  redirect you would otherwise owe is permanent. Moving the *marketing site* to item 16 does not
+  move the *naming decision*: that is still owed before the frontend ships a public link.
 - **Do not put Cloudflare's proxy in front of CloudFront.** Two CDNs in series, and F10's argument
   that the `/api/*` cache policy is a security control stops holding. `app.<domain>` is DNS-only.
-- **Do not treat sub-project numbering as priority.** SP9 (invitations) is done, SP1 is not.
+- **Do not treat sub-project numbering as priority.** SP9 (invitations) and SP1 (buyer snapshot)
+  are both done while SP2–SP8 are not; the numbering records the order they were *designed*, never
+  the order to build them.
 
 ---
 
@@ -399,5 +418,5 @@ brings a customer and the only one that does not touch Java.
 | **D-c** | **PF19 — entitlement metering.** `/public/q/{token}` has no JWT, so there is structurally nowhere to charge the most expensive uncapped operation. Needs billing's *design* decisions, not effort | SP10–13 |
 | **D-d** | **Frontend decomposition.** Unscoped and large enough to need sub-projects before a spec | Item 4 |
 | **D-e** | **M7 — packages or Gradle modules as the boundary source of truth.** Both can grow rules; only one may own them | Wave 1.6, LLDs #2–#6 |
-| **D-g** | **The domain name itself, and the DNS provider.** All four obvious candidates are taken (track H has the RDAP results and the costs); the live choice is a prefixed `.com`, a `.in` at a second registrar, or buying `eazycrm.com` off Afternic at an unknown price. The AWS design names ACM and `us-east-1` (F15) but never a DNS provider, and `easycrm.public-base-url` still defaults to `http://localhost:8080`. Both share links and invite links are durable and get pasted into WhatsApp | Items 2 and 5; every public URL the product mints |
+| **D-g** | **The domain name itself, and the DNS provider.** All four obvious candidates are taken (track H has the RDAP results and the costs); the live choice is a prefixed `.com`, a `.in` at a second registrar, or buying `eazycrm.com` off Afternic at an unknown price. The AWS design names ACM and `us-east-1` (F15) but never a DNS provider, and `easycrm.public-base-url` still defaults to `http://localhost:8080`. Both share links and invite links are durable and get pasted into WhatsApp | Item 4 (frontend) and item 16 (the site); every public URL the product mints. **Deprioritising the site on 2026-09-12 did not deprioritise this decision** — it is now the gate in front of the frontend, not in front of the site |
 | **D-f** | Two Boot 4 / Postgres behaviours the platform LLDs rest on: whether `java-test-fixtures` reaches package-private main-source members, and whether Postgres ORs permissive RLS policies. If policies AND, the outbox relay reads zero rows | SP6, LLDs #2–#6 |
