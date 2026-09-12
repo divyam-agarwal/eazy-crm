@@ -4372,7 +4372,7 @@ points at.
 
 ## Challenge 70 — The textbook "known-fake" AWS secret is the one string gitleaks is built to ignore
 
-**Phase:** Implementation
+**Phase:** Implementation (supply-chain slice, Task 1)
 
 ### The problem
 
@@ -4423,3 +4423,79 @@ plausible-looking rule; when it doesn't, read the tool's actual shipped ruleset 
 pinned version instead of guessing why, because the fix (swap the placeholder for one that
 isn't allowlisted) is often trivial once the real mechanism — here, a substring stopword
 list, not a shape mismatch — is known.
+
+---
+
+## Challenge 71 — An allowlist's written guarantee was one the scanner structurally could not provide
+
+**Phase:** Implementation (supply-chain slice, Task 1, fix round 1)
+
+### The problem
+
+`.gitleaks.toml`'s original allowlist comment claimed: "a hardcoded production value on the
+same line would NOT match any entry below -- it would still fail the scan." That is a
+guarantee about what happens when the wrong thing occupies the DEFAULT position of Spring's
+`${VAR:default}` syntax (`password: ${DB_PASSWORD:easycrm_app}`, and the two others in
+`application.yml`) — the exact place a real Phase-3 credential would live if someone typo'd
+it into the default slot instead of the environment.
+
+Nobody had verified it. A second empirical check (this time of the *value* position rather
+than the stopword-substring check in #70) found that gitleaks 8.30.1's default ruleset
+cannot see inside `${...}` **at all**, for a structural reason that has nothing to do with
+allowlists, entropy, or stopwords: the `generic-api-key` rule's capture group —
+`([\w.=-]{10,150}|[a-z0-9][a-z0-9+/]{11,}={0,3})` — has no alternative that can begin
+matching at the character `$`. A high-entropy, stopword-free fake dropped straight into
+`${DB_PASSWORD:z9Xq2mKpL8vRtNw4bYcJfDsAeGhU7oI}` produced *no finding at all*, with the
+shipped default ruleset alone and also with this repo's `.gitleaks.toml`. The written
+guarantee and the actual behaviour weren't just different — the scanner never got far enough
+to fail *or* pass on that value; it never looked at it.
+
+This is the same failure shape as challenge #68: a guard whose written assurance holds only
+because nothing ever tests the path where it would matter. Here the untested path was the one
+person most likely to hit in practice — swapping a documented dev default for a real staging
+password as a shortcut, expecting (because the comment said so) that the scanner would catch
+it.
+
+### The solution
+
+A repo cannot fix an upstream regex's blind spot by writing a better comment about it, so a
+new rule was added — `easycrm-default-credential` — that looks specifically at the position
+the default ruleset cannot reach: it matches `password|secret|token|credential|creds|passwd|
+api[-_]?key` followed by `: ${VAR:<default>}`, captures only the default (`secretGroup = 1`),
+requires `entropy >= 3.0` on it, and is scoped with `path` to `application*.yml` so it is not
+a repo-wide entropy rule (which would flag every high-entropy value anywhere, e.g. build
+hashes). The property-name keyword requirement is what keeps it from also firing on
+`DB_URL: ${DB_URL:jdbc:postgresql://...}` or `PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:http://...}`
+— both non-secret and both, empirically, higher-entropy than two of the three real dev
+credentials (measured: the Postgres/Flyway URLs score 3.5–4.3 bits/char; `easycrm_app` and
+`easycrm_owner` score 3.1 and 3.4). Entropy alone could not have separated "real secret" from
+"ordinary URL" here; scoping by property-name context — the same technique the upstream
+`generic-api-key` rule itself uses — is what does.
+
+The three known-safe defaults are allowlisted against this rule specifically, via
+`targetRules = ["easycrm-default-credential"]` and `regexTarget = "match"` (8.30.1 supports
+`targetRules`, added in 8.25.0, confirmed against the version in use before writing this),
+matching the complete `${VAR:default}` construct rather than the bare value — the same
+scoping the original (non-functional) allowlist intended, now attached to a rule that can
+actually see what it's allowlisting.
+
+Proved in both directions before committing, against a scratch copy under `/tmp` — never a
+modified `application.yml` committed to the tree:
+- the real repository tree, unmodified, scans clean through both `git` mode (the CI
+  invocation) and `dir` mode: exit 0, no findings, all three real defaults excluded by the
+  new allowlist entry.
+- a scratch copy of `application.yml` with `DB_PASSWORD`'s default swapped for a random
+  31-character stopword-free string fails: `RuleID: easycrm-default-credential`, `Entropy:
+  4.954196`, `exit=1`. Repeated independently for `FLYWAY_PASSWORD` and `JWT_SECRET`'s
+  defaults, both also caught.
+
+### Lesson
+
+An allowlist's comment is a claim about the tool's behaviour, and a claim about a scanner's
+behaviour is exactly as trustworthy as the empirical test that backs it — which, until this
+fix round, was none. The specific mechanism here (a capture group that cannot match starting
+at `$`) is gitleaks-specific, but the general shape recurs any time a config file allowlists
+something: the allowlist can only be as meaningful as the rule it is attached to actually
+seeing the thing being allowed. Writing "X would still fail the scan" without having made X
+happen and watched it fail is indistinguishable, from the next reader's perspective, from a
+guarantee that was verified — until the day someone relies on it.

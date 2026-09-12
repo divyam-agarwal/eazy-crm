@@ -9,13 +9,35 @@ title = "EasyCRM gitleaks config"
 # Keep the whole upstream ruleset. This file only ever subtracts, and only by exact literal.
 useDefault = true
 
-[allowlist]
-description = "Env-var-defaulted local development credentials in application.yml."
-# Each regex matches the COMPLETE ${VAR:default} construct, not the bare value and not the
-# property name. That scoping is deliberate and it is what makes this list safe to keep once
-# AWS exists (Phase 3): every one of these three properties holds a real credential in a real
-# environment, and a hardcoded production value on the same line would NOT match any entry
-# below -- it would still fail the scan.
+# --- default-position credentials in application*.yml ----------------------------------
+#
+# The upstream `generic-api-key` rule -- and every other built-in rule -- captures its secret
+# with a group that cannot begin at `$` (`[\w.=-]{10,150}|[a-z0-9][a-z0-9+/]{11,}={0,3}`, neither
+# alternative admits `$` as its first character). That makes the ENTIRE default ruleset
+# structurally blind to a value written inside Spring's `${VAR:default}` syntax: it is not that
+# such a value would fail the scan if it were a real secret, it is that no built-in rule ever
+# looks at it. Confirmed empirically against 8.30.1 before writing this rule (see challenge #71).
+#
+# This rule is what actually looks there. It is scoped to `application*.yml`, to a small set of
+# property-name keywords (so it does not also flag entropy in `DB_URL` or `PUBLIC_BASE_URL`,
+# which are not secrets), and to a default-value entropy floor.
+[[rules]]
+id = "easycrm-default-credential"
+description = "High-entropy value in the DEFAULT position of a ${VAR:default} for a password/secret/token property, in application*.yml"
+regex = '''(?i)\b(?:password|secret|token|credential|creds|passwd|api[-_]?key)\b\s*:\s*\$\{[A-Za-z_][A-Za-z0-9_]*:([^}\n]{4,})\}'''
+secretGroup = 1
+entropy = 3.0
+path = '''(?i)application[^/]*\.ya?ml$'''
+
+[[allowlists]]
+description = "Env-var-defaulted local development credentials in application.yml, checked against easycrm-default-credential specifically."
+targetRules = ["easycrm-default-credential"]
+# Matched against the whole regex match, not just the extracted secret group: each entry below
+# is the COMPLETE ${VAR:default} construct, not the bare value and not the property name. That
+# scoping is what keeps the list safe once AWS exists (Phase 3): a hardcoded PRODUCTION value on
+# the same line would not match any entry below -- and unlike the built-in rules, this one can
+# actually see it, so it would fail the scan rather than silently pass unseen.
+regexTarget = "match"
 regexes = [
   # spring.datasource.password -- local Postgres role, created by docker-compose.yml
   '''\$\{DB_PASSWORD:easycrm_app\}''',
