@@ -112,4 +112,16 @@ class SupplyChainWorkflowTest {
                 jobNamed("supply-chain").get("continue-on-error"),
                 "the supply-chain job must block as a whole, not only step by step");
     }
+
+    // --- actionlint -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("the workflow lint runs and blocks")
+    void workflowLintBlocks() throws Exception {
+        var step = stepNamed("supply-chain", "Workflow lint");
+        assertNotEquals(Boolean.TRUE, step.get("continue-on-error"), "the workflow lint must block");
+        assertTrue(
+                bodyOf(step).contains("rhysd/actionlint:1.7.12"),
+                "the actionlint image must be pinned to an exact tag");
+    }
 }
