@@ -4367,3 +4367,59 @@ guarantee held the *renderer* deterministic and said nothing about its *inputs* 
 underneath it. F11 lived in the gap between those two, and the general form of the gap is that
 immutability of a record is not the same property as immutability of everything the record
 points at.
+
+---
+
+## Challenge 70 — The textbook "known-fake" AWS secret is the one string gitleaks is built to ignore
+
+**Phase:** Implementation
+
+### The problem
+
+Task 1 (supply-chain slice) required proving the new gitleaks CI gate can actually fail
+before committing it — "a gate whose failure path has never executed is a gate nobody has
+tested." The brief's probe planted a file containing the standard AWS documentation
+example credential (`aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"`,
+the same string that appears in every AWS SDK tutorial) and expected gitleaks 8.30.1 to
+report a finding and exit 1.
+
+It didn't. `gitleaks dir` on that exact file, with and without the repo's own
+`.gitleaks.toml`, reported `no leaks found` and exited 0 — the one gate this task exists
+to prove is armed appeared to pass its own failure-path test by never actually firing.
+That's worse than an untested gate: it looks verified.
+
+Root-caused by pulling gitleaks's own default ruleset for v8.30.1
+(`config/gitleaks.toml` at that tag) rather than guessing. Two things ruled out AWS-key-shape
+regex mismatches before the real cause turned up: `aws-access-token` only matches the
+*access key ID* shape (`AKIA`/`ASIA`/… + 16 base32 chars) and never looks at secret-key
+values at all, and the fallback `generic-api-key` rule's regex matched the probe value fine
+in isolation (confirmed by swapping in a same-shaped random string, which *did* trigger).
+The actual cause was `generic-api-key`'s own stopword list, which contains the literal
+word `example` — checked as a case-insensitive substring of the matched value. Gitleaks
+ships that stopword specifically so that this one ubiquitous AWS-docs placeholder — which
+appears, unchanged, in thousands of public repos' tutorials and tests — doesn't drown
+every scan in false positives. It works exactly as intended; it also means a security-gate
+probe built from that same placeholder text is a false negative by design, not a fluke.
+
+### The solution
+
+Replaced the probe's secret value with an equally fake but stopword-free string of the same
+shape (`wJalrXUtnFEMI/K7MDENG/bPxRfiCYq9zL3vN2xR` — no `example`, `test`, or any other
+listed stopword substring), keeping the rest of the brief's probe structure (same variable
+name, same file name, same `dir`-mode invocation, same cleanup) unchanged. Re-ran: one
+finding naming `leak-probe.txt`, `RuleID: generic-api-key`, `exit=1`; file removed
+afterward and confirmed absent. The real allowlisted-and-armed gate (Step 7, scanning the
+actual repository tree with `.gitleaks.toml`) had already passed with exit 0 and no
+findings, so this only affects the failure-path probe text, not the shipped config.
+
+### Lesson
+
+A "known-fake" secret used to test a scanner is not neutral input to that scanner — if the
+fake is famous enough to be a documentation convention, the scanner's maintainers have
+probably already special-cased it out, for the same reason it's tempting to use as a probe
+in the first place: everyone recognizes it. Verify a negative-path test empirically (run it,
+read the exit code) rather than trusting that a plausible-looking secret will trip a
+plausible-looking rule; when it doesn't, read the tool's actual shipped ruleset for the
+pinned version instead of guessing why, because the fix (swap the placeholder for one that
+isn't allowlisted) is often trivial once the real mechanism — here, a substring stopword
+list, not a shape mismatch — is known.

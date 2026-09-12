@@ -133,3 +133,46 @@ jobs:
             echo "oasdiff breaking failed to run -- see the step log." >> "$GITHUB_STEP_SUMMARY"
           fi
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # Supply-chain scans. A separate job from `check` on purpose: these need no JDK, no Gradle and
+  # no Testcontainers, so they report in well under a minute instead of behind a 20-minute test
+  # run -- and a failure here is attributable at a glance rather than buried in a Gradle log.
+  #
+  # These three run in CI only (spec D4). SupplyChainWorkflowTest is what stops that being a
+  # silent gap: delete a step here and ./gradlew check fails.
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: on push and schedule gitleaks scans every commit, and a diff-only scan
+          # cannot find a secret that entered three commits ago and was never removed.
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        env:
+          # Same resolution as the oasdiff step, and for the same reasons: on push, the SHA the
+          # branch was at BEFORE the push (not HEAD~1, which is the previous commit and misses
+          # N-1 of an N-commit push); on a pull request, the base branch tip.
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          # --redact: findings are printed with the secret value masked. Without it a leaked
+          # credential would be re-published in a world-readable Actions log by the very tool
+          # that found it.
+          COMMON="-c /repo/.gitleaks.toml --redact --no-banner"
+          if [ "${{ github.event_name }}" = "pull_request" ] \
+             && [ -n "${BASE_SHA:-}" ] \
+             && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            echo "Scanning $BASE_SHA..HEAD"
+            # shellcheck disable=SC2086 # COMMON is a deliberate flag list, not a filename
+            docker run --rm -v "$PWD:/repo:ro" -w /repo \
+              zricethezav/gitleaks:v8.30.1 git /repo $COMMON --log-opts="$BASE_SHA..HEAD"
+          else
+            echo "Scanning full history"
+            # shellcheck disable=SC2086 # as above
+            docker run --rm -v "$PWD:/repo:ro" -w /repo \
+              zricethezav/gitleaks:v8.30.1 git /repo $COMMON
+          fi

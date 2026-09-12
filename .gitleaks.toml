@@ -1,0 +1,26 @@
+# Secret scanning for EasyCRM. See docs/superpowers/specs/2026-09-12-supply-chain-design.md section 4.
+#
+# This file is the repo's written record of "known non-secrets". Adding a fourth entry means
+# justifying it here, in the same place, which is the point of keeping the list narrow.
+
+title = "EasyCRM gitleaks config"
+
+[extend]
+# Keep the whole upstream ruleset. This file only ever subtracts, and only by exact literal.
+useDefault = true
+
+[allowlist]
+description = "Env-var-defaulted local development credentials in application.yml."
+# Each regex matches the COMPLETE ${VAR:default} construct, not the bare value and not the
+# property name. That scoping is deliberate and it is what makes this list safe to keep once
+# AWS exists (Phase 3): every one of these three properties holds a real credential in a real
+# environment, and a hardcoded production value on the same line would NOT match any entry
+# below -- it would still fail the scan.
+regexes = [
+  # spring.datasource.password -- local Postgres role, created by docker-compose.yml
+  '''\$\{DB_PASSWORD:easycrm_app\}''',
+  # spring.flyway.password -- local migration role, same
+  '''\$\{FLYWAY_PASSWORD:easycrm_owner\}''',
+  # easycrm.jwt.secret -- self-describing dev value with no production counterpart
+  '''\$\{JWT_SECRET:0123456789-0123456789-0123456789-devsecret\}''',
+]
