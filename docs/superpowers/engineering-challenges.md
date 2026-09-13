@@ -4935,3 +4935,74 @@ not only about which are *permitted*, and a schema with no foreign keys makes th
 observable. And when two layers independently fail open, a test that exercises both at once proves
 nothing about either — pick the aggregate whose decision is made in exactly one place, and prove
 the test can fail by mutating the branch it claims to cover.
+
+---
+
+## Challenge 78 — Pinning two package-private constants that must agree, without a test class that can see both
+
+**Phase:** Implementation (module-boundaries, Task 6)
+
+### The problem
+
+Challenge #77 gave `sales.SalesVisibility.viaCustomer` a delegated `EXISTS` subquery built from
+`crm.CustomerVisibility.spec()`, so there is one definition of "which customers are mine". That
+delegation has a sharp edge nothing had pinned yet: `viaCustomer` decides WHETHER to build the
+narrowing subquery using `SalesVisibility`'s OWN `RESTRICTED_ROLE`, then asks `CustomerVisibility`
+for the predicate to put inside it. If the two classes' `RESTRICTED_ROLE` literals ever disagreed —
+sales classifying a role restricted while crm classified the SAME role unrestricted —
+`viaCustomer`'s "restricted" branch still builds the `EXISTS`, but `customerVisibility.spec()`
+hands back the always-true predicate, so the subquery degrades to a bare
+`EXISTS (SELECT id FROM customer WHERE id = q.customer_id)`. A SALES_EXEC would then see every
+quotation whose customer row merely exists, regardless of who it is assigned to — a silent
+WIDENING, the direction that does not announce itself in any manual test.
+
+Pinning "the two literals agree" ran into a second, structural problem: `RESTRICTED_ROLE` is
+package-private in both `CustomerVisibility` and `SalesVisibility`, deliberately — widening it to
+public for a test's convenience would be exactly the shared-production-code the Wave 1.6 split was
+designed to remove. No single test class, in either package, can read both fields to assert
+`CustomerVisibility.RESTRICTED_ROLE.equals(SalesVisibility.RESTRICTED_ROLE)` directly. And the
+naive per-package test — assert each literal is *some* valid `iam.Role` name via
+`Role.valueOf(...)` not throwing — is exactly the assertion that would keep passing while the two
+diverged: `"SALES_EXEC"` and `"SALES_MANAGER"` are both real role names, just different ones.
+
+### Why it's hard
+
+The failure is invisible from either side of the boundary alone. Reading `CustomerVisibility` in
+isolation, its `RESTRICTED_ROLE` looks self-contained. Reading `SalesVisibility` in isolation, its
+`viaCustomer` looks correct — it delegates rather than restates, which is the whole point of #77's
+fix. The bug only exists in the *relationship* between the two constants, and the module boundary
+that makes the design safe for a future split is precisely what prevents a single class from
+observing that relationship in production code. A test suite built one package at a time, the way
+this slice's tests are organised, will not stumble onto it by accident.
+
+### The solution
+
+Added `VisibilityContract.RESTRICTED_ROLE` (test scope, `com.easycrm.support`) as a single shared
+anchor, and wrote one small test per package — `CustomerVisibilityRoleLiteralTest`,
+`SalesVisibilityRoleLiteralTest` — that each assert their own package's constant against it:
+`assertThat(CustomerVisibility.RESTRICTED_ROLE).isEqualTo(VisibilityContract.RESTRICTED_ROLE)`, and
+the same on the sales side. If either production constant drifts to any different value — including
+one that is still a real `Role` name — the test on that side goes red; if neither drifts, both are
+pinned to the same value and therefore to each other. This is the transitive equivalent of
+comparing the two fields directly, achieved without widening either field's visibility, chosen
+over the alternative (a tiny package-private test-scope accessor in each package) because it needed
+no production-adjacent scaffolding at all — just one constant living entirely in test scope.
+
+Verified by mutation, not merely written and left green: changing `CustomerVisibility
+.RESTRICTED_ROLE` from `"SALES_EXEC"` to `"SALES_MANAGER"` failed `CustomerVisibilityRoleLiteralTest`
+as expected — and, unprompted, also failed `SalesVisibilityPolicyTest.salesExecSeesQuotationsThroughTheirCustomer`
+and `...salesExecSeesOrdersThroughTheirCustomer`, reproducing the widening live: with the literals
+diverged, a SALES_EXEC principal saw quotations and orders belonging to another exec's customer.
+That is the exact hazard this task exists to guard, caught by a test that had never seen the words
+"quotation" or "widening" — the literal test alone was sufficient.
+
+### Lesson
+
+When a design deliberately duplicates a decision across a boundary that must not share code, the
+conformance check for that duplication has the SAME visibility constraint the design does — you
+cannot see both sides from either side, on purpose. Anchoring each side to one shared value in test
+scope (which is exempt from the constraint, since it creates no production coupling) is equivalent
+to a direct comparison without violating the boundary. And a test that only checks "this value is
+drawn from the right vocabulary" is a materially weaker claim than "this value agrees with its
+counterpart" — the two are easy to conflate when writing the test, and only mutation reveals the
+gap between them.
