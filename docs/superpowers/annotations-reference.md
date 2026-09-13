@@ -150,6 +150,12 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@SecurityRequirements` | `io.swagger.v3.oas.annotations.security` | Declares the security requirements for the annotated operation. Used here **empty** — `@SecurityRequirements` with no `value` — which is springdoc's way of saying "this operation needs nothing," clearing the document-level `bearer-jwt` requirement for that operation only and emitting `security: []` under it. Applied to the seven operations `SecurityConfig` genuinely `permitAll`s (auth signup/login/refresh/logout, invitation preview/accept, `GET /public/q/{token}`) so the contract stops demanding a token for `login` — the one call that by definition has none. Note it is **not** on `GET /api/v1/auth/me`, which is `authenticated()` (openapi-contract review wave). | Container for `@SecurityRequirement` |
 | `@Schema` | `io.swagger.v3.oas.annotations.media` | Nested inside `@Content`; `implementation = ApiErrorResponse.class` tells springdoc which Java type's shape to reflect into the OpenAPI document for this response, rather than describing it as a bare `object` (the failure mode a raw `Map<String, Object>` return type produced before openapi-contract Task 2). | — |
 
+## 6c. Modularity (Spring Modulith)
+
+| Annotation | Origin | Purpose | Composed of / inherits |
+|---|---|---|---|
+| `@ApplicationModule` | `org.springframework.modulith` | Package-level annotation (on `package-info.java`) that declares a top-level package an explicit Spring Modulith application module and, via `type`, its encapsulation mode. `com.easycrm.platform` carries `type = ApplicationModule.Type.OPEN` because it is one shared library every one of the five future services consumes whole — carving `@NamedInterface`s across its subpackages would buy nothing while it ships as one unit. **Load-bearing caveat:** OPEN also suppresses every dependency *cycle* that routes through the open module (measured: all 12 this repo had, in `platform`), so a green `ApplicationModules.verify()` is not evidence `platform` depends on nothing — `ModuleDirectionArchTest` (H4) and `CrossDomainRepositoryArchTest` (Layer 2) cover what OPEN silences (Wave 1.6 Task 8, challenge #75). `spring-modulith-api`, which defines this annotation, is pinned at `implementation` (compile) scope rather than test-only, because `package-info.java` is main-source and would not otherwise compile. | — |
+
 ## 7. Testing (JUnit 5, Spring Test, Testcontainers)
 
 | Annotation | Origin | Purpose | Composed of / inherits |

@@ -27,6 +27,15 @@ import org.junit.jupiter.api.Test;
  * TenantScopingArchTest.GLOBAL_TABLES and VisibilityScopingArchTest.ALLOWED_METHODS do. Resolving
  * them is roadmap item 3b (cross-service data access), which is owed before SP8.
  *
+ * <p><b>This rule is immune to the limitation {@link VisibilityScopingArchTest} documents.</b> That
+ * sibling inspects method-call and method-reference target owners, and an inherited
+ * {@code CrudRepository} method (e.g. {@code repo::findById}) resolves its owner to the Spring Data
+ * supertype rather than to the local repository interface, so an owner-name check misses it. Rule B
+ * here does not look at method targets at all — it walks {@code getDirectDependenciesFromSelf()},
+ * which reports the type-level edge created by merely declaring a field of the concrete repository
+ * type. That edge exists regardless of which method (inherited or declared) is ever called on the
+ * field, so inherited-method resolution is irrelevant to it.
+ *
  * <p>See spec 2026-09-13-wave-1.6-module-boundaries-design.md §3.4 and §5.2.
  */
 class CrossDomainRepositoryArchTest {
@@ -112,6 +121,18 @@ class CrossDomainRepositoryArchTest {
     }
 
     /** Non-null only when this is a cross-domain repository dependency. */
+    /**
+     * Non-null only when this is a cross-domain repository dependency.
+     *
+     * <p><b>Known residual gap, not fixed here:</b> a field typed with the Spring Data SUPERTYPE
+     * (e.g. {@code JpaRepository<Customer, UUID>}) has a simple name ending in {@code Repository},
+     * but {@code domainOf("org.springframework.data.jpa.repository")} returns null because that
+     * package is not one of {@link #DOMAIN_PACKAGES}, so this method returns null and the read
+     * slips through silently. This does not occur today — every repository is injected as its
+     * concrete interface, verified by grep — but a future field declared against the supertype
+     * would bypass this rule with no signal. Left undocumented-but-unfixed is worse than documented
+     * and accepted.
+     */
     private static String describe(JavaClass from, JavaClass target) {
         if (!target.getSimpleName().endsWith("Repository")) return null;
         String fromDomain = domainOf(from.getPackageName());

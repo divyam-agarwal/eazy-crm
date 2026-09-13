@@ -65,6 +65,12 @@ dependencies {
     // structural absence rather than a configured one.
     developmentOnly(libs.springdoc.webmvc.ui)
 
+    // Modulith: api at COMPILE scope because platform/package-info.java carries
+    // @ApplicationModule and is main-source. core and docs stay test-only -- nothing in production
+    // calls verify() or Documenter.
+    implementation(platform(libs.modulith.bom))
+    implementation(libs.modulith.api)
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     // Boot 4 split MockMvc test auto-config (@AutoConfigureMockMvc) into its own module;
@@ -77,6 +83,9 @@ dependencies {
     testImplementation("org.testcontainers:postgresql")
     // 1.4.x supports parsing Java 25 bytecode; 1.3.0 silently skips it (imports 0 classes).
     testImplementation(libs.archunit.junit5)
+    testImplementation(platform(libs.modulith.bom))
+    testImplementation(libs.modulith.core)
+    testImplementation(libs.modulith.docs)
 }
 
 // The committed OpenAPI snapshot lives outside the Gradle project (the Gradle root is
