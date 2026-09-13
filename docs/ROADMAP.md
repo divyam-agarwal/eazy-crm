@@ -2,15 +2,21 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `wave-1.6-module-boundaries` at `ebe97cc` — **626 tests (598 root + 28 primitives), 0 failures**, verified by `./gradlew clean
+**Code baseline:** `main` at `f81362b` — **626 tests (598 root + 28 primitives), 0 failures**, verified by `./gradlew clean
 check` from clean on the merged result. Wave 1.5 (item 2) merged fast-forward on 2026-09-12 and
 the `supply-chain` branch was deleted; 591 before it, plus 13 in `SupplyChainWorkflowTest`. (The
 buyer-snapshot branch merged the same way on 2026-09-08; the baseline before that was 586.)
 
-**`main` is PUSHED as of 2026-09-13, and Wave 1.5's scans have now run in CI for the first time.**
-14 commits went `ac2fc63..b858429`; CI run `34713136667` is green on all three jobs — `check`,
-`supply-chain` and `dependency-check`. The "never executed in CI" caveat that travelled with every
-Wave 1.5 claim is **discharged**: those gates are no longer only on one laptop.
+**`main` is pushed and current at `f81362b` (2026-09-13).** Wave 1.6 merged fast-forward the same day
+and the `wave-1.6-module-boundaries` branch was deleted; the baseline before it was 604. Wave 1.5's
+scans first ran in CI earlier that day (run `34713136667`, green on all three jobs), so the "never
+executed in CI" caveat that travelled with every Wave 1.5 claim is **discharged**.
+
+**One thing to watch on the first `check` run from a different machine.** Wave 1.6 added
+`ModulithDocsSnapshotTest`, which compares generated C4 documentation byte-for-byte and **fails**
+rather than reports. It canonicalizes Modulith's unordered `Rel(...)` and `Component(...)` output before
+comparing, which is what makes it viable — but cross-machine and cross-JDK-patch byte stability was
+never measured locally. HANDOFF.md has the diagnostic path; the answer is never to delete the guard.
 
 **Verify before relying on any of this** — `git rev-parse --short main`,
 `git rev-parse --short origin/main` (as two separate invocations; passing both refs to one
@@ -41,8 +47,8 @@ pass when it starts. **Nothing here replaces a spec.**
 
 # Part 1 — Where we are today
 
-**Verified at `b858429`, not assumed — see the code-baseline note above: `main` and `origin/main`
-are in sync as of 2026-09-13 and CI is green on the tip.**
+**Verified at `f81362b`, not assumed — `main` and `origin/main` are in sync as of 2026-09-13 with
+Wave 1.6 merged.**
 
 ## 1.1 Application
 
@@ -71,8 +77,8 @@ test-scope `VisibilityContract` keeping the two interpreters in agreement.
 
 | | State |
 |---|---|
-| Gate | `./gradlew clean check` = test + Spotless + SpotBugs (+find-sec-bugs) + JaCoCo, both projects |
-| CI | GitHub Actions, `push: [main]` and `pull_request`, JDK 25, Testcontainers. **Wave 1.5 (merged 2026-09-12) added two more jobs, three total: `check` (above), `supply-chain` (gitleaks + actionlint + squawk, blocking), `dependency-check` (OWASP Dependency-Check, non-blocking — it reports rather than gates, same reasoning as oasdiff below)** |
+| Gate | `./gradlew clean check` = test + Spotless + SpotBugs (+find-sec-bugs) + JaCoCo, both projects. **Since Wave 1.6 it also carries six boundary guards: `ModuleDirectionArchTest` (H4 — `platform` depends on no domain package), `CrossDomainRepositoryArchTest` (Layer 2 register), `VisibilityScopingArchTest` (one permitted reader per guarded repository), `ModularityTest` (Modulith `verify()`, with its OPEN blind spot documented), `ModulithDocsSnapshotTest` (C4 docs drift), plus the pre-existing tenant/activity/primitives rules. Each has a non-vacuity assertion beside it** |
+| CI | GitHub Actions, `push: [main]` and `pull_request`, JDK 25, Testcontainers. Three jobs: `check`, `supply-chain` (gitleaks + actionlint + squawk, blocking), `dependency-check` (OWASP, reports rather than gates). **Note the trigger: a feature-branch push fires NOTHING — CI on a branch requires a PR, which is why this repo's gates are all post-merge** |
 | Contract | `docs/api/openapi.yaml` committed, byte-for-byte drift-guarded by `OpenApiSnapshotTest`; oasdiff changelog in CI, `continue-on-error: true` |
 | Debt | 32 baselined SpotBugs findings (26 are the defensive-copy family) |
 | **Nature** | **Post-merge smoke alarm, not a pre-merge gate.** The repo has never used a PR for real work |

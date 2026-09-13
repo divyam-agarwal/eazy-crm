@@ -1,20 +1,23 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-13 (second pass) — **Wave 1.6 is BUILT. H4 is closed.** Branch
-`wave-1.6-module-boundaries`, tip `ebe97cc`, branched from `main` at `5ec82f1`; twelve commits
-(`8f40b62`..`ebe97cc`). **`platform` now has ZERO outbound domain imports**, down from 18 across three
-files, so the one shared library every future service consumes no longer drags `sales`, `crm` and
-`tenant` along with it. **Baseline is now 626 tests (598 root + 28 `platform-primitives`), 0 failures,
-0 errors**, `./gradlew clean check` green end to end; it was 604 before.
+**Last updated:** 2026-09-13 (final) — **Wave 1.6 is MERGED. H4 is closed.** Fast-forwarded to `main`
+at **`f81362b`** and pushed; the `wave-1.6-module-boundaries` branch is deleted. Thirteen commits
+(`8f40b62`..`f81362b`) from `main` at `5ec82f1`. **`platform` now has ZERO outbound domain imports**,
+down from 18 across three files, so the one shared library every future service consumes no longer
+drags `sales`, `crm` and `tenant` along with it. **Baseline is now 626 tests (598 root + 28
+`platform-primitives`), 0 failures, 0 errors**, `./gradlew clean check` green end to end; it was 604.
 [spec](specs/2026-09-13-wave-1.6-module-boundaries-design.md) ·
 [plan](plans/2026-09-13-wave-1.6-module-boundaries.md).
 
-**NOT YET MERGED, and one thing is owed before it is:** the final review's condition was a CI run on the
-branch. The reason is specific — `ModulithDocsSnapshotTest` compares generated C4 documentation
-byte-for-byte and now *fails* `check` rather than reporting, and the one axis never measured is whether
-the generator emits identical bytes on a different machine or JDK patch. If it does not, a developer's
-`updateModulithDocs` on macOS and CI's `check` on Linux could never agree and the guard would be
-unfixable by regeneration. One CI run settles it.
+**Read this first if `check` fails on a machine that is not the one it was built on.**
+`ModulithDocsSnapshotTest` compares generated C4 documentation byte-for-byte and **fails `check`**
+rather than reporting. Modulith emits `Rel(...)` edges and `Component(...)` declarations from unordered
+collections, so the test canonicalizes both by sorting before comparing — that is what makes the guard
+viable at all (challenge #79). **Cross-machine and cross-JDK-patch stability is the one axis never
+measured locally**, so if you hit a mismatch: the answer is NOT to delete the guard and NOT to keep
+regenerating. Diff the two generations after sorting every line — if the multisets match, it is another
+unordered collection and the fix is to canonicalize that family too. If they genuinely differ, make the
+guard report-only and say so in the spec. `./gradlew updateModulithDocs` regenerates the snapshot.
 
 **The design was reshaped by a spike before any code was written, and that is the part worth reading.**
 The Modulith evaluation doc's Appendix A admitted `verify()` had never actually been run. It was, on a
@@ -61,6 +64,32 @@ between CGST/SGST and IGST on re-render, through the buyer's share link. It is s
 on a document a customer holds; it arguably outranks most of the roadmap. **Item 3b** is the cross-service
 data access design SP8 assumed existed: Wave 1.6 *froze* Layer 2 behind a register with a named exit per
 edge, it did not resolve it.
+
+## What the next agent should pick up
+
+**Roadmap items 1, 2 and 3 are all done and merged.** In the order I would take them:
+
+1. **H7 — the seller is not frozen on a sent quotation.** Small, and a live correctness bug of H1's exact
+   class. `QuotationPdfService` reads the buyer from the frozen `BuyerSnapshot` but the seller live from
+   `tenant`, two lines apart — and computes `interState` from the frozen `placeOfSupply` against the
+   **live** tenant `stateCode`, so a tenant changing registered state flips an already-`SENT` quotation
+   between CGST/SGST and IGST rows on re-render, through a share link the buyer already holds. Needs its
+   own freeze decision: which seller fields freeze, and at `send()` or at version creation. Challenge #69's
+   test decides it — *was anything already frozen derived from this field?* For `stateCode`, yes. The
+   buyer-snapshot spec never mentions the seller, so there is no prior art to inherit.
+2. **Settle D-g and register the domain.** Unchanged and still the item that gets more expensive the longer
+   it waits: `easycrm.public-base-url` still defaults to `http://localhost:8080`, and it feeds
+   `/public/q/{token}` and `/invite/{token}`, both of which end up in other people's WhatsApp history.
+3. **Roadmap item 3b — cross-service data access (Layer 2).** Wave 1.6 *froze* this; it did not fix it.
+   Nine cross-domain repository reads are registered in `CrossDomainRepositoryArchTest.ALLOWED`, each with
+   its exit already decided by the service-scope doc (synchronous internal call / freeze / no action). The
+   sharp one is `viaCustomer`: it is a cross-service SQL join that Wave 1.6 relocated into `sales`, where it
+   now *looks* local. SP8 assumed this design existed. It does not.
+4. **Item 4 — the frontend**, which still wants a decomposition pass (D-d) before a spec.
+
+**If you are about to add a gate, read challenges #75–79 first.** This slice hit five separate checks that
+passed while measuring nothing. The habit that caught them: never trust a green you have not made go red on
+purpose, and give every rule a non-vacuity assertion beside it.
 
 **Everything below this line predates the Wave 1.6 build and is unchanged.**
 
