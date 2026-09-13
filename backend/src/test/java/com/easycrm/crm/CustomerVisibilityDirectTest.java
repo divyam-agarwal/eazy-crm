@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
+import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +15,13 @@ import org.springframework.data.domain.PageRequest;
 /**
  * CustomerVisibility's own API, as distinct from CustomerVisibilityTest which exercises the same
  * rule through CustomerService. Both must pass: this one pins the seam sales now depends on.
+ *
+ * <p>The tests below the two original ones are ported from {@code VisibleFinderIntegrationTest}
+ * and {@code VisibilityPolicyIntegrationTest} (pre-Wave-1.6), which exercised the same behaviour
+ * against {@code VisibleFinder.findCustomer}/{@code pageCustomers} and {@code
+ * VisibilityPolicy.customers()} respectively before those methods moved here. Ported rather than
+ * rewritten, because the setup values (three customers: mine/execA, theirs/execB, unassigned) and
+ * the paging test's page-size-1-over-2-rows construction are the contract, not incidental detail.
  */
 @SpringBootTest
 class CustomerVisibilityDirectTest extends IntegrationTest {
@@ -54,6 +63,112 @@ class CustomerVisibilityDirectTest extends IntegrationTest {
             // Specification.and(null) throws in this Spring Data version; page() must guard it.
             assertThat(visibility.page(null, PageRequest.of(0, 10))).isNotNull();
         });
+    }
+
+    // --- ported from VisibleFinderIntegrationTest / VisibilityPolicyIntegrationTest ------------
+    //
+    // These share one fixture (tenantId/execA/execB/mine/theirs/pool) because both source
+    // classes' seed() built the identical three-customer shape under different field names
+    // (mine/theirs/pool vs customerA/customerB/customerUnassigned) -- unified here rather than
+    // duplicated.
+
+    private final UUID tenantId = UUID.randomUUID();
+    private final UUID execA = UUID.randomUUID();
+    private final UUID execB = UUID.randomUUID();
+
+    private UUID mine, theirs, pool;
+
+    @BeforeEach
+    void seedThreeCustomers() {
+        run(execA, "OWNER", () -> {
+            mine = save("Mine", execA);
+            theirs = save("Theirs", execB);
+            pool = save("Pool", null);
+        });
+    }
+
+    @Test
+    void byIdReturnsAVisibleRecord() {
+        run(execA, "SALES_EXEC", () -> assertThat(visibility.find(mine)).isPresent());
+    }
+
+    @Test
+    void byIdReturnsEmptyForAnInvisibleRecord() {
+        run(execA, "SALES_EXEC", () -> assertThat(visibility.find(theirs)).isEmpty());
+    }
+
+    @Test
+    void byIdReturnsAnUnassignedRecord() {
+        run(execA, "SALES_EXEC", () -> assertThat(visibility.find(pool)).isPresent());
+    }
+
+    @Test
+    void ownerSeesEvenAnotherExecsRecordById() {
+        run(execA, "OWNER", () -> assertThat(visibility.find(theirs)).isPresent());
+    }
+
+    /**
+     * The paging path builds a COUNT query too, and {@code PageableExecutionUtils} only
+     * executes it when the content page is not already known to be complete: it
+     * short-circuits whenever {@code offset == 0 && pageSize > content.size()}. A page
+     * size of 50 over 2 visible rows would hit that short-circuit and never run the count
+     * query at all, so this uses page size 1 -- {@code content.size() == 1 == pageSize}
+     * fails the short-circuit's strict {@code >}, forcing the real COUNT(*) to execute --
+     * to prove the visibility filter actually survives translation into a count query.
+     */
+    @Test
+    void pagingAppliesVisibilityToBothTheDataAndCountQueries() {
+        run(execA, "SALES_EXEC", () -> {
+            var page = visibility.page(null, PageRequest.of(0, 1));
+            assertThat(page.getContent()).hasSize(1);
+            assertThat(page.getTotalElements()).isEqualTo(2);
+        });
+    }
+
+    /**
+     * Ported from VisibilityPolicyIntegrationTest.ownerSeesEveryCustomer. The original also
+     * asserted {@code assertThat(policy.unrestricted()).isTrue()} directly; {@code
+     * CustomerVisibility.unrestricted()} is package-private by design (it is an implementation
+     * detail behind {@code spec()}, not part of the class's public contract), so that line has no
+     * direct equivalent here. The behaviour it certified -- OWNER sees every row -- is still
+     * fully asserted below via the observable result of {@code spec()}.
+     */
+    @Test
+    void ownerSeesEveryCustomer() {
+        run(
+                execA,
+                "OWNER",
+                () -> assertThat(ids(customers.findAll(visibility.spec())))
+                        .containsExactlyInAnyOrder(mine, theirs, pool));
+    }
+
+    /** Ported from VisibilityPolicyIntegrationTest.salesManagerSeesEveryCustomer. See the note on
+     *  {@code ownerSeesEveryCustomer} above re: {@code unrestricted()} no longer being public. */
+    @Test
+    void salesManagerSeesEveryCustomer() {
+        run(
+                execA,
+                "SALES_MANAGER",
+                () -> assertThat(ids(customers.findAll(visibility.spec()))).hasSize(3));
+    }
+
+    /** Ported from VisibilityPolicyIntegrationTest.salesExecSeesOwnAndUnassignedCustomersOnly. */
+    @Test
+    void salesExecSeesOwnAndUnassignedCustomersOnly() {
+        run(
+                execA,
+                "SALES_EXEC",
+                () -> assertThat(ids(customers.findAll(visibility.spec())))
+                        .containsExactlyInAnyOrder(mine, pool)
+                        .doesNotContain(theirs));
+    }
+
+    private void run(UUID userId, String role, Runnable body) {
+        TenantContext.runAs(new TenantContext.TenantPrincipal(tenantId, userId, role), body);
+    }
+
+    private List<UUID> ids(List<Customer> rows) {
+        return rows.stream().map(Customer::getId).toList();
     }
 
     private UUID save(String name, UUID assignedTo) {
