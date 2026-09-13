@@ -54,7 +54,7 @@ findsecbugs = "1.14.0"
 # 2026-08-01). The 3.x line is the Spring Boot 4 line -- its POM parent is
 # spring-boot-starter-parent 4.1.0, matching springBoot above. The 2.x line (latest 2.9.0)
 # is the Boot 3 line and will NOT work here; every pre-2026 tutorial names it.
-springdoc = "3.1.0"
+springdoc = "3.1.1"
 # --- supply chain, added by the Wave 1.5 slice ---
 # Verified against plugins.gradle.org/m2 on 2026-09-12: latest and release are both 13.0.0,
 # published 2026-08-03. Version 9 onward requires an NVD API key for a usable sync rate --
