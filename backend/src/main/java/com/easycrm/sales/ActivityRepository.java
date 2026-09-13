@@ -1,6 +1,5 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.visibility.SubjectType;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;

@@ -4,8 +4,6 @@ import com.easycrm.iam.AssignableUsers;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.platform.time.DueWindow;
-import com.easycrm.platform.visibility.SubjectType;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.FollowUpCompleteRequest;
 import com.easycrm.sales.web.dto.FollowUpCreateRequest;
@@ -24,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class FollowUpService {
 
     private final FollowUpRepository followUps;
-    private final VisibleFinder finder;
     private final SalesVisibility visibility;
     private final AssignableUsers assignableUsers;
     private final ActivityService activities;
@@ -32,13 +29,11 @@ public class FollowUpService {
 
     public FollowUpService(
             FollowUpRepository followUps,
-            VisibleFinder finder,
             SalesVisibility visibility,
             AssignableUsers assignableUsers,
             ActivityService activities,
             Clock clock) {
         this.followUps = followUps;
-        this.finder = finder;
         this.visibility = visibility;
         this.assignableUsers = assignableUsers;
         this.activities = activities;
@@ -47,7 +42,7 @@ public class FollowUpService {
 
     @Transactional
     public FollowUpResponse create(FollowUpCreateRequest req) {
-        finder.requireVisibleSubject(req.subjectType(), req.subjectId());
+        visibility.requireVisibleSubject(req.subjectType(), req.subjectId());
         assignableUsers.require(req.assignedTo());
         FollowUp saved = followUps.save(new FollowUp(
                 req.subjectType(), req.subjectId(), req.dueAt(), req.assignedTo(), req.note(), currentUserId()));

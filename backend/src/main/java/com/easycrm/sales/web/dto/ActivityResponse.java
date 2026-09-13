@@ -1,9 +1,9 @@
 package com.easycrm.sales.web.dto;
 
-import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.sales.Activity;
 import com.easycrm.sales.ActivitySource;
 import com.easycrm.sales.ActivityType;
+import com.easycrm.sales.SubjectType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.UUID;

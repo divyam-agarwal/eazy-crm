@@ -1,6 +1,5 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.visibility.SubjectType;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 

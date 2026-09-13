@@ -1,4 +1,4 @@
-package com.easycrm.platform.visibility;
+package com.easycrm.sales;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,9 +8,6 @@ import com.easycrm.crm.CustomerRepository;
 import com.easycrm.crm.CustomerSource;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.sales.Enquiry;
-import com.easycrm.sales.EnquiryRepository;
-import com.easycrm.sales.EnquirySource;
 import com.easycrm.support.IntegrationTest;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -28,7 +25,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class RequireVisibleSubjectTest extends IntegrationTest {
 
     @Autowired
-    VisibleFinder finder;
+    SalesVisibility visibility;
 
     @Autowired
     CustomerRepository customers;
@@ -68,25 +65,25 @@ class RequireVisibleSubjectTest extends IntegrationTest {
 
     @Test
     void returnsTheIdWhenTheSubjectIsVisible() {
-        asExecA(() -> assertThat(finder.requireVisibleSubject(SubjectType.ENQUIRY, myEnquiry))
+        asExecA(() -> assertThat(visibility.requireVisibleSubject(SubjectType.ENQUIRY, myEnquiry))
                 .isEqualTo(myEnquiry));
     }
 
     @Test
     void throwsNotFoundForAnotherExecsSubject() {
-        asExecA(() -> assertThatThrownBy(() -> finder.requireVisibleSubject(SubjectType.ENQUIRY, execBEnquiry))
+        asExecA(() -> assertThatThrownBy(() -> visibility.requireVisibleSubject(SubjectType.ENQUIRY, execBEnquiry))
                 .isInstanceOf(NotFoundException.class));
     }
 
     @Test
     void throwsNotFoundForAnIdThatDoesNotExist() {
-        asExecA(() -> assertThatThrownBy(() -> finder.requireVisibleSubject(SubjectType.ENQUIRY, UUID.randomUUID()))
+        asExecA(() -> assertThatThrownBy(() -> visibility.requireVisibleSubject(SubjectType.ENQUIRY, UUID.randomUUID()))
                 .isInstanceOf(NotFoundException.class));
     }
 
     @Test
     void resolvesCustomerSubjectsToo() {
-        asExecA(() -> assertThat(finder.requireVisibleSubject(SubjectType.CUSTOMER, myCustomer))
+        asExecA(() -> assertThat(visibility.requireVisibleSubject(SubjectType.CUSTOMER, myCustomer))
                 .isEqualTo(myCustomer));
     }
 
@@ -95,7 +92,7 @@ class RequireVisibleSubjectTest extends IntegrationTest {
         TenantContext.runAs(
                 new TenantContext.TenantPrincipal(tenantId, execAId, "OWNER"),
                 () -> tx.executeWithoutResult(
-                        s -> assertThat(finder.requireVisibleSubject(SubjectType.ENQUIRY, execBEnquiry))
+                        s -> assertThat(visibility.requireVisibleSubject(SubjectType.ENQUIRY, execBEnquiry))
                                 .isEqualTo(execBEnquiry)));
     }
 

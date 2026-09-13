@@ -1,6 +1,5 @@
 package com.easycrm.sales;
 
-import com.easycrm.platform.visibility.SubjectType;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.util.ArrayList;

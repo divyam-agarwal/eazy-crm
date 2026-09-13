@@ -1,10 +1,10 @@
 package com.easycrm.sales.web;
 
-import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.FollowUpScope;
 import com.easycrm.sales.FollowUpService;
 import com.easycrm.sales.FollowUpStatus;
+import com.easycrm.sales.SubjectType;
 import com.easycrm.sales.web.dto.FollowUpCancelRequest;
 import com.easycrm.sales.web.dto.FollowUpCompleteRequest;
 import com.easycrm.sales.web.dto.FollowUpCreateRequest;

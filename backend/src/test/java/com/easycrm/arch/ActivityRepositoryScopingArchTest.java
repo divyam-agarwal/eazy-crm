@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 class ActivityRepositoryScopingArchTest {
 
     private static final String REPOSITORY = "com.easycrm.sales.ActivityRepository";
-    private static final String SUBJECT_TYPE = "com.easycrm.platform.visibility.SubjectType";
+    private static final String SUBJECT_TYPE = "com.easycrm.sales.SubjectType";
 
     /** Supertypes that would silently reintroduce unscoped reads by inheritance. */
     private static final Set<String> FORBIDDEN_SUPERTYPES = Set.of(
@@ -81,7 +81,7 @@ class ActivityRepositoryScopingArchTest {
             assertThat(params)
                     .as(
                             "ActivityRepository.%s must take a SubjectType — an activity read that "
-                                    + "does not name a subject bypasses VisibleFinder.requireVisibleSubject "
+                                    + "does not name a subject bypasses SalesVisibility.requireVisibleSubject "
                                     + "entirely (spec §4.2)",
                             method.getName())
                     .contains(SUBJECT_TYPE);
@@ -98,7 +98,7 @@ class ActivityRepositoryScopingArchTest {
      * anticipate the next service that decides to inject the repository itself. The other
      * two tests in this class prove ActivityRepository cannot expose an unscoped read
      * METHOD; this one closes the remaining gap, which is a caller bypassing
-     * VisibleFinder.requireVisibleSubject entirely by injecting the repository and calling
+     * SalesVisibility.requireVisibleSubject entirely by injecting the repository and calling
      * a properly-subject-scoped method with a request-supplied (unchecked) id. Adding a
      * name here is a visibility decision and needs the same review as adding a table to
      * TenantScopingArchTest.GLOBAL_TABLES or a repository to
@@ -120,7 +120,7 @@ class ActivityRepositoryScopingArchTest {
                 .should(callActivityRepository())
                 .because("ActivityRepository's declared methods are subject-scoped, but only "
                         + "because every call site is trusted to have already resolved that "
-                        + "subject through VisibleFinder.requireVisibleSubject; a caller outside "
+                        + "subject through SalesVisibility.requireVisibleSubject; a caller outside "
                         + "ActivityService could pass a request-supplied id straight through and "
                         + "read another user's activity log unchecked");
 

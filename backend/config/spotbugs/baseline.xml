@@ -404,7 +404,7 @@
       <Message>At PageResponse.java:[line 7]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="894fac306baa7c6e1bef4d21b4afa826" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
+  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="a07ff27ba4350dc24eb975b6dd677116" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
     <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
     <LongMessage>Exception thrown in class com.easycrm.sales.Activity at new com.easycrm.sales.Activity(SubjectType, UUID, ActivityType, String, String, Instant, UUID, ActivitySource, Instant) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
     <Class classname="com.easycrm.sales.Activity" primary="true" classAnnotationNames="jakarta.persistence.Entity,jakarta.persistence.Table">
@@ -413,7 +413,7 @@
       </SourceLine>
       <Message>In class com.easycrm.sales.Activity</Message>
     </Class>
-    <Method classname="com.easycrm.sales.Activity" name="&lt;init&gt;" signature="(Lcom/easycrm/platform/visibility/SubjectType;Ljava/util/UUID;Lcom/easycrm/sales/ActivityType;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;Ljava/util/UUID;Lcom/easycrm/sales/ActivitySource;Ljava/time/Instant;)V" isStatic="false" primary="true">
+    <Method classname="com.easycrm.sales.Activity" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/SubjectType;Ljava/util/UUID;Lcom/easycrm/sales/ActivityType;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;Ljava/util/UUID;Lcom/easycrm/sales/ActivitySource;Ljava/time/Instant;)V" isStatic="false" primary="true">
       <SourceLine classname="com.easycrm.sales.Activity" start="76" end="88" startBytecode="0" endBytecode="292" sourcefile="Activity.java" sourcepath="com/easycrm/sales/Activity.java" relSourcepath="java/com/easycrm/sales/Activity.java"/>
       <Message>In method new com.easycrm.sales.Activity(SubjectType, UUID, ActivityType, String, String, Instant, UUID, ActivitySource, Instant)</Message>
     </Method>
@@ -424,24 +424,24 @@
       <Message>At Activity.java:[line 78]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="cd0b90505be6500e252710315e9c6d58" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
+  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="b255e7535e2ef75522605c5e514e9a60" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
     <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
     <LongMessage>Exception thrown in class com.easycrm.sales.FollowUp at new com.easycrm.sales.FollowUp(SubjectType, UUID, Instant, UUID, String, UUID) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
     <Class classname="com.easycrm.sales.FollowUp" primary="true" classAnnotationNames="jakarta.persistence.Entity,jakarta.persistence.Table">
-      <SourceLine classname="com.easycrm.sales.FollowUp" start="63" end="152" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
-        <Message>At FollowUp.java:[lines 63-152]</Message>
+      <SourceLine classname="com.easycrm.sales.FollowUp" start="62" end="151" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
+        <Message>At FollowUp.java:[lines 62-151]</Message>
       </SourceLine>
       <Message>In class com.easycrm.sales.FollowUp</Message>
     </Class>
-    <Method classname="com.easycrm.sales.FollowUp" name="&lt;init&gt;" signature="(Lcom/easycrm/platform/visibility/SubjectType;Ljava/util/UUID;Ljava/time/Instant;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;)V" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.sales.FollowUp" start="66" end="77" startBytecode="0" endBytecode="239" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java"/>
+    <Method classname="com.easycrm.sales.FollowUp" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/SubjectType;Ljava/util/UUID;Ljava/time/Instant;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.FollowUp" start="65" end="76" startBytecode="0" endBytecode="239" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java"/>
       <Message>In method new com.easycrm.sales.FollowUp(SubjectType, UUID, Instant, UUID, String, UUID)</Message>
     </Method>
-    <SourceLine classname="com.easycrm.sales.FollowUp" primary="true" start="68" end="68" startBytecode="20" endBytecode="20" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
-      <Message>At FollowUp.java:[line 68]</Message>
+    <SourceLine classname="com.easycrm.sales.FollowUp" primary="true" start="67" end="67" startBytecode="20" endBytecode="20" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
+      <Message>At FollowUp.java:[line 67]</Message>
     </SourceLine>
-    <SourceLine classname="com.easycrm.sales.FollowUp" start="68" end="68" startBytecode="20" endBytecode="20" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
-      <Message>At FollowUp.java:[line 68]</Message>
+    <SourceLine classname="com.easycrm.sales.FollowUp" start="67" end="67" startBytecode="20" endBytecode="20" sourcefile="FollowUp.java" sourcepath="com/easycrm/sales/FollowUp.java" relSourcepath="java/com/easycrm/sales/FollowUp.java">
+      <Message>At FollowUp.java:[line 67]</Message>
     </SourceLine>
   </BugInstance>
   <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="d075736376dcdb90ada2fbfc78dbba9a" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">

@@ -3,7 +3,6 @@ package com.easycrm.sales;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.support.IntegrationTest;
 import java.time.Instant;
 import java.util.UUID;

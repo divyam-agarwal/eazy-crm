@@ -15,8 +15,9 @@ import org.springframework.stereotype.Component;
  * per-repository. CustomerService keeps the repository for save() and the two uniqueness
  * pre-checks, and nothing else.
  *
- * <p>This lived in {@code platform.visibility.VisibleFinder} until Wave 1.6. It could not be
- * inverted behind a port the way {@code iam.AssignedWorkload} was, because its return types ARE
+ * <p>This lived in {@code VisibleFinder}, in the platform module's visibility package, until Wave
+ * 1.6. It could not be inverted behind a port the way {@code iam.AssignedWorkload} was, because
+ * its return types ARE
  * the domain aggregates — a port declared in {@code platform} would still have to name {@code
  * Customer}. So it moved to the package that owns the data instead, and {@code platform} now has
  * no visibility concern at all.

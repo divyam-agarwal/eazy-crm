@@ -18,7 +18,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Moved from {@code platform.visibility.VisibilityPolicyIntegrationTest} in Wave 1.6, when the four
+ * Moved from {@code VisibilityPolicyIntegrationTest} (formerly in the platform module's visibility
+ * package) in Wave 1.6, when the four
  * sales aggregates' visibility specifications moved out of {@code VisibilityPolicy} (deleted) into
  * {@code SalesVisibility}. The assertions and comments are unchanged.
  *
@@ -55,6 +56,14 @@ class SalesVisibilityPolicyTest extends IntegrationTest {
     private UUID customerA, customerB, customerUnassigned;
     private UUID quoteA, quoteB, quoteUnassigned;
     private UUID myEnquiry, theirEnquiry;
+
+    /**
+     * Only distinguishes the two phone numbers written within ONE seed() call (0, then 1); it is
+     * NOT what isolates one test from another — JUnit builds a fresh instance per test method, so
+     * this is always 0 then 1 and cannot collide across tests regardless. Cross-test isolation
+     * comes from {@code tenantId} being freshly randomised per instance.
+     */
+    private int seq = 0;
 
     @BeforeEach
     void seed() {
@@ -164,6 +173,22 @@ class SalesVisibilityPolicyTest extends IntegrationTest {
                 () -> assertThat(visibility.findQuotation(orphan)).isPresent());
     }
 
+    /**
+     * The other half of the asymmetry above, recorded rather than left to javadoc: a restricted
+     * read goes through {@code viaCustomer}'s EXISTS subquery, which requires the customer row to
+     * EXIST, so the very same orphan that an OWNER sees is invisible to a SALES_EXEC. This is not a
+     * bug to fix — a restricted read legitimately requires the customer row to exist, while an
+     * unrestricted one must not (see {@code viaCustomer}'s javadoc).
+     */
+    @Test
+    void salesExecDoesNotSeeAQuotationWhoseCustomerRowIsMissing() {
+        UUID orphan = asPrincipalGet(execA, "OWNER", () -> saveQuote(UUID.randomUUID()));
+        asPrincipal(
+                execA,
+                "SALES_EXEC",
+                () -> assertThat(visibility.findQuotation(orphan)).isEmpty());
+    }
+
     // --- helpers -------------------------------------------------------------
 
     private void asPrincipal(UUID userId, String role, Runnable body) {
@@ -184,8 +209,6 @@ class SalesVisibilityPolicyTest extends IntegrationTest {
     private Customer save(Customer c) {
         return customers.save(c);
     }
-
-    private int seq = 0;
 
     /** Copied verbatim from EnquiryVisibilityTest: Enquiry is constructor-only. */
     private UUID saveEnquiry(String phone, UUID assignedTo) {

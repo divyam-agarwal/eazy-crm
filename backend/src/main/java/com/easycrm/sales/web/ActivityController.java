@@ -1,8 +1,8 @@
 package com.easycrm.sales.web;
 
-import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.ActivityService;
+import com.easycrm.sales.SubjectType;
 import com.easycrm.sales.web.dto.ActivityCreateRequest;
 import com.easycrm.sales.web.dto.ActivityResponse;
 import com.easycrm.sales.web.dto.ActivityUpdateRequest;

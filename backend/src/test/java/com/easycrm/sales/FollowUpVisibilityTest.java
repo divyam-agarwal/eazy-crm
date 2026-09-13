@@ -5,7 +5,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
 import java.time.Instant;

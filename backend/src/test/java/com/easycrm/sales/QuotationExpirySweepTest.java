@@ -6,7 +6,6 @@ import com.easycrm.iam.AuditLog;
 import com.easycrm.iam.AuditLogRepository;
 import com.easycrm.platform.format.IndianFormats;
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.support.IntegrationTest;
 import java.math.BigDecimal;
 import java.time.LocalDate;

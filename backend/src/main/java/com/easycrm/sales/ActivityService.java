@@ -3,8 +3,6 @@ package com.easycrm.sales;
 import com.easycrm.iam.AssignableUsers;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.SubjectType;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.ActivityCreateRequest;
 import com.easycrm.sales.web.dto.ActivityResponse;
@@ -22,19 +20,19 @@ public class ActivityService {
 
     private final ActivityRepository activities;
     private final FollowUpRepository followUps;
-    private final VisibleFinder finder;
+    private final SalesVisibility visibility;
     private final AssignableUsers assignableUsers;
     private final Clock clock;
 
     public ActivityService(
             ActivityRepository activities,
             FollowUpRepository followUps,
-            VisibleFinder finder,
+            SalesVisibility visibility,
             AssignableUsers assignableUsers,
             Clock clock) {
         this.activities = activities;
         this.followUps = followUps;
-        this.finder = finder;
+        this.visibility = visibility;
         this.assignableUsers = assignableUsers;
         this.clock = clock;
     }
@@ -46,7 +44,7 @@ public class ActivityService {
      */
     @Transactional
     public ActivityResponse create(ActivityCreateRequest req) {
-        finder.requireVisibleSubject(req.subjectType(), req.subjectId());
+        visibility.requireVisibleSubject(req.subjectType(), req.subjectId());
         Instant now = clock.instant();
         Instant occurredAt = req.occurredAt() == null ? now : req.occurredAt();
         Activity saved = activities.save(Activity.manual(
@@ -78,7 +76,7 @@ public class ActivityService {
 
     @Transactional(readOnly = true)
     public PageResponse<ActivityResponse> list(SubjectType subjectType, UUID subjectId, Pageable pageable) {
-        finder.requireVisibleSubject(subjectType, subjectId);
+        visibility.requireVisibleSubject(subjectType, subjectId);
         return PageResponse.of(activities
                 .findBySubjectTypeAndSubjectIdOrderByOccurredAtDesc(subjectType, subjectId, pageable)
                 .map(ActivityResponse::of));
@@ -136,7 +134,7 @@ public class ActivityService {
      */
     @Transactional
     public ActivityResponse update(UUID id, ActivityUpdateRequest req) {
-        finder.requireVisibleSubject(req.subjectType(), req.subjectId());
+        visibility.requireVisibleSubject(req.subjectType(), req.subjectId());
         Activity a = activities
                 .findByIdAndSubjectTypeAndSubjectId(id, req.subjectType(), req.subjectId())
                 .orElseThrow(() -> new NotFoundException("activity " + id + " was not found"));

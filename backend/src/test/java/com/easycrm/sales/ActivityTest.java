@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.easycrm.platform.error.ValidationException;
-import com.easycrm.platform.visibility.SubjectType;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

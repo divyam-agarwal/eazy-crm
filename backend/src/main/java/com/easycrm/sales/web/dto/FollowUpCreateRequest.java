@@ -1,6 +1,6 @@
 package com.easycrm.sales.web.dto;
 
-import com.easycrm.platform.visibility.SubjectType;
+import com.easycrm.sales.SubjectType;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;

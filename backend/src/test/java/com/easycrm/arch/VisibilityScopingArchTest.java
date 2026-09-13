@@ -20,8 +20,9 @@ class VisibilityScopingArchTest {
     /**
      * Each visibility-scoped repository and the ONE class permitted to read it.
      *
-     * <p>This was a single package rule — "only com.easycrm.platform.visibility.. may read a
-     * guarded repository" — until Wave 1.6 deleted that package. The reads now live with the data
+     * <p>This was a single package rule — "only a class in the platform module's visibility
+     * package may read a guarded repository" — until Wave 1.6 deleted that package. The reads now
+     * live with the data
      * they filter, so the rule is stated per repository instead. <b>That is a tightening, not a
      * weakening:</b> it previously said "some class in one package", and it now names exactly one
      * class per table. The invariant was never "one class for everything" — it was "no read

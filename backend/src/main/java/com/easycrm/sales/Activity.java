@@ -2,7 +2,6 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.persistence.TenantScopedEntity;
-import com.easycrm.platform.visibility.SubjectType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,7 +17,8 @@ import java.util.UUID;
  *
  * <p>Visibility is derived from the SUBJECT, not from this row — there is no assigned_to
  * here. ActivityRepository declares no read that is not subject-scoped, so every path to
- * an Activity passes requireVisibleSubject (the polymorphic subject gate) first (§4.2).
+ * an Activity passes {@code SalesVisibility.requireVisibleSubject} (the polymorphic subject
+ * gate) first (§4.2).
  */
 @Entity
 @Table(name = "activity")

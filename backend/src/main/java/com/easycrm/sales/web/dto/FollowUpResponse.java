@@ -1,8 +1,8 @@
 package com.easycrm.sales.web.dto;
 
-import com.easycrm.platform.visibility.SubjectType;
 import com.easycrm.sales.FollowUp;
 import com.easycrm.sales.FollowUpStatus;
+import com.easycrm.sales.SubjectType;
 import java.time.Instant;
 import java.util.UUID;
 

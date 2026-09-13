@@ -2,6 +2,7 @@ package com.easycrm.sales;
 
 import com.easycrm.crm.Customer;
 import com.easycrm.crm.CustomerVisibility;
+import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -19,7 +20,7 @@ import org.springframework.stereotype.Component;
  * FollowUpRepository. VisibilityScopingArchTest fails the build on any other reader outside its
  * allowlist. Services keep their repositories for save() and the allowlisted pre-checks.
  *
- * <p>Moved here from {@code platform.visibility} in Wave 1.6 — see spec
+ * <p>Moved here from the platform module's visibility package in Wave 1.6 — see spec
  * 2026-09-13-wave-1.6-module-boundaries-design.md §3.1 for why a port in {@code platform} was not
  * an option, and crm.CustomerVisibility for the twin on the other aggregate.
  *
@@ -75,6 +76,32 @@ public class SalesVisibility {
 
     public Optional<FollowUp> findFollowUp(UUID id) {
         return followUps.findOne(followUpSpec().and(hasId(id)));
+    }
+
+    /**
+     * Resolves a polymorphic subject through the same visibility filter as a direct read, returning
+     * the id unchanged so call sites can inline it. Cross-tenant, non-existent and
+     * not-visible-to-you all surface as NotFoundException — the house 404 rule.
+     *
+     * <p>This is the ONLY thing protecting the activity table: ActivityRepository declares no read
+     * that is not subject-scoped, so an activity cannot be reached without first naming a subject,
+     * and a subject cannot be named without passing through here. See spec
+     * 2026-08-30-activity-follow-up-design.md §4.2.
+     *
+     * <p>The CUSTOMER branch delegates to crm, which owns that table.
+     */
+    public UUID requireVisibleSubject(SubjectType type, UUID id) {
+        boolean visible =
+                switch (type) {
+                    case CUSTOMER -> customerVisibility.isVisible(id);
+                    case ENQUIRY -> findEnquiry(id).isPresent();
+                    case QUOTATION -> findQuotation(id).isPresent();
+                    case ORDER -> findOrder(id).isPresent();
+                };
+        if (!visible) {
+            throw new NotFoundException(type.name().toLowerCase() + " " + id + " was not found");
+        }
+        return id;
     }
 
     public Page<Enquiry> pageEnquiries(Specification<Enquiry> filter, Pageable pageable) {
@@ -171,7 +198,11 @@ public class SalesVisibility {
         return (root, query, cb) -> cb.equal(root.get("id"), id);
     }
 
-    /** {@code Specification.and(null)} THROWS in this Spring Data version. Guard centrally. */
+    /**
+     * {@code Specification.and(null)} THROWS in the Spring Data JPA version this project is on —
+     * it is not the null-safe no-op it looks like. A caller-supplied filter is routinely null (an
+     * unfiltered list view), so guard here rather than at every call site.
+     */
     private static <T> Specification<T> and(Specification<T> base, Specification<T> filter) {
         return filter == null ? base : base.and(filter);
     }

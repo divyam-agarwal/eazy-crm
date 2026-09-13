@@ -2,7 +2,6 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.persistence.TenantScopedEntity;
-import com.easycrm.platform.visibility.SubjectType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
