@@ -1,5 +1,51 @@
 # EasyCRM — Handoff
 
+**Last updated:** 2026-09-13 — **`main` is pushed and Wave 1.6 is designed, not built.** Two things
+happened this session and neither is code.
+
+**First, `main` was pushed** — `ac2fc63..b858429`, 14 commits — and **Wave 1.5's scans ran in CI for
+the first time**: run `34713136667`, green on all three jobs (`check`, `supply-chain`,
+`dependency-check`). Every Wave 1.5 claim used to travel with "never executed in CI." That caveat is
+discharged. Dependabot also woke on the push and opened its first update runs.
+
+**Second, Wave 1.6 was designed, and a spike reshaped it before a line was written** —
+[`specs/2026-09-13-wave-1.6-module-boundaries-design.md`](specs/2026-09-13-wave-1.6-module-boundaries-design.md).
+The Modulith evaluation doc's Appendix A said `verify()` had never actually been run; it was, on a
+throwaway branch, and **three of that doc's positions did not survive**. (1) The violation count is
+**446, not a floor of 3** — 12 cycles plus 434 encapsulation findings. (2) **Declaring `platform`
+OPEN makes `verify()` pass with ZERO violations, suppressing all 12 cycles**, because every cycle
+routes through `platform` — so M2 (take `verify()` as the gate) and M4 (declare `platform` OPEN)
+conflict, and adopting Modulith the documented way would have produced a green gate certifying the
+graph that blocks SP8. Isolated, not inferred: with `platform` still OPEN a planted
+`catalog → sales` cycle **is** caught. **Challenge #75.** (3) Part 6's remedy for MF1 — "a port in
+`platform`, following `AssignedWorkload`" — **is not available**, because `VisibleFinder` returns
+`Optional<Customer>` and `Page<Quotation>` where `AssignedWorkload` returns a `long`; the domain
+aggregates *are* the return values, so no port in `platform` can name them. `platform.visibility` is
+therefore **deleted**, not inverted, and the H4 gate is a hand-written ArchUnit direction rule that
+OPEN cannot suppress. The evaluation doc now carries a Part 7 recording all of this.
+
+**Two items went onto the board, both found by designing rather than building.** **H7 is a live
+correctness bug of H1's exact class:** `QuotationPdfService` reads the buyer from the frozen
+`BuyerSnapshot` but the seller **live** from `tenant`, two lines apart — and computes `interState`
+from the frozen `placeOfSupply` against the **live** tenant `stateCode`, so a tenant changing
+registered state flips an already-`SENT` quotation between CGST/SGST and IGST rows on re-render,
+through the share link the buyer holds. `send()` guards the customer's divergence with a 422;
+nothing guards the seller's. The buyer-snapshot spec never mentions the seller. **It is recorded,
+not fixed** — it needs its own freeze decision (challenge #69's test: was anything already frozen
+*derived* from this field? For `stateCode`, yes). And **roadmap item 3b**, a cross-service data
+access design that does not exist and that SP8 assumed: Wave 1.6 closes Layer 1 (package
+acyclicity) but can only *freeze* Layer 2 (four direct cross-domain repository reads, plus the
+`viaCustomer` cross-service SQL join) behind a second ArchUnit rule whose allowlist is a register
+with a named exit per edge. Layer 3 needs nothing — **zero FK constraints in all 34 migrations**.
+
+**Next step: `writing-plans` for the Wave 1.6 spec.** Nothing is in flight; the tree is clean and
+`main` == `origin/main` at `b858429`, 604 tests. The one uncommitted file is
+`docs/architecture/pre-screening-answers.md`, untracked and not from this work.
+
+**Everything below predates 2026-09-13 and is unchanged.**
+
+---
+
 **Last updated:** 2026-09-07 — **The buyer snapshot is done.** Branch `buyer-snapshot`, tip
 `c24ae5e`, branched from `main` at `82733f1`; six task commits (`a3d89f1`..`c24ae5e`) plus this
 docs commit. **Sub-project 1 / F11 / roadmap item 1 / hazard H1 — the repo's only live correctness

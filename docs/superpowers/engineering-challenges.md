@@ -4718,3 +4718,92 @@ absent rather than not-equal-to-a-value**, because config formats let any litera
 expression of a different type; and **prefer a general sweep over an enumeration**, because the
 enumeration only covers what existed the day it was written — the general one found a two-year-old
 `:latest` in a block this slice never touched.
+
+---
+
+## Challenge 75 — The encapsulation escape hatch silently disables the cycle check it was supposed to coexist with
+
+### The problem
+
+Wave 1.6's whole purpose is to make module boundaries executable. Two dependency inversions had
+landed in three days past four ArchUnit tests, a full `clean check`, SpotBugs and a task-by-task
+review, so the decision (M1/M2) was to adopt Spring Modulith and take
+`ApplicationModules.verify()` as a build gate.
+
+`platform` has 12 subpackages and 77 inbound imports from `sales` alone. Run `verify()` with
+`platform` closed and it reports **446 violations**: 12 cycles and 434 of the form
+*"module 'catalog' depends on non-exposed type `com.easycrm.platform.error.NotFoundException`
+within module 'platform'"*. The 434 are noise in the useful sense — they name
+`TenantScopedEntity`, the three exception types and `PageResponse`, all things every service
+legitimately shares. Nobody wants to carve `@NamedInterface` across 12 subpackages before the gate
+can go green, so the obvious move — and decision M4, written down a week earlier — is to declare
+`platform` an **OPEN** module. The reference documentation describes OPEN exactly as it sounds: the
+module does not hide its internals.
+
+Declaring `platform` OPEN makes `verify()` pass with **zero violations.**
+
+Not 12. Zero. The 434 encapsulation complaints go, which is what OPEN was for — **and so do all 12
+cycles**, because every one of the 12 routes through `platform`. The gate that was adopted to catch
+H4 now certifies the graph containing H4 as clean, on its first run, with a passing build and no
+warning of any kind.
+
+### Why it's hard
+
+Nothing about this announces itself. The naive sequence — add the dependency, hit 446 violations,
+apply the documented remedy for the 434, see green, commit — is exactly how a careful person
+would work, and it ends with a boundary gate that cannot see boundary violations. The evaluation
+doc had even anticipated the *half* of this: M4 says OPEN "does not excuse the cycles, which must
+be fixed regardless." That sentence is true and insufficient. The cycles do still need fixing; what
+the doc missed is that after OPEN, nothing in the build will ever tell you they are there.
+
+Worse, the failure is **self-concealing in the same direction as the thing it hides**. A gate that
+fails loudly on 446 findings gets attention. A gate that passes gets a commit. And the passing
+state was produced by applying the documentation's own recommended remedy, so there is no misuse to
+notice in review — the diff is one `package-info.java` and a green build.
+
+This is the third instance of one pattern in this repo, and the pattern is now the point:
+
+| Instance | The vacuity |
+|---|---|
+| ArchUnit 1.3.0 (catalog comment) | Silently skips Java 25 bytecode; imports 0 classes; every rule passes |
+| Challenge #72 | SnakeYAML parses `on:` as a boolean, so a check keyed on the string `"on"` never fires |
+| **This one** | OPEN suppresses cycles *through* the open module, so the gate passes on the graph it was adopted to reject |
+
+In all three a green result means "the check did not run," and in all three the green is
+indistinguishable from success without a deliberate probe.
+
+### The solution
+
+**Probe the gate, then keep the probe.** The suppression was isolated rather than inferred: with
+`platform` still OPEN, plant a `catalog → sales → catalog` cycle and re-run. It **is** caught — one
+violation. So OPEN suppresses cycles through the open module only, not cycle detection in general.
+That single experiment is the difference between "verify() is useless" (wrong) and "verify() cannot
+see `platform`'s cycles" (right, and actionable).
+
+Given that, the two decisions are separated rather than reconciled:
+
+- `platform` stays **OPEN** — correct for a single shared library every service consumes, where
+  the 434 really are noise.
+- The H4 gate becomes a **hand-written ArchUnit rule**: no class in `com.easycrm.platform..` may
+  depend on `crm`, `sales`, `catalog`, `tenant` or `iam`. Roughly ten lines, unaffected by OPEN,
+  and a fifth member of the `arch/` family it sits beside.
+- `verify()` is kept for what it can still do — module detection, C4 documentation, and cycles
+  **not** involving `platform` — and its test carries a comment saying so, naming the ArchUnit
+  rule as what covers the rest. A gate with a known blind spot is fine; an undocumented one is a
+  trap for whoever reads the green next.
+- The Modulith test also asserts non-vacuity (seven modules and a non-trivial class count actually
+  imported), so it cannot pass by reading nothing — the same guard
+  `PlatformPrimitivesArchTest.theImportIsNotVacuous` already applies to ArchUnit.
+
+### Lesson
+
+**When a tool offers a knob that makes a failing check pass, find out what else that knob turns
+off — by making the check fail on purpose.** "Does this suppress more than it claims?" is not
+answerable by reading the documentation, which described OPEN accurately in terms of encapsulation
+and never mentioned cycles; it is answerable in one experiment.
+
+The sharper version, because it generalises past this tool: **a gate adopted to catch a specific
+known defect must be run against that defect before it is trusted.** The defect was already
+identified, already written down, and sitting in the tree — so "does the new gate flag H4?" was a
+question with a cheap, decisive answer available at any point. Adopting the gate without asking it
+would have converted an open, documented blocker into a closed one that the build affirmed.

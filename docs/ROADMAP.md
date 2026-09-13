@@ -2,14 +2,15 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `main` at `7f6a700` — **604 tests, 0 failures**, verified by `./gradlew clean
+**Code baseline:** `main` at `b858429` — **604 tests, 0 failures**, verified by `./gradlew clean
 check` from clean on the merged result. Wave 1.5 (item 2) merged fast-forward on 2026-09-12 and
 the `supply-chain` branch was deleted; 591 before it, plus 13 in `SupplyChainWorkflowTest`. (The
 buyer-snapshot branch merged the same way on 2026-09-08; the baseline before that was 586.)
 
-**`main` is thirteen commits ahead of `origin/main` (`ac2fc63`) and none of it has been pushed** —
-including every scan Wave 1.5 added, so **CI has never executed any of them**. They were each
-proven able to fail locally; no GitHub Actions runner has run the `supply-chain` job once.
+**`main` is PUSHED as of 2026-09-13, and Wave 1.5's scans have now run in CI for the first time.**
+14 commits went `ac2fc63..b858429`; CI run `34713136667` is green on all three jobs — `check`,
+`supply-chain` and `dependency-check`. The "never executed in CI" caveat that travelled with every
+Wave 1.5 claim is **discharged**: those gates are no longer only on one laptop.
 
 **Verify before relying on any of this** — `git rev-parse --short main`,
 `git rev-parse --short origin/main` (as two separate invocations; passing both refs to one
@@ -40,8 +41,8 @@ pass when it starts. **Nothing here replaces a spec.**
 
 # Part 1 — Where we are today
 
-**Verified at `7f6a700`, not assumed — see the code-baseline note above: `main` is thirteen
-commits ahead of pushed `origin/main` (`ac2fc63`), and CI has run none of them.**
+**Verified at `b858429`, not assumed — see the code-baseline note above: `main` and `origin/main`
+are in sync as of 2026-09-13 and CI is green on the tip.**
 
 ## 1.1 Application
 
@@ -88,9 +89,10 @@ nothing serves the URL that gets pasted into WhatsApp) · **outbox, SNS/SQS, any
 | ~~**H1**~~ | ~~**`QuotationVersion` does not freeze the buyer.** `QuotationPdfService` reads `businessName`, `gstin`, `billingAddress` **live** from `customer` at render time. Edit a customer's address and a `SENT` quotation renders differently — through a public share link the buyer already holds~~ **FIXED 2026-09-07** — `c24ae5e`. `QuotationVersion` carries a `BuyerSnapshot` frozen at `send()`, the render path reads it, and `import com.easycrm.crm.Customer` is gone from `sales/pdf/`. F11 closed. See [`superpowers/specs/2026-09-07-buyer-snapshot-design.md`](superpowers/specs/2026-09-07-buyer-snapshot-design.md) | F11 · ~~live correctness bug~~ **closed** |
 | **H2** | Rate-limit store is in-process. N app instances multiply every configured limit by N, silently | HANDOFF §8 |
 | **H3** | The 00:30 IST expiry sweep takes no distributed lock. N instances all sweep every tenant. Fails safe (`@Version` blocks double-writes) but duplicates all the work | HANDOFF §8 |
-| **H4** | `platform.visibility` and `platform.job` import `crm`/`sales`/`tenant` — three dependency cycles. Blocks service extraction | MF1/MF2 |
+| **H4** | `platform.visibility` and `platform.job` import `crm`/`sales`/`tenant` — **12 cycles, measured, not three** (all through `platform`; the doc's three was an import-graph floor). Blocks service extraction. **And `verify()` cannot see them once `platform` is OPEN** — challenge #75 | MF1/MF2 · [Wave 1.6 spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) |
 | **H5** | No index behind `assigned_to = :me OR assigned_to IS NULL` on `customer`/`enquiry`; no index supports a status-only order-list filter | HANDOFF §8 |
 | **H6** | `SALES_MANAGER` is invitable but collapsed into the unrestricted visibility tier. The spec's three-tier rule is unbuilt | HANDOFF §8 |
+| **H7** | **The seller is not frozen on a sent quotation, and the tax presentation depends on it.** `QuotationPdfService` reads the buyer from the frozen `BuyerSnapshot` but the seller — `businessName`, `gstin`, `address`, `phone`, `email` — **live** from `tenant`, two lines apart. Worse, `interState` is computed from the frozen `placeOfSupply` against the **live** tenant `stateCode`, so a tenant changing registered state flips an already-`SENT` quotation between CGST/SGST and IGST rows on re-render, through the public share link the buyer holds. `send()` guards the *customer's* `stateCode` divergence with a 422; nothing guards the seller's. H1's exact class, on the other side of the document. Found 2026-09-13 while auditing what `sales` reads from `tenant`; the buyer-snapshot spec never mentions the seller | **live correctness bug** · [Wave 1.6 spec §5.3](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) |
 
 ---
 
@@ -366,7 +368,7 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 | **Observability** | Nothing | Wave 2 (app), SP3 (AWS) |
 | **Auth** | bcrypt, HS256, rotating refresh, rate limiting, RLS, I1–I5 decided | SP7 (RS256/JWKS, IAM auth, WAF) |
 | **Load/chaos** | Nothing | k6 baseline, AWS FIS suite — both need staging |
-| **Split** | Design only. `platform-primitives` is the one extracted module | SP6, SP8, LLDs #2–#6 — **all conditional on a §4.5 trigger** |
+| **Split** | Design only. `platform-primitives` is the one extracted module. **Layer 3 (schema) is already clean — zero FK constraints in 34 migrations** | Layer 1 via Wave 1.6 (item 3); **Layer 2 design owed (item 3b)**; then SP6, SP8, LLDs #2–#6 — **all conditional on a §4.5 trigger** |
 
 ---
 
@@ -378,7 +380,8 @@ Ranked. **Effort** is relative, not calendar.
 |---|---|---|---|---|
 | ~~**1**~~ | ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`** | Was the only **live correctness bug**: a `SENT` quotation silently re-rendered differently after a customer edit, through a link the buyer holds. Open since 2026-08-19 while nine slices landed around it. Closed by freezing the buyer onto `QuotationVersion` at `send()`; H1 and F11 are both closed. **Item 2 is done too, as of 2026-09-12; item 3 is next.** | S | — |
 | ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **DONE 2026-09-12, merged fast-forward at `7f6a700`** (eleven commits, `5053d42`..`7f6a700`; 604 tests, 0 failures). `gitleaks`, `actionlint` and `squawk` block; Dependabot opens weekly PRs; OWASP Dependency-Check reports without blocking (D1, flip trigger = branch protection). None is wired into `./gradlew check` — `SupplyChainWorkflowTest`'s 13 assertions are what make that safe, and they guard against `if:`, `continue-on-error`, `\|\| true`, a shallow `fetch-depth` and floating tags, not merely against a step's absence. **Still unpushed, so CI has never run any of it.** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
-| **3** | **Wave 1.6 — Modulith + cycle fix** | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. Cost rises with every slice added first | S–M | — |
+| **3** | **Wave 1.6 — module boundaries + cycle fix** — **DESIGNED 2026-09-13**, [spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. **Reshaped by a spike:** `platform.visibility` is *deleted*, not inverted (its returns are domain aggregates, so no port in `platform` can name them); the H4 gate is a hand-written ArchUnit direction rule, **not** `verify()`, because declaring `platform` OPEN suppresses all 12 cycles (challenge #75); and a second rule freezes cross-domain repository reads behind a register with an exit plan per edge | S–M | — |
+| **3b** | **Cross-service data access design** (Layer 2) — **owed, does not exist** | Wave 1.6 closes Layer 1 (package acyclicity) and *freezes* Layer 2 rather than fixing it. Layer 2 is the actual extraction work and **no gate can see it** — a cross-service read is not a cycle. Four direct reads exist (`sales → crm.ContactRepository`, `sales → catalog.{Product,PriceListItem}Repository`, `sales`/`iam` → `tenant.TenantRepository`), plus the `viaCustomer` **cross-service SQL join** that Wave 1.6 relocates into `sales` where it looks local. Decide port-vs-event-vs-freeze per edge, and the `quotation`/`sales_order` owner denormalisation. **Ahead of SP8, which has no design for these edges** — the service-scope doc that names them is stale by its own §3.2. Layer 3 needs nothing: zero FK constraints in all 34 migrations | M | 3 |
 | **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse | **L** | — (wants decomposing before a spec) |
 | **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
 | **6** | **Wave 2 — observability** | Prerequisite for scaling, for reading load tests, and for seeing H2/H3 at all | M | — |
@@ -396,11 +399,19 @@ Ranked. **Effort** is relative, not calendar.
 
 ## 6.1 If you only do three things
 
-**3, settling D-g, and pushing.** Items 1 and 2 are both done and merged. Wave 1.6 is small and
-unblocked, and stops the module graph drifting further before the frontend doubles the surface.
-Settling D-g is not a build item at all — a decision plus a registrar checkout — and it is the one
-thing on this page that gets more expensive the longer it waits, because every public link minted
-before it is settled is a link you later have to strand or permanently redirect.
+**Pushing is DONE (2026-09-13, `ac2fc63..b858429`, CI green on all three jobs). The remaining two
+are 3 and settling D-g.** Items 1 and 2 are both done and merged. Wave 1.6 is designed as of
+2026-09-13 and unblocked, and stops the module graph drifting further before the frontend doubles
+the surface. Settling D-g is not a build item at all — a decision plus a registrar checkout — and it
+is the one thing on this page that gets more expensive the longer it waits, because every public
+link minted before it is settled is a link you later have to strand or permanently redirect.
+
+**Two things moved onto the board on 2026-09-13, both found by designing Wave 1.6 rather than by
+building it.** **H7** is a live correctness bug of H1's exact class — the seller is not frozen on a
+sent quotation and the *tax presentation* is computed against the live tenant `stateCode`, so it
+outranks most of this list on severity even though it is small. And **item 3b** is a design that
+does not exist and that SP8 silently assumed: Wave 1.6 can only *freeze* cross-service data access,
+not fix it.
 
 **The third is not a slice: push.** Thirteen commits sit on local `main`, including every scan
 Wave 1.5 added, and CI has executed none of them. Until that push happens the supply-chain gates

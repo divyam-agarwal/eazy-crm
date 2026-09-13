@@ -1,7 +1,10 @@
 # Spring Modulith — evaluation and decision
 
 **Date:** 2026-09-03
-**Status:** Decision. No code changed.
+**Status:** Decision. No code changed. **Amended 2026-09-13 — see Part 7. A spike ran `verify()`
+for real and two of this document's conclusions did not survive it: MA1's violation count was 446
+rather than "higher than three", and M4 (declare `platform` OPEN) turns out to suppress the very
+cycles M2 adopts `verify()` to catch. Read Part 7 before acting on M2, M4 or Part 6.**
 **Code baseline:** `28f9ac8` — `main`, 586 tests, Spring Boot 4.1.0, Java 25.
 **Parent:** [`2026-08-24-service-scope-and-shared-modules.md`](2026-08-24-service-scope-and-shared-modules.md)
 (the five services and their boundaries)
@@ -192,3 +195,75 @@ Checked 2026-09-03.
 - This repository at `28f9ac8`: the `com.easycrm` import graph, `gradle/libs.versions.toml`,
   the four tests in `src/test/java/com/easycrm/arch/`, and `git log --diff-filter=A` for
   `VisibleFinder` and `TenantJobRunner`
+
+
+---
+
+# Part 7 — Spike findings, 2026-09-13
+
+Appendix A said `verify()` had not been run and that MA2 should be confirmed "before writing the
+plan." It was, on throwaway branch `spike-modulith-verify` (since deleted), at `b858429` with
+Modulith 2.1.1. Full design consequences:
+[`../superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md`](../superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md).
+
+| Appendix A item | Outcome |
+|---|---|
+| **MA1** — real violation count is a floor of 3 | **446.** 12 cycles + 434 "depends on non-exposed type", 0 other. The 434 concentrate in `platform.persistence.TenantScopedEntity`, `platform.error.*` and `platform.web.PageResponse` |
+| **MA2** — does detection see 7 modules? | **Confirmed. Exactly 7**, `platform`'s 12 subpackages collapsing into one. `demo` is detected as a module, so **MF4 is real** |
+| **MA3** — is `Documenter` output byte-stable? | **Confirmed. 16 files, 0 differ** across two consecutive runs. The M3 snapshot guard is viable |
+
+## 7.1 M2 and M4 conflict — the finding that reshaped Wave 1.6
+
+**Declaring `platform` OPEN makes `verify()` pass with zero violations — all 12 cycles included**,
+because every one of the 12 routes through `platform`. Isolated rather than inferred: with
+`platform` still OPEN, a planted `catalog → sales → catalog` cycle **is** caught. So OPEN suppresses
+cycles *through the open module*, not cycle detection in general.
+
+M4 says OPEN "does not excuse the cycles, which must be fixed regardless." True, and insufficient:
+after OPEN, nothing in the build reports them. **Adopt Modulith, declare `platform` OPEN, fix
+nothing, and `verify()` certifies the graph that blocks SP8.** Logged as challenge #75.
+
+**M2 is therefore amended:** `verify()` is kept for module detection, the C4 documentation and
+cycles **not** involving `platform`. The H4 gate becomes a hand-written ArchUnit rule — no class in
+`com.easycrm.platform..` may depend on `crm`, `sales`, `catalog`, `tenant` or `iam` — which OPEN does
+not affect. **M4 stands:** `platform` is one shared library every service consumes, so the 434
+encapsulation findings are noise and named interfaces buy little.
+
+## 7.2 Part 6's remedy for MF1 is not available
+
+Part 6 says to invert `VisibleFinder` with "a port in `platform`, implementations in `crm` and
+`sales`, following `AssignedWorkload`." **The two are not the same shape.** `AssignedWorkload`
+returns `String` and `long`, so nothing of `crm`/`sales` crosses. `VisibleFinder` returns
+`Optional<Customer>`, `Page<Quotation>`, `List<Quotation>` — the domain aggregates **are** the
+return values, so a port declared in `platform` still imports them. `VisibilityPolicy.viaCustomer`
+has the same problem, building a criteria subquery on `Root<Customer>`.
+
+Wave 1.6 therefore **deletes `platform.visibility`** rather than inverting it: the rule is derived
+per-module from the JWT role claim, and the specs plus repository reads move to `crm` and `sales`.
+MF1 closes by deletion. See §3.1 of the Wave 1.6 spec.
+
+## 7.3 API drift — Part 2's compatibility table is right, its call sites are 1.x
+
+| Assumed | Actual in 2.1.1 |
+|---|---|
+| `ApplicationModule.getName()` | `getIdentifier()` / `getDisplayName()` |
+| `new Documenter(modules, "dir")` | `new Documenter(modules, Documenter.Options.defaults().withOutputFolder(dir))` |
+| Modulith is test-scope only | `package-info.java` carrying `@ApplicationModule` needs `spring-modulith-api` at **compile** scope |
+
+And a third version trap for Part 2's list: **`repo1.maven.org`'s `maven-metadata.xml` now reports
+`<release>2.2.0-M1</release>` — a milestone in the `release` field.** Part 2's rule "read repo1, not
+the search API" is necessary but not sufficient; the release field itself cannot be read naively.
+Latest stable remains **2.1.1**.
+
+## 7.4 What the spike additionally found, outside this document's scope
+
+**Acyclicity is necessary and nowhere near sufficient for extraction.** Four direct cross-domain
+repository reads exist (`sales → crm.ContactRepository`, `sales → catalog.{Product,PriceListItem}Repository`,
+`sales`/`iam` → `tenant.TenantRepository`). None is a cycle, so `verify()` reports them only as
+"non-exposed type" — silenced by OPEN. Wave 1.6 freezes them behind a second ArchUnit rule with an
+exit plan per edge; the resolution design is a new roadmap item. The schema, by contrast, is already
+clean: **zero FK constraints in all 34 migrations.**
+
+Auditing those reads also surfaced **H7**: `QuotationPdfService` freezes the buyer but reads the
+seller live, and computes the tax presentation from the frozen `placeOfSupply` against the live
+tenant `stateCode`. See §5.3 of the Wave 1.6 spec.
