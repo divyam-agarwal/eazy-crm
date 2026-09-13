@@ -1,6 +1,72 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-13 — **`main` is pushed and Wave 1.6 is designed, not built.** Two things
+**Last updated:** 2026-09-13 (second pass) — **Wave 1.6 is BUILT. H4 is closed.** Branch
+`wave-1.6-module-boundaries`, tip `ebe97cc`, branched from `main` at `5ec82f1`; twelve commits
+(`8f40b62`..`ebe97cc`). **`platform` now has ZERO outbound domain imports**, down from 18 across three
+files, so the one shared library every future service consumes no longer drags `sales`, `crm` and
+`tenant` along with it. **Baseline is now 626 tests (598 root + 28 `platform-primitives`), 0 failures,
+0 errors**, `./gradlew clean check` green end to end; it was 604 before.
+[spec](specs/2026-09-13-wave-1.6-module-boundaries-design.md) ·
+[plan](plans/2026-09-13-wave-1.6-module-boundaries.md).
+
+**NOT YET MERGED, and one thing is owed before it is:** the final review's condition was a CI run on the
+branch. The reason is specific — `ModulithDocsSnapshotTest` compares generated C4 documentation
+byte-for-byte and now *fails* `check` rather than reporting, and the one axis never measured is whether
+the generator emits identical bytes on a different machine or JDK patch. If it does not, a developer's
+`updateModulithDocs` on macOS and CI's `check` on Linux could never agree and the guard would be
+unfixable by regeneration. One CI run settles it.
+
+**The design was reshaped by a spike before any code was written, and that is the part worth reading.**
+The Modulith evaluation doc's Appendix A admitted `verify()` had never actually been run. It was, on a
+throwaway branch, and **three of that doc's positions did not survive**: the violation count was 446, not
+a floor of 3; **declaring `platform` OPEN makes `verify()` pass with ZERO violations by suppressing all 12
+cycles**, because every cycle routed through `platform` (isolated empirically — with `platform` still
+OPEN, a planted `catalog → sales` cycle IS caught); and Part 6's prescribed remedy was unavailable,
+because `VisibleFinder` returns `Optional<Customer>` and `Page<Quotation>` where the `AssignedWorkload`
+precedent returns a `long`, so no port declared in `platform` could name them. **So `platform.visibility`
+was DELETED rather than inverted, and the H4 gate is a hand-written ArchUnit direction rule — NOT
+`verify()`, which cannot see these cycles.** Challenge #75.
+
+**Four things to know before touching visibility again.**
+1. **The rule is now derived independently in `crm.CustomerVisibility` and `sales.SalesVisibility`**, from
+   the JWT role claim, with no shared method — deliberate, because post-split those are separate
+   deployables that cannot share a decision. The cost is that a divergence fails **OPEN**.
+2. **`sales.SalesVisibility.viaCustomer` delegates the Customer predicate to `crm`**, so the two
+   `"SALES_EXEC"` literals are jointly load-bearing *asymmetrically*: if `sales` says restricted while
+   `crm` says unrestricted, the restricted path degrades to a bare
+   `EXISTS (SELECT id FROM customer WHERE id = q.customer_id)` and a `SALES_EXEC` sees **every** quotation
+   whose customer row exists. Guarded two ways — both constants anchored to a shared test-scope value, and
+   the behavioural contract tests — and **this is the trap waiting for H6**: implementing the
+   `SALES_MANAGER` tier in one interpreter only reproduces it exactly.
+3. **`viaCustomer` keeps an early return for the unrestricted case** (`if (unrestricted()) return
+   unrestrictedSpec();`). The plan's code had dropped it. With zero FK constraints in the schema and
+   `quotation.customer_id` a bare `UUID NOT NULL`, an orphaned quotation is representable, and
+   always-`EXISTS` would have flipped it from visible to invisible for an OWNER. Pinned from both sides
+   now (`SalesVisibilityPolicyTest`).
+4. **`viaCustomer` is still a cross-service SQL join.** Moving it into `sales` fixed the package cycle and
+   made it *look* local. Roadmap item 3b owns the real fix.
+
+**The recurring lesson of this slice, five times over: a check that passes may be measuring nothing.**
+`platform` OPEN suppressing the cycles it was adopted to catch; `clean check` failing fast at `:test` so
+Spotless never ran; a fail-open test that survived mutation of the very line it pinned (it read a
+quotation, whose path routes through crm's own fail-open default); an arch rule holding a deleted class's
+FQN as a *string* constant, silently matching nothing; and `Documenter` "proven" byte-stable by a spike
+that ran both generations in one JVM. Every gate added here therefore carries a non-vacuity assertion, and
+every guard was verified by making it fail on purpose. **Challenges #75–79** record them.
+
+**Two items went on the board, neither fixed here.** **H7** is a live correctness bug of H1's exact class —
+the seller is not frozen on a sent quotation, and `interState` is computed from the frozen `placeOfSupply`
+against the **live** tenant `stateCode`, so changing registered state flips an already-`SENT` quotation
+between CGST/SGST and IGST on re-render, through the buyer's share link. It is small and it mis-states tax
+on a document a customer holds; it arguably outranks most of the roadmap. **Item 3b** is the cross-service
+data access design SP8 assumed existed: Wave 1.6 *froze* Layer 2 behind a register with a named exit per
+edge, it did not resolve it.
+
+**Everything below this line predates the Wave 1.6 build and is unchanged.**
+
+---
+
+**Previously:** 2026-09-13 (first pass) — **`main` is pushed and Wave 1.6 is designed, not built.** Two things
 happened this session and neither is code.
 
 **First, `main` was pushed** — `ac2fc63..b858429`, 14 commits — and **Wave 1.5's scans ran in CI for

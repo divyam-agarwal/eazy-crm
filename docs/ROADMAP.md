@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Status:** Living document. Supersedes no design doc; sequences all of them.
-**Code baseline:** `main` at `b858429` — **604 tests, 0 failures**, verified by `./gradlew clean
+**Code baseline:** `wave-1.6-module-boundaries` at `ebe97cc` — **626 tests (598 root + 28 primitives), 0 failures**, verified by `./gradlew clean
 check` from clean on the merged result. Wave 1.5 (item 2) merged fast-forward on 2026-09-12 and
 the `supply-chain` branch was deleted; 591 before it, plus 13 in `SupplyChainWorkflowTest`. (The
 buyer-snapshot branch merged the same way on 2026-09-08; the baseline before that was 586.)
@@ -54,15 +54,18 @@ are in sync as of 2026-09-13 and CI is green on the tip.**
 | Schema | 34 Flyway migrations, latest `V34__quotation_version_buyer_snapshot.sql` |
 | Wedge | enquiry → versioned GST quotation → order — **complete end to end and hardened**, plus activity/follow-up, nightly auto-expiry, PDF render and WhatsApp share |
 | Multi-user | Invitations, accept, revoke, pending list; members list / change-role / disable / enable |
-| Tests | 604 (576 root + 28 primitives), 0 failures |
+| Tests | **626 (598 root + 28 primitives), 0 failures** — Wave 1.6 added 22 |
 
 ## 1.2 Tenant isolation — the thing that is actually finished
 
 Four layers, all built: `@TenantId` on every tenant entity; `TenantScopingArchTest` failing the
 build on a new unscoped entity; Postgres RLS `ENABLE` + `FORCE` on all sixteen tenant tables;
 `RlsCoverageIntegrationTest` as an independent layer-3 twin keyed on the `tenant_id` **column**
-rather than the annotation. Record-level visibility (`assigned_to`) sits on top, funnelled through
-a single `VisibleFinder` and guarded by `VisibilityScopingArchTest`.
+rather than the annotation. Record-level visibility (`assigned_to`) sits on top: since Wave 1.6 it is
+derived independently in `crm.CustomerVisibility` and `sales.SalesVisibility` — deliberately, for
+split-readiness, since post-split those are separate deployables that cannot share a decision — with
+`VisibilityScopingArchTest` naming exactly one permitted reader per guarded repository and a
+test-scope `VisibilityContract` keeping the two interpreters in agreement.
 
 ## 1.3 Build and CI
 
@@ -89,7 +92,7 @@ nothing serves the URL that gets pasted into WhatsApp) · **outbox, SNS/SQS, any
 | ~~**H1**~~ | ~~**`QuotationVersion` does not freeze the buyer.** `QuotationPdfService` reads `businessName`, `gstin`, `billingAddress` **live** from `customer` at render time. Edit a customer's address and a `SENT` quotation renders differently — through a public share link the buyer already holds~~ **FIXED 2026-09-07** — `c24ae5e`. `QuotationVersion` carries a `BuyerSnapshot` frozen at `send()`, the render path reads it, and `import com.easycrm.crm.Customer` is gone from `sales/pdf/`. F11 closed. See [`superpowers/specs/2026-09-07-buyer-snapshot-design.md`](superpowers/specs/2026-09-07-buyer-snapshot-design.md) | F11 · ~~live correctness bug~~ **closed** |
 | **H2** | Rate-limit store is in-process. N app instances multiply every configured limit by N, silently | HANDOFF §8 |
 | **H3** | The 00:30 IST expiry sweep takes no distributed lock. N instances all sweep every tenant. Fails safe (`@Version` blocks double-writes) but duplicates all the work | HANDOFF §8 |
-| **H4** | `platform.visibility` and `platform.job` import `crm`/`sales`/`tenant` — **12 cycles, measured, not three** (all through `platform`; the doc's three was an import-graph floor). Blocks service extraction. **And `verify()` cannot see them once `platform` is OPEN** — challenge #75 | MF1/MF2 · [Wave 1.6 spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) |
+| ~~**H4**~~ | ~~`platform.visibility` and `platform.job` import `crm`/`sales`/`tenant` — **12 cycles, measured, not three**. Blocks service extraction~~ **FIXED 2026-09-13** — Wave 1.6. `platform.visibility` was **deleted**, not inverted; `platform` now has **zero** outbound domain imports (was 18 across three files), enforced by `ModuleDirectionArchTest` plus a non-vacuity companion. Note the gate is that hand-written rule and **not** `ApplicationModules.verify()`, which cannot see these cycles once `platform` is OPEN — challenge #75. [Wave 1.6 spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) | MF1/MF2 · ~~blocks SP8~~ **closed** |
 | **H5** | No index behind `assigned_to = :me OR assigned_to IS NULL` on `customer`/`enquiry`; no index supports a status-only order-list filter | HANDOFF §8 |
 | **H6** | `SALES_MANAGER` is invitable but collapsed into the unrestricted visibility tier. The spec's three-tier rule is unbuilt. The rule lives in two independently-derived interpreters (`crm.CustomerVisibility` and `sales.SalesVisibility`); building the tier into only one of them degrades `SalesVisibility.viaCustomer`'s restricted path to a bare `EXISTS (SELECT id FROM customer WHERE id = q.customer_id)` — a pure existence check letting a `SALES_EXEC` see every quotation whose customer row exists — and fails **OPEN**. Tripwire: flipping `SALES_MANAGER`'s expectation in `VisibilityContract.cases()` reddens both contract tests until both interpreters are edited | HANDOFF §8 |
 | **H7** | **The seller is not frozen on a sent quotation, and the tax presentation depends on it.** `QuotationPdfService` reads the buyer from the frozen `BuyerSnapshot` but the seller — `businessName`, `gstin`, `address`, `phone`, `email` — **live** from `tenant`, two lines apart. Worse, `interState` is computed from the frozen `placeOfSupply` against the **live** tenant `stateCode`, so a tenant changing registered state flips an already-`SENT` quotation between CGST/SGST and IGST rows on re-render, through the public share link the buyer holds. `send()` guards the *customer's* `stateCode` divergence with a 422; nothing guards the seller's. H1's exact class, on the other side of the document. Found 2026-09-13 while auditing what `sales` reads from `tenant`; the buyer-snapshot spec never mentions the seller | **live correctness bug** · [Wave 1.6 spec §5.3](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) |
@@ -107,8 +110,9 @@ profile, and whatever the frontend demands once it is real.
 
 ### B — Build and CI
 Waves 1 and 1.5 done — supply chain landed 2026-09-12 with `gitleaks`, `actionlint`, `squawk`,
-Dependabot and OWASP Dependency-Check; Trivy still waits on a Dockerfile. **1.6** module boundaries (Modulith,
-M1–M7). **Then the character change:** CI must become a *pre-merge gate* — PRs plus branch
+Dependabot and OWASP Dependency-Check; Trivy still waits on a Dockerfile. ~~**1.6** module boundaries~~ **DONE 2026-09-13** — H4 closed, `platform.visibility` deleted, four
+hand-written boundary gates plus Modulith (M1–M7 settled; M2 amended, since `verify()` cannot be the H4
+gate while `platform` is OPEN — challenge #75). **Then the character change:** CI must become a *pre-merge gate* — PRs plus branch
 protection — the moment CD exists, because from that moment a red `main` deploys itself.
 
 ### C — Local development
@@ -239,7 +243,7 @@ Each phase ends somewhere it is safe to stop.
    `actionlint` and `squawk` blocking; Dependabot weekly; OWASP Dependency-Check reporting. See
    [`superpowers/specs/2026-09-12-supply-chain-design.md`](superpowers/specs/2026-09-12-supply-chain-design.md).
    **Not yet pushed — CI has never run these gates.**
-3. **Wave 1.6 — module boundaries.** Modulith `verify()` + `Documenter`, and the H4 cycle fix that
+3. ~~**Wave 1.6 — module boundaries.**~~ **DONE 2026-09-13.** Modulith `verify()` + `Documenter`, and the H4 cycle fix that
    comes with it.
 4. **Settle D-g and register the domain — the name only, not the site.** The marketing site moved
    to the bottom of Part 6 on 2026-09-12; **the naming decision did not move with it.** Registering
@@ -362,13 +366,13 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 | **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 604 tests | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
 | **Frontend** | Nothing. A drift-guarded contract to build against | Everything. `/invite/{token}` first |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
-| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, **Wave 1.5 supply chain (merged 2026-09-12, never yet run in CI)** | Wave 1.6, blocking oasdiff, branch protection, 32 SpotBugs findings |
+| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, Wave 1.5 supply chain (green in CI since 2026-09-13), **Wave 1.6 module boundaries — four hand-written boundary gates plus Modulith, C4 docs drift-guarded** | Blocking oasdiff, branch protection, 32 SpotBugs findings |
 | **Local dev** | Gradle + Testcontainers + ngrok | Dockerfile, compose stack, seed data |
 | **AWS** | Design only. Zero resources | SP2, SP3, SP4, SP7, all three environments, CD |
 | **Observability** | Nothing | Wave 2 (app), SP3 (AWS) |
 | **Auth** | bcrypt, HS256, rotating refresh, rate limiting, RLS, I1–I5 decided | SP7 (RS256/JWKS, IAM auth, WAF) |
 | **Load/chaos** | Nothing | k6 baseline, AWS FIS suite — both need staging |
-| **Split** | Design only. `platform-primitives` is the one extracted module. **Layer 3 (schema) is already clean — zero FK constraints in 34 migrations** | Layer 1 via Wave 1.6 (item 3); **Layer 2 design owed (item 3b)**; then SP6, SP8, LLDs #2–#6 — **all conditional on a §4.5 trigger** |
+| **Split** | Design only. `platform-primitives` is the one extracted module. **Layer 3 (schema) is already clean — zero FK constraints in 34 migrations** | **Layer 1 DONE (Wave 1.6, H4 closed)**; **Layer 2 design owed (item 3b)**; then SP6, SP8, LLDs #2–#6 — **all conditional on a §4.5 trigger** |
 
 ---
 
@@ -380,7 +384,7 @@ Ranked. **Effort** is relative, not calendar.
 |---|---|---|---|---|
 | ~~**1**~~ | ~~**Buyer snapshot (SP1)**~~ — **DONE 2026-09-07, `c24ae5e`** | Was the only **live correctness bug**: a `SENT` quotation silently re-rendered differently after a customer edit, through a link the buyer holds. Open since 2026-08-19 while nine slices landed around it. Closed by freezing the buyer onto `QuotationVersion` at `send()`; H1 and F11 are both closed. **Item 2 is done too, as of 2026-09-12; item 3 is next.** | S | — |
 | ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **DONE 2026-09-12, merged fast-forward at `7f6a700`** (eleven commits, `5053d42`..`7f6a700`; 604 tests, 0 failures). `gitleaks`, `actionlint` and `squawk` block; Dependabot opens weekly PRs; OWASP Dependency-Check reports without blocking (D1, flip trigger = branch protection). None is wired into `./gradlew check` — `SupplyChainWorkflowTest`'s 13 assertions are what make that safe, and they guard against `if:`, `continue-on-error`, `\|\| true`, a shallow `fetch-depth` and floating tags, not merely against a step's absence. **Still unpushed, so CI has never run any of it.** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
-| **3** | **Wave 1.6 — module boundaries + cycle fix** — **DESIGNED 2026-09-13**, [spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) | H4 blocks SP8, and nothing in the build has ever checked a boundary — two inversions landed in three days unnoticed. **Reshaped by a spike:** `platform.visibility` is *deleted*, not inverted (its returns are domain aggregates, so no port in `platform` can name them); the H4 gate is a hand-written ArchUnit direction rule, **not** `verify()`, because declaring `platform` OPEN suppresses all 12 cycles (challenge #75); and a second rule freezes cross-domain repository reads behind a register with an exit plan per edge | S–M | — |
+| ~~**3**~~ | ~~**Wave 1.6 — module boundaries + cycle fix**~~ — **DONE 2026-09-13**, [spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) · [plan](superpowers/plans/2026-09-13-wave-1.6-module-boundaries.md). Twelve commits; **598 tests, 0 failures**; `clean check` green end to end. **H4 closed:** `platform.visibility` deleted rather than inverted (its returns are domain aggregates, so no port in `platform` could name them — unlike `iam.AssignedWorkload`, which returns a `long`), the rule now derived independently per module from the JWT claim for split-readiness. The H4 gate is a hand-written ArchUnit direction rule, **not** `verify()`, because declaring `platform` OPEN suppresses all 12 cycles (challenge #75). A second rule registers cross-domain repository reads with an exit per edge (item 3b), Modulith is adopted for module detection and C4 docs with its blind spot documented, and the generated docs are committed and drift-guarded. Challenges #75–79 | S–M | — |
 | **3b** | **Cross-service data access design** (Layer 2) — **owed, does not exist** | Wave 1.6 closes Layer 1 (package acyclicity) and *freezes* Layer 2 rather than fixing it. Layer 2 is the actual extraction work and **no gate can see it** — a cross-service read is not a cycle. Four direct reads exist (`sales → crm.ContactRepository`, `sales → catalog.{Product,PriceListItem}Repository`, `sales`/`iam` → `tenant.TenantRepository`), plus the `viaCustomer` **cross-service SQL join** that Wave 1.6 relocates into `sales` where it looks local. Decide port-vs-event-vs-freeze per edge, and the `quotation`/`sales_order` owner denormalisation. **Ahead of SP8, which has no design for these edges** — the service-scope doc that names them is stale by its own §3.2. Layer 3 needs nothing: zero FK constraints in all 34 migrations | M | 3 |
 | **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse | **L** | — (wants decomposing before a spec) |
 | **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
@@ -399,8 +403,22 @@ Ranked. **Effort** is relative, not calendar.
 
 ## 6.1 If you only do three things
 
-**Pushing is DONE (2026-09-13, `ac2fc63..b858429`, CI green on all three jobs). The remaining two
-are 3 and settling D-g.** Items 1 and 2 are both done and merged. Wave 1.6 is designed as of
+**Items 1, 2 and 3 are all DONE, and pushing is done. The next three are: settle D-g, item 3b, and
+item 4 (frontend) — with H7 arguably jumping the queue, see below.**
+
+**Wave 1.6 landed 2026-09-13** (598 tests, `clean check` green; H4 closed). What it deliberately did
+NOT do is Layer 2 — it *froze* cross-service data access behind a register rather than resolving it,
+which is item **3b**, and 3b is the thing SP8 silently assumed existed.
+
+**H7 arguably outranks everything below it on severity.** It is a live correctness bug of H1's exact
+class — the seller is not frozen on a sent quotation, and the *tax presentation* is computed against
+the live tenant `stateCode`, so a tenant changing registered state flips an already-`SENT` quotation
+between CGST/SGST and IGST on re-render, through a share link the buyer holds. It is small (a seller
+snapshot beside the existing buyer one) and it mis-states tax on a document a customer already has.
+It was found by Wave 1.6's design pass, not by its build, and recorded rather than fixed because it
+needs its own freeze decision.
+
+**The older standing advice still holds for the rest:** Items 1 and 2 are both done and merged. Wave 1.6 is designed as of
 2026-09-13 and unblocked, and stops the module graph drifting further before the frontend doubles
 the surface. Settling D-g is not a build item at all — a decision plus a registrar checkout — and it
 is the one thing on this page that gets more expensive the longer it waits, because every public

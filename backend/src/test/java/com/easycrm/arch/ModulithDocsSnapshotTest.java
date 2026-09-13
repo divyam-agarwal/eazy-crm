@@ -25,11 +25,13 @@ import org.springframework.modulith.docs.Documenter;
  * <p>Byte-stability was verified before this was written: 16 files, 0 differing across two
  * consecutive runs (MA3). What that spike did NOT vary was the JUnit run context. This test
  * <b>found</b> a real instability while it was being built: {@code Documenter} emits each
- * PlantUML component diagram's {@code Rel(...)} lines from an internal, unordered collection, so
- * their line order (never their content) reliably differs between an isolated single-test run
+ * PlantUML component diagram's {@code Rel(...)} lines — and its {@code Component(...)}
+ * declarations, covered for the same reason after a review flagged them — from internal, unordered
+ * collections, so their line order (never their content) reliably differs between an isolated
+ * single-test run
  * (e.g. {@code ./gradlew updateModulithDocs}) and a full-suite run ({@code ./gradlew clean check}
  * or {@code test}) on the very same machine and JDK, and is reproducible within each of those
- * contexts. {@link #canonicalize} sorts just those lines before either branch runs, which is
+ * contexts. {@link #canonicalize} sorts just those two families of lines before either branch runs, which is
  * enough to make every one of the 16 files byte-identical across both contexts again — verified by
  * running the guard from both {@code updateModulithDocs} and {@code clean check} repeatedly.
  *
@@ -114,9 +116,10 @@ class ModulithDocsSnapshotTest {
     }
 
     /**
-     * Sorts each contiguous run of {@code Rel(...)} lines in every {@code .puml} file in place.
-     * Those lines render Modulith's inter-module dependency edges from an internal, unordered
-     * collection: their relative order carries no meaning (an edge set, not a sequence), but their
+     * Sorts each contiguous run of {@code Rel(...)} and of {@code Component(...)} lines in every
+     * {@code .puml} file in place. Both render from internal, unordered collections: edges and a
+     * container's components respectively. Their relative order carries no meaning (a set, not a
+     * sequence), but their
      * as-emitted order is exactly what varies between an isolated single-test JVM and a full-suite
      * one, and {@link Files#mismatch} does not know that. Sorting is the canonicalization, applied
      * identically before the write/read branch so both modes compare (and commit) the same bytes

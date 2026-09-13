@@ -5053,11 +5053,23 @@ both simply present as "the bytes differ."
 
 Diffed two same-machine, same-JDK generations line-for-line after sorting each file's lines, which
 made every prior "drift" disappear — proving the disagreement was pure reordering, never content.
-The disorder was confined to one place: a contiguous run of `Rel(...)` lines per `.puml` file (never
-the `.adoc` canvases, never any other line). `ModulithDocsSnapshotTest` now canonicalizes those
-files in place — sorting each contiguous `Rel(...)` block, applied identically before the read/write
-branch splits, so both modes compare (and commit) the same canonical bytes regardless of which
-context produced them — before either the floor check or the byte comparison runs. Verified by
+The observed disorder was confined to the contiguous runs of `Rel(...)` lines per `.puml` file (never
+the `.adoc` canvases, whose bean lists come from ArchUnit's alphabetically-ordered `Classes`).
+`ModulithDocsSnapshotTest` now canonicalizes those files in place — sorting each contiguous
+`Rel(...)` block, applied identically before the read/write branch splits, so both modes compare
+(and commit) the same canonical bytes regardless of which context produced them — before either the
+floor check or the byte comparison runs.
+
+**A review then extended it to `Component(...)` declarations, and the reasoning is worth keeping.**
+Those were emitted in a non-alphabetical order (`Platform, Catalog, Tenant, Demo, Iam, Crm, Sales`)
+from the same family of unordered collections, and had simply not been *observed* to vary across the
+two local contexts. "Not observed to vary" is a much weaker claim than "cannot vary", and the cost
+of being wrong was asymmetric: once this guard runs inside `check` rather than merely reporting, an
+order that is platform-dependent would make a developer's `updateModulithDocs` and CI's `check`
+disagree *permanently* — a guard unfixable by regeneration, ping-ponging on `main`. Sorting a second
+order-independent set costs four lines and removes that whole failure mode, so it was taken as
+insurance rather than waiting for evidence. The lesson generalises: when canonicalizing away one
+meaningless ordering, look for its siblings from the same source before concluding you are done. Verified by
 regenerating the committed snapshot and then running `clean check` twice more: both green, at the
 same byte offsets that had failed three times running before the fix.
 
