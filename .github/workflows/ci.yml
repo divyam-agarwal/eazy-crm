@@ -40,6 +40,13 @@ jobs:
           # and reports no API changes for a push that changed the API.
           fetch-depth: 0
 
+      # Before the JDK and Gradle setup on purpose: it needs neither, and a drifted registry should
+      # fail in seconds rather than after a 20-minute test run. docs/reviewers/registry.md is
+      # imported into CLAUDE.md, so a stale line misdirects every agent working in the repo.
+      - name: Reviewer registry matches agents
+        working-directory: .
+        run: scripts/check-reviewer-registry.sh
+
       - name: Set up JDK 25
         uses: actions/setup-java@v6
         with:

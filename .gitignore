@@ -1,3 +1,5 @@
 # Agent-managed scratch: worktrees, local settings, session state.
-.claude/
+# Project subagent definitions (.claude/agents/) are the one tracked exception.
+.claude/*
+!.claude/agents/
 .superpowers/

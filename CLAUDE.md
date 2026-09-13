@@ -25,6 +25,13 @@ Commit with the repo's `divyam <divyam.0444@gmail.com>` identity (plain `git com
 no `-c user.name=...` override). Do NOT add a `Co-Authored-By: Claude ...` trailer or
 mention Claude/AI anywhere in commit messages.
 
+### Consult the specialist reviewers whenever you request a review
+
+Whenever you request a review of a spec, plan or code, apply the registry below (its "When to use
+them" section is the rule). To add a reviewer, follow `docs/reviewers/README.md`.
+
+@docs/reviewers/registry.md
+
 ### ALWAYS log engineering challenges
 
 Whenever we solve a **non-obvious engineering problem** — during design OR
