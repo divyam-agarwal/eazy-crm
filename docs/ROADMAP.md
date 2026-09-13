@@ -220,7 +220,17 @@ appear to support `.in`** — so a `.in` means a second registrar. Compare *rene
 first-year promotions. **These figures come from vendor pages and search results, not from a
 completed checkout — re-check before buying.**
 
-**The naming decision is therefore open. It gated item 2 when the site was item 2; since the 2026-09-12 reprioritisation it gates item 4, the frontend** — the site moved, the name did not. A prefixed
+**SETTLED 2026-09-13: `easycustomerrelationship.site`.** Registered at GoDaddy (verified by RDAP at
+`rdap.radix.host`, the `.site` registry's server: created 2026-09-13T18:44Z, **expires 2027-09-13**,
+nameservers `ns13`/`ns14.domaincontrol.com`, i.e. GoDaddy DNS for now). None of the three options
+below was taken. **Public links live at `https://app.easycustomerrelationship.site`** (settled
+2026-09-14), with the apex reserved for the site. **What is still open:** the DNS provider (see D-g). **Auto-renew is load-bearing, not a convenience:** if this name lapses and is
+re-registered by someone else, every `/public/q/{token}` link in a buyer's WhatsApp history sends its
+bearer token to that person's server.
+
+*The paragraphs below record how the options looked before the purchase.*
+
+**The naming decision was therefore open. It gated item 2 when the site was item 2; since the 2026-09-12 reprioritisation it gates item 4, the frontend** — the site moved, the name did not. A prefixed
 `.com` (`geteasycrm.com`, `tryeasycrm.com`) keeps one registrar and at-cost pricing; a `.in` reads
 as local to the audience but costs more and adds a registrar. Buying `eazycrm.com` off Afternic is
 the third option and the only one with an unknown price.
@@ -252,7 +262,9 @@ Each phase ends somewhere it is safe to stop.
    **Not yet pushed — CI has never run these gates.**
 3. ~~**Wave 1.6 — module boundaries.**~~ **DONE 2026-09-13.** Modulith `verify()` + `Documenter`, and the H4 cycle fix that
    comes with it.
-4. **Settle D-g and register the domain — the name only, not the site.** The marketing site moved
+4. ~~**Settle D-g and register the domain — the name only, not the site.**~~ **Name DONE 2026-09-13:
+   `easycustomerrelationship.site`, GoDaddy; public links at `app.easycustomerrelationship.site`
+   (2026-09-14).** Only the DNS provider is still open (D-g). The marketing site moved
    to the bottom of Part 6 on 2026-09-12; **the naming decision did not move with it.** Registering
    costs a day and ~₹1,000/yr, and it is a prerequisite of Phase 1 rather than of the site:
    `easycrm.public-base-url` feeds `/public/q/{token}` and `/invite/{token}`, and both get pasted
@@ -411,7 +423,8 @@ Ranked. **Effort** is relative, not calendar.
 ## 6.1 If you only do three things
 
 **Items 1, 2 and 3 are all DONE, and pushing is done. The next three are: settle D-g, item 3b, and
-item 4 (frontend) — with H7 arguably jumping the queue, see below.**
+item 4 (frontend) — D-g's name half was settled 2026-09-13 (`easycustomerrelationship.site`), and its hostname
+2026-09-14 (`app.`), leaving only the DNS provider — — with H7 arguably jumping the queue, see below.**
 
 **Wave 1.6 landed 2026-09-13** (598 tests, `clean check` green; H4 closed). What it deliberately did
 NOT do is Layer 2 — it *froze* cross-service data access behind a register rather than resolving it,
@@ -479,5 +492,5 @@ site waits for the product. The name does not wait for anything.
 | **D-c** | **PF19 — entitlement metering.** `/public/q/{token}` has no JWT, so there is structurally nowhere to charge the most expensive uncapped operation. Needs billing's *design* decisions, not effort | SP10–13 |
 | **D-d** | **Frontend decomposition.** Unscoped and large enough to need sub-projects before a spec | Item 4 |
 | **D-e** | **M7 — packages or Gradle modules as the boundary source of truth.** Both can grow rules; only one may own them | Wave 1.6, LLDs #2–#6 |
-| **D-g** | **The domain name itself, and the DNS provider.** All four obvious candidates are taken (track H has the RDAP results and the costs); the live choice is a prefixed `.com`, a `.in` at a second registrar, or buying `eazycrm.com` off Afternic at an unknown price. The AWS design names ACM and `us-east-1` (F15) but never a DNS provider, and `easycrm.public-base-url` still defaults to `http://localhost:8080`. Both share links and invite links are durable and get pasted into WhatsApp | Item 4 (frontend) and item 16 (the site); every public URL the product mints. **Deprioritising the site on 2026-09-12 did not deprioritise this decision** — it is now the gate in front of the frontend, not in front of the site |
+| **D-g** | **Name SETTLED 2026-09-13: `easycustomerrelationship.site`** (GoDaddy, expires 2027-09-13). **Public-link hostname SETTLED 2026-09-14: `https://app.easycustomerrelationship.site`**, which is what `PUBLIC_BASE_URL` gets set to in every deployed environment. The apex stays reserved for the marketing site (item 16). This choice is as durable as the name. **Still open and still gating item 4: the DNS provider** (GoDaddy by default today; track H recommends Cloudflare DNS with the registrar left where it is). `application.yml` already reads it from `PUBLIC_BASE_URL`, so it is set per environment at SP2 and no code changes. *Original entry follows.* **The domain name itself, and the DNS provider.** All four obvious candidates are taken (track H has the RDAP results and the costs); the live choice is a prefixed `.com`, a `.in` at a second registrar, or buying `eazycrm.com` off Afternic at an unknown price. The AWS design names ACM and `us-east-1` (F15) but never a DNS provider, and `easycrm.public-base-url` still defaults to `http://localhost:8080`. Both share links and invite links are durable and get pasted into WhatsApp | Item 4 (frontend) and item 16 (the site); every public URL the product mints. **Deprioritising the site on 2026-09-12 did not deprioritise this decision** — it is now the gate in front of the frontend, not in front of the site |
 | **D-f** | Two Boot 4 / Postgres behaviours the platform LLDs rest on: whether `java-test-fixtures` reaches package-private main-source members, and whether Postgres ORs permissive RLS policies. If policies AND, the outbox relay reads zero rows | SP6, LLDs #2–#6 |

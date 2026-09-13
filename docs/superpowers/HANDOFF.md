@@ -82,8 +82,12 @@ edge, it did not resolve it.
    own freeze decision: which seller fields freeze, and at `send()` or at version creation. Challenge #69's
    test decides it — *was anything already frozen derived from this field?* For `stateCode`, yes. The
    buyer-snapshot spec never mentions the seller, so there is no prior art to inherit.
-2. **Settle D-g and register the domain.** Unchanged and still the item that gets more expensive the longer
-   it waits: `easycrm.public-base-url` still defaults to `http://localhost:8080`, and it feeds
+2. ~~**Settle D-g and register the domain.**~~ **Name bought 2026-09-13 (after this handoff was
+   written): `easycustomerrelationship.site`, at GoDaddy, expires 2027-09-13, on GoDaddy DNS.** **Public-link
+   hostname settled 2026-09-14: `https://app.easycustomerrelationship.site`**, the value
+   `PUBLIC_BASE_URL` takes in every deployed environment, with the apex reserved for the marketing site.
+   Only the DNS provider is still open. Also turn on auto-renew, since a lapsed name hands every
+   share token in WhatsApp history to whoever registers it next. The original reasoning follows: `easycrm.public-base-url` still defaults to `http://localhost:8080`, and it feeds
    `/public/q/{token}` and `/invite/{token}`, both of which end up in other people's WhatsApp history.
 3. **Roadmap item 3b — cross-service data access (Layer 2).** Wave 1.6 *froze* this; it did not fix it.
    Nine cross-domain repository reads are registered in `CrossDomainRepositoryArchTest.ALLOWED`, each with
