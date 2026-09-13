@@ -1,0 +1,21 @@
+[%autowidth.stretch, cols="h,a"]
+|===
+|Base package
+|`com.easycrm.catalog`
+|Spring components
+|_Services_
+
+* `c.e.c.PriceListItemService`
+* `c.e.c.PriceListService`
+* `c.e.c.ProductService`
+
+_Repositories_
+
+* `c.e.c.PriceListItemRepository`
+* `c.e.c.PriceListRepository`
+* `c.e.c.ProductRepository`
+|Aggregate roots
+|* `c.e.c.PriceList`
+* `c.e.c.PriceListItem`
+* `c.e.c.Product`
+|===

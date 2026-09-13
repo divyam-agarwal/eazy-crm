@@ -1,0 +1,34 @@
+[%autowidth.stretch, cols="h,a"]
+|===
+|Base package
+|`com.easycrm.iam`
+|Spring components
+|_Services_
+
+* `c.e.i.AuditService`
+* `c.e.i.AuthService`
+* `c.e.i.InvitationService`
+* `c.e.i.MemberService`
+* `c.e.i.RefreshTokenService`
+
+_Repositories_
+
+* `c.e.i.AuditLogRepository`
+* `c.e.i.InvitationRepository`
+* `c.e.i.RefreshTokenRepository`
+* `c.e.i.UserRepository`
+
+_Others_
+
+* `c.e.i.AssignableUsers`
+* `c.e.i.TokenHasher`
+|Bean references
+|* `c.e.t.TenantRepository` (in Tenant)
+* `c.e.p.security.JwtService` (in Platform)
+* `c.e.p.security.RoleGuard` (in Platform)
+|Aggregate roots
+|* `c.e.i.AuditLog`
+* `c.e.i.Invitation`
+* `c.e.i.RefreshToken`
+* `c.e.i.User`
+|===

@@ -126,9 +126,10 @@ class CrossDomainRepositoryArchTest {
      *
      * <p><b>Known residual gap, not fixed here:</b> a field typed with the Spring Data SUPERTYPE
      * (e.g. {@code JpaRepository<Customer, UUID>}) has a simple name ending in {@code Repository},
-     * but {@code domainOf("org.springframework.data.jpa.repository")} returns null because that
-     * package is not one of {@link #DOMAIN_PACKAGES}, so this method returns null and the read
-     * slips through silently. This does not occur today — every repository is injected as its
+     * but {@code domainOf("org.springframework.data.jpa.repository")} returns null at its very
+     * first guard — that package does not start with {@code "com.easycrm."} — so it never even
+     * reaches the {@link #DOMAIN_PACKAGES} membership check, and this method returns null and the
+     * read slips through silently. This does not occur today — every repository is injected as its
      * concrete interface, verified by grep — but a future field declared against the supertype
      * would bypass this rule with no signal. Left undocumented-but-unfixed is worse than documented
      * and accepted.

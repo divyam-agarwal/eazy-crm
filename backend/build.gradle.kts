@@ -99,10 +99,15 @@ val openApiSnapshot = layout.projectDirectory.file("../docs/api/openapi.yaml")
 // under test is the thing that runs.
 val ciWorkflow = layout.projectDirectory.file("../.github/workflows/ci.yml")
 
+// The committed Modulith documentation, outside the Gradle project for the same reason the OpenAPI
+// snapshot is: the Gradle root is backend/, the docs belong with the other architecture docs.
+val modulithDocs = layout.projectDirectory.dir("../docs/architecture/modules")
+
 tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("openapi.snapshot", openApiSnapshot.asFile.absolutePath)
     systemProperty("ci.workflow", ciWorkflow.asFile.absolutePath)
+    systemProperty("modulith.docs", modulithDocs.asFile.absolutePath)
 }
 
 // Regenerates docs/api/openapi.yaml by running the drift guard in write mode. Deliberately the
@@ -117,5 +122,20 @@ tasks.register<Test>("updateOpenApiSnapshot") {
     systemProperty("openapi.snapshot", openApiSnapshot.asFile.absolutePath)
     systemProperty("openapi.write", "true")
     filter { includeTestsMatching("com.easycrm.platform.openapi.OpenApiSnapshotTest") }
+    outputs.upToDateWhen { false }
+}
+
+// Regenerates docs/architecture/modules by running the drift guard in write mode. Deliberately the
+// SAME test, not a second generation path -- two generators could disagree and then neither
+// artefact would mean anything.
+tasks.register<Test>("updateModulithDocs") {
+    group = "documentation"
+    description = "Regenerate docs/architecture/modules from the current module structure."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform()
+    systemProperty("modulith.docs", modulithDocs.asFile.absolutePath)
+    systemProperty("modulith.docs.write", "true")
+    filter { includeTestsMatching("com.easycrm.arch.ModulithDocsSnapshotTest") }
     outputs.upToDateWhen { false }
 }

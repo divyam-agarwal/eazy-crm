@@ -1,0 +1,33 @@
+@startuml
+title <size:24>Crm</size>
+
+set separator none
+top to bottom direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Component>
+
+System_Boundary("EasyCrmApplication_boundary", "EasyCrmApplication", $tags="") {
+  Container_Boundary("EasyCrmApplication.EasyCrmApplication_boundary", "EasyCrmApplication", $tags="") {
+    Component(EasyCrmApplication.EasyCrmApplication.Platform, "Platform", $techn="Module", $descr="", $tags="", $link="")
+    Component(EasyCrmApplication.EasyCrmApplication.Iam, "Iam", $techn="Module", $descr="", $tags="", $link="")
+    Component(EasyCrmApplication.EasyCrmApplication.Crm, "Crm", $techn="Module", $descr="", $tags="", $link="")
+  }
+
+}
+
+Rel(EasyCrmApplication.EasyCrmApplication.Crm, EasyCrmApplication.EasyCrmApplication.Iam, "uses", $techn="", $tags="", $link="")
+Rel(EasyCrmApplication.EasyCrmApplication.Crm, EasyCrmApplication.EasyCrmApplication.Platform, "depends on", $techn="", $tags="", $link="")
+Rel(EasyCrmApplication.EasyCrmApplication.Iam, EasyCrmApplication.EasyCrmApplication.Platform, "uses", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

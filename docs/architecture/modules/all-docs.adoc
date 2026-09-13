@@ -1,0 +1,31 @@
+== EasyCrmApplication
+plantuml::components.puml[,,format=svg]
+
+== Platform
+plantuml::module-platform.puml[,,format=svg]
+include::module-platform.adoc[]
+
+== Catalog
+plantuml::module-catalog.puml[,,format=svg]
+include::module-catalog.adoc[]
+
+== Tenant
+plantuml::module-tenant.puml[,,format=svg]
+include::module-tenant.adoc[]
+
+== Demo
+plantuml::module-demo.puml[,,format=svg]
+include::module-demo.adoc[]
+
+== Iam
+plantuml::module-iam.puml[,,format=svg]
+include::module-iam.adoc[]
+
+== Crm
+plantuml::module-crm.puml[,,format=svg]
+include::module-crm.adoc[]
+
+== Sales
+plantuml::module-sales.puml[,,format=svg]
+include::module-sales.adoc[]
+

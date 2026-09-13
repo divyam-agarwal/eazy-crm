@@ -1,0 +1,17 @@
+[%autowidth.stretch, cols="h,a"]
+|===
+|Base package
+|`com.easycrm.tenant`
+|Spring components
+|_Services_
+
+* `c.e.t.TenantService`
+
+_Repositories_
+
+* `c.e.t.TenantRepository`
+|Bean references
+|* `c.e.p.security.RoleGuard` (in Platform)
+|Aggregate roots
+|* `c.e.t.Tenant`
+|===

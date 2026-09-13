@@ -1,0 +1,21 @@
+[%autowidth.stretch, cols="h,a"]
+|===
+|Base package
+|`com.easycrm.demo`
+|Spring components
+|_Controllers_
+
+* `c.e.d.DemoRecordController`
+
+_Repositories_
+
+* `c.e.d.DemoRecordRepository`
+
+_Others_
+
+* `c.e.d.DemoSeeder`
+|Bean references
+|* `c.e.t.TenantRepository` (in Tenant)
+|Aggregate roots
+|* `c.e.d.DemoRecord`
+|===

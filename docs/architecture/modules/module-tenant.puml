@@ -1,0 +1,30 @@
+@startuml
+title <size:24>Tenant</size>
+
+set separator none
+top to bottom direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Component>
+
+System_Boundary("EasyCrmApplication_boundary", "EasyCrmApplication", $tags="") {
+  Container_Boundary("EasyCrmApplication.EasyCrmApplication_boundary", "EasyCrmApplication", $tags="") {
+    Component(EasyCrmApplication.EasyCrmApplication.Platform, "Platform", $techn="Module", $descr="", $tags="", $link="")
+    Component(EasyCrmApplication.EasyCrmApplication.Tenant, "Tenant", $techn="Module", $descr="", $tags="", $link="")
+  }
+
+}
+
+Rel(EasyCrmApplication.EasyCrmApplication.Tenant, EasyCrmApplication.EasyCrmApplication.Platform, "uses", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

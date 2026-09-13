@@ -1,0 +1,25 @@
+[%autowidth.stretch, cols="h,a"]
+|===
+|Base package
+|`com.easycrm.crm`
+|Spring components
+|_Services_
+
+* `c.e.c.ContactService`
+* `c.e.c.CustomerService`
+
+_Repositories_
+
+* `c.e.c.ContactRepository`
+* `c.e.c.CustomerRepository`
+
+_Others_
+
+* `c.e.c.CustomerVisibility`
+* `c.e.c.CustomerWorkload`
+|Bean references
+|* `c.e.i.AssignableUsers` (in Iam)
+|Aggregate roots
+|* `c.e.c.Contact`
+* `c.e.c.Customer`
+|===

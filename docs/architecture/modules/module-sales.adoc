@@ -1,0 +1,70 @@
+[%autowidth.stretch, cols="h,a"]
+|===
+|Base package
+|`com.easycrm.sales`
+|Spring components
+|_Services_
+
+* `c.e.s.ActivityService`
+* `c.e.s.DocumentNumberService`
+* `c.e.s.EnquiryService`
+* `c.e.s.FollowUpService`
+* `c.e.s.OrderService`
+* `c.e.s.PriceResolver`
+* `c.e.s.QuotationService`
+* `c.e.s.ShareLinkService`
+
+_Repositories_
+
+* `c.e.s.ActivityRepository`
+* `c.e.s.DocumentCounterRepository`
+* `c.e.s.EnquiryRepository`
+* `c.e.s.FollowUpRepository`
+* `c.e.s.OrderRepository`
+* `c.e.s.QuotationItemRepository`
+* `c.e.s.QuotationRepository`
+* `c.e.s.QuotationVersionRepository`
+* `c.e.s.ShareLinkRepository`
+
+_Event listeners_
+
+* `c.e.s.OrderAcceptedAuditListener`
+* `c.e.s.OrderStatusChangedAuditListener`
+* `c.e.s.QuotationAcceptedActivityListener`
+* `c.e.s.QuotationExpiredActivityListener`
+* `c.e.s.QuotationExpiredAuditListener`
+
+_Others_
+
+* `c.e.s.EnquiryWorkload`
+* `c.e.s.FollowUpWorkload`
+* `c.e.s.QuotationExpiryJob`
+* `c.e.s.QuotationExpirySweep`
+* `c.e.s.SalesVisibility`
+|Bean references
+|* `c.e.i.AssignableUsers` (in Iam)
+* `c.e.i.AuditService` (in Iam)
+* `c.e.c.ProductRepository` (in Catalog)
+* `c.e.c.PriceListItemRepository` (in Catalog)
+* `c.e.c.CustomerVisibility` (in Crm)
+* `c.e.p.job.TenantJobRunner` (in Platform)
+* `c.e.t.TenantRepository` (in Tenant)
+* `c.e.c.ContactRepository` (in Crm)
+* `c.e.p.pdf.PdfEngine` (in Platform)
+|Aggregate roots
+|* `c.e.s.Activity`
+* `c.e.s.DocumentCounter`
+* `c.e.s.Enquiry`
+* `c.e.s.FollowUp`
+* `c.e.s.Order`
+* `c.e.s.Quotation`
+* `c.e.s.QuotationItem`
+* `c.e.s.QuotationVersion`
+* `c.e.s.ShareLink`
+|Events listened to
+|* `c.e.s.QuotationAcceptedEvent` 
+* `c.e.s.OrderStatusChangedEvent` 
+* `c.e.s.QuotationAcceptedEvent` 
+* `c.e.s.QuotationExpiredEvent` 
+* `c.e.s.QuotationExpiredEvent` 
+|===
