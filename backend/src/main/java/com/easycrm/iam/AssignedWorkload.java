@@ -16,7 +16,8 @@ import java.util.UUID;
  * <p>Implementations MUST NOT apply visibility filtering. This is an invariant check, not a
  * user-facing read: a count that hides rows would let a disable through while work remains
  * assigned to the disabled member. That is why the count methods are on the shared
- * ALLOWED_METHODS list in VisibilityScopingArchTest rather than routed through VisibleFinder.
+ * ALLOWED_METHODS list in VisibilityScopingArchTest rather than routed through that
+ * repository's one permitted reader.
  *
  * <p>Quotations and orders are deliberately absent: they carry no assigned_to and derive
  * their visibility from their customer, so reassigning the customer carries them.

@@ -3,7 +3,6 @@ package com.easycrm.sales;
 import com.easycrm.iam.AssignableUsers;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.EnquiryCreateRequest;
 import com.easycrm.sales.web.dto.EnquiryResponse;
@@ -17,12 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class EnquiryService {
 
     private final EnquiryRepository enquiries;
-    private final VisibleFinder finder;
+    private final SalesVisibility visibility;
     private final AssignableUsers assignableUsers;
 
-    public EnquiryService(EnquiryRepository enquiries, VisibleFinder finder, AssignableUsers assignableUsers) {
+    public EnquiryService(EnquiryRepository enquiries, SalesVisibility visibility, AssignableUsers assignableUsers) {
         this.enquiries = enquiries;
-        this.finder = finder;
+        this.visibility = visibility;
         this.assignableUsers = assignableUsers;
     }
 
@@ -85,7 +84,8 @@ public class EnquiryService {
     @Transactional(readOnly = true)
     public PageResponse<EnquiryResponse> list(
             EnquiryStage stage, UUID assignedTo, EnquirySource source, Pageable pageable) {
-        return PageResponse.of(finder.pageEnquiries(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
+        return PageResponse.of(visibility
+                .pageEnquiries(EnquirySpecifications.filter(stage, assignedTo, source), pageable)
                 .map(EnquiryResponse::of));
     }
 
@@ -95,7 +95,7 @@ public class EnquiryService {
      * caller must not be able to tell them apart.
      */
     private Enquiry find(UUID id) {
-        return finder.findEnquiry(id).orElseThrow(() -> new NotFoundException("enquiry not found"));
+        return visibility.findEnquiry(id).orElseThrow(() -> new NotFoundException("enquiry not found"));
     }
 
     /**

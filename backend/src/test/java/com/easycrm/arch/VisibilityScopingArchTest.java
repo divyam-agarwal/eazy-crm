@@ -30,20 +30,17 @@ class VisibilityScopingArchTest {
      * <p>Adding an entry here is a visibility decision and needs the same review as adding a table
      * to TenantScopingArchTest.GLOBAL_TABLES. See spec
      * 2026-09-13-wave-1.6-module-boundaries-design.md §4.4.
-     *
-     * <p>The four sales entries below still point at VisibleFinder — deliberately temporary,
-     * Tasks 4 and 5 repoint them to the sales-owned equivalent of CustomerVisibility.
      */
     private static final Map<String, String> PERMITTED_READER = Map.of(
             "com.easycrm.crm.CustomerRepository", "com.easycrm.crm.CustomerVisibility",
-            "com.easycrm.sales.EnquiryRepository", "com.easycrm.platform.visibility.VisibleFinder",
-            "com.easycrm.sales.QuotationRepository", "com.easycrm.platform.visibility.VisibleFinder",
-            "com.easycrm.sales.OrderRepository", "com.easycrm.platform.visibility.VisibleFinder",
-            "com.easycrm.sales.FollowUpRepository", "com.easycrm.platform.visibility.VisibleFinder");
+            "com.easycrm.sales.EnquiryRepository", "com.easycrm.sales.SalesVisibility",
+            "com.easycrm.sales.QuotationRepository", "com.easycrm.sales.SalesVisibility",
+            "com.easycrm.sales.OrderRepository", "com.easycrm.sales.SalesVisibility",
+            "com.easycrm.sales.FollowUpRepository", "com.easycrm.sales.SalesVisibility");
 
     /**
      * Methods any class may still call on a guarded repository. Everything else must go
-     * through VisibleFinder.
+     * through that repository's one permitted reader.
      *
      * <p>This is an ALLOWLIST on purpose. A blocklist of known read methods (findById,
      * findAll, ...) would silently pass a derived query added later -- the exact failure

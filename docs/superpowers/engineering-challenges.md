@@ -4861,3 +4861,77 @@ bug type, same source line — because that is the fingerprint of drift, not nov
 different in each case: a real new finding gets fixed in the code that introduced it (challenge
 #62's rule still holds); a re-hashed existing one gets its baseline entry regenerated in place, not
 appended to, and the regeneration is disclosed rather than silent.
+
+---
+
+## Challenge 77 — Delegating a predicate to its owning module turned an unconditional EXISTS into a silent visibility change, and the only test that could catch it was on the other aggregate
+
+**Phase:** Implementation (module-boundaries, Task 4)
+
+### The problem
+
+Moving the four sales aggregates' visibility out of `platform.VisibilityPolicy` into
+`sales.SalesVisibility` meant `viaCustomer` — the spec for Quotation and Order, which carry no
+`assigned_to` and derive visibility from their customer — could no longer restate crm's ownership
+rule inline. It now asks `crm.CustomerVisibility.spec()` for the Customer predicate and applies it
+to its own subquery root, so there is one definition of "which customers are mine". The natural
+shape of that delegation is to always build the `EXISTS` subquery and let the delegated predicate
+decide whether it narrows anything — which reads as strictly cleaner, and is wrong.
+
+Two separate traps, in opposite directions, both of which would have landed silently in a slice
+whose entire claim is behaviour-neutrality:
+
+1. **Always building the `EXISTS` is not a refactor.** The old code early-returned an always-true
+   spec when the caller's role was unrestricted, so an unrestricted read touched the customer
+   table not at all. The unconditional form adds a requirement the rule never had: *the customer
+   row must exist*. This schema declares **zero foreign-key constraints** (verified across all 34
+   migrations) and `quotation.customer_id` is a bare `UUID NOT NULL`, so an orphaned quotation is
+   representable — and would flip from visible to invisible for an OWNER. No existing test creates
+   an orphan, so nothing would have failed.
+
+2. **The fail-open branch became untestable through the aggregate it protects.** Deleting
+   `VisibilityPolicy` deleted `absentPrincipalIsUnrestricted`, the only test of `.orElse(true)` on
+   the sales side, and the obvious replacement — read a quotation with no principal bound — cannot
+   detect that branch *at all*. `viaCustomer` delegates to `CustomerVisibility.spec()`, which has
+   its OWN `.orElse(true)`, so with no principal the subquery comes back permissive regardless of
+   what `SalesVisibility` decided. Mutating `SalesVisibility.unrestricted()`'s `.orElse(true)` to
+   `false` left the quotation-shaped test green.
+
+### Why it's hard
+
+Both failures are invisible to the test suite and to review. The first is a widening of a WHERE
+clause that only manifests on a row shape no fixture produces, in a codebase where the absence of
+foreign keys — the thing that makes that shape reachable — lives in the migrations, not in the
+class being reviewed. The second is worse than an untested branch: it is a test that *looks* like
+it covers the branch, passes, and would keep passing after the branch was inverted. Delegation
+created it. The predicate and the role decision used to be two lines of the same method; splitting
+them across a module boundary meant a read could now be permissive for either of two independent
+reasons, and a single assertion can no longer tell which one fired.
+
+### The solution
+
+Kept `viaCustomer`'s `if (unrestricted()) return unrestrictedSpec();` first line verbatim, so the
+subquery is built only on the path that actually needs to narrow something, and documented in the
+method's javadoc that the early return is load-bearing rather than an optimisation — naming the
+missing foreign keys as the reason. Pinned it with a test that saves a quotation against
+`UUID.randomUUID()` as its customer and asserts an OWNER still sees it.
+
+For the fail-open branch, wrote the replacement test against **`findEnquiry`**, not
+`findQuotation`. An Enquiry's spec is intrinsic — built inside `SalesVisibility` from its own
+`currentUserId()` — so it is the only shape whose outcome depends on *this* class's role decision
+and nothing else. The test binds a `SALES_EXEC` principal, opens a transaction via an injected
+`TransactionTemplate` (so `TenantAwareTransactionManager.doBegin` sets the RLS GUC and Hibernate
+resolves the session tenant while a principal is still bound), then calls `TenantContext.clear()`
+*inside* the open transaction: the query still runs under execA's tenant, while the role decision
+is made with no principal at all. Verified by mutation — `.orElse(true)` → `.orElse(false)` fails
+this test and leaves the quotation-shaped alternative passing, which is the whole point.
+
+### Lesson
+
+When a predicate moves behind a module boundary, audit the *early returns* as carefully as the
+predicate itself: delegation naturally tempts you to drop a guard clause on the grounds that the
+delegate will decide, but a guard that skips a JOIN is a guard about which rows are *reachable*,
+not only about which are *permitted*, and a schema with no foreign keys makes that distinction
+observable. And when two layers independently fail open, a test that exercises both at once proves
+nothing about either — pick the aggregate whose decision is made in exactly one place, and prove
+the test can fail by mutating the branch it claims to cover.

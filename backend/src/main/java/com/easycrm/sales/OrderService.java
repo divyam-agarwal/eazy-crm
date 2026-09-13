@@ -2,7 +2,6 @@ package com.easycrm.sales;
 
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.OrderResponse;
 import java.util.UUID;
@@ -15,11 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrderService {
 
     private final ApplicationEventPublisher events;
-    private final VisibleFinder finder;
+    private final SalesVisibility visibility;
 
-    public OrderService(ApplicationEventPublisher events, VisibleFinder finder) {
+    public OrderService(ApplicationEventPublisher events, SalesVisibility visibility) {
         this.events = events;
-        this.finder = finder;
+        this.visibility = visibility;
     }
 
     @Transactional(readOnly = true)
@@ -29,7 +28,8 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public PageResponse<OrderResponse> list(OrderStatus status, UUID customerId, Pageable pageable) {
-        return PageResponse.of(finder.pageOrders(OrderSpecifications.filter(status, customerId), pageable)
+        return PageResponse.of(visibility
+                .pageOrders(OrderSpecifications.filter(status, customerId), pageable)
                 .map(OrderResponse::of));
     }
 
@@ -73,6 +73,6 @@ public class OrderService {
      * caller must not be able to tell them apart.
      */
     private Order find(UUID id) {
-        return finder.findOrder(id).orElseThrow(() -> new NotFoundException("order not found"));
+        return visibility.findOrder(id).orElseThrow(() -> new NotFoundException("order not found"));
     }
 }

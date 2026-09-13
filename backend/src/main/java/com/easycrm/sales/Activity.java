@@ -18,7 +18,7 @@ import java.util.UUID;
  *
  * <p>Visibility is derived from the SUBJECT, not from this row — there is no assigned_to
  * here. ActivityRepository declares no read that is not subject-scoped, so every path to
- * an Activity passes VisibleFinder.requireVisibleSubject first (§4.2).
+ * an Activity passes requireVisibleSubject (the polymorphic subject gate) first (§4.2).
  */
 @Entity
 @Table(name = "activity")

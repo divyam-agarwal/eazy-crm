@@ -4,13 +4,13 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.format.IndianFormats;
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.sales.BuyerSnapshot;
 import com.easycrm.sales.Quotation;
 import com.easycrm.sales.QuotationItem;
 import com.easycrm.sales.QuotationItemRepository;
 import com.easycrm.sales.QuotationVersion;
 import com.easycrm.sales.QuotationVersionRepository;
+import com.easycrm.sales.SalesVisibility;
 import com.easycrm.sales.VersionStatus;
 import com.easycrm.tenant.Tenant;
 import com.easycrm.tenant.TenantRepository;
@@ -27,26 +27,27 @@ public class QuotationPdfService {
     private final QuotationVersionRepository versions;
     private final QuotationItemRepository items;
     private final TenantRepository tenants;
-    private final VisibleFinder finder;
+    private final SalesVisibility visibility;
     private final QuotationPdfRenderer renderer;
 
     public QuotationPdfService(
             QuotationVersionRepository versions,
             QuotationItemRepository items,
             TenantRepository tenants,
-            VisibleFinder finder,
+            SalesVisibility visibility,
             QuotationPdfRenderer renderer) {
         this.versions = versions;
         this.items = items;
         this.tenants = tenants;
-        this.finder = finder;
+        this.visibility = visibility;
         this.renderer = renderer;
     }
 
     /** Latest SENT version when versionNo is null, otherwise that specific frozen version. */
     @Transactional(readOnly = true)
     public byte[] renderByQuotation(UUID quotationId, Integer versionNo) {
-        Quotation q = finder.findQuotation(quotationId).orElseThrow(() -> new NotFoundException("quotation not found"));
+        Quotation q =
+                visibility.findQuotation(quotationId).orElseThrow(() -> new NotFoundException("quotation not found"));
         QuotationVersion v = versionNo == null
                 ? versions.findById(requireCurrentVersion(q))
                         .orElseThrow(() -> new NotFoundException("quotation version not found"))
@@ -62,7 +63,8 @@ public class QuotationPdfService {
     public byte[] renderByVersionId(UUID versionId) {
         QuotationVersion v =
                 versions.findById(versionId).orElseThrow(() -> new NotFoundException("quotation version not found"));
-        Quotation q = finder.findQuotation(v.getQuotationId())
+        Quotation q = visibility
+                .findQuotation(v.getQuotationId())
                 .orElseThrow(() -> new NotFoundException("quotation not found"));
         return render(q, v);
     }

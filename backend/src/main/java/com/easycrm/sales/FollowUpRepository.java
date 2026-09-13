@@ -7,7 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Unlike ActivityRepository, this one extends JpaRepository normally: a follow-up has its
- * own assigned_to, so it is filtered by VisibilityPolicy through VisibleFinder rather than
+ * own assigned_to, so it is filtered by SalesVisibility rather than
  * gated at a subject.
  *
  * <p>Declare no custom READ finder here without adding its name to the shared

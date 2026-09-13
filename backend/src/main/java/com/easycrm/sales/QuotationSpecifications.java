@@ -29,7 +29,7 @@ public final class QuotationSpecifications {
      * valid until the 31st is valid for all of the 31st and expires once IST reaches the 1st.
      *
      * <p>A correlated EXISTS subquery rather than a join because Quotation holds a raw
-     * currentVersionId UUID, not a @ManyToOne — the same idiom VisibilityPolicy.viaCustomer
+     * currentVersionId UUID, not a @ManyToOne — the same idiom SalesVisibility.viaCustomer
      * uses. QuotationVersion is itself @TenantId-scoped and runs under RLS, so the subquery
      * cannot reach another tenant's versions.
      *

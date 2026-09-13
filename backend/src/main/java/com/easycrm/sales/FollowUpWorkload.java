@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * PENDING follow-ups assigned to a member. The sharpest of the three: follow_up.assigned_to
- * is NOT NULL and VisibilityPolicy filters on it intrinsically, so a PENDING follow-up left
+ * is NOT NULL and SalesVisibility filters on it intrinsically, so a PENDING follow-up left
  * with a disabled member is invisible to every other SALES_EXEC and will never be actioned —
  * exactly the failure the activity/follow-up feature exists to prevent.
  */

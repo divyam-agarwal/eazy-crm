@@ -1,4 +1,4 @@
-package com.easycrm.platform.visibility;
+package com.easycrm.sales;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -6,10 +6,6 @@ import com.easycrm.crm.Customer;
 import com.easycrm.crm.CustomerRepository;
 import com.easycrm.crm.CustomerSource;
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.sales.Order;
-import com.easycrm.sales.OrderRepository;
-import com.easycrm.sales.Quotation;
-import com.easycrm.sales.QuotationRepository;
 import com.easycrm.support.IntegrationTest;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -19,10 +15,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.support.TransactionTemplate;
 
-class VisibleFinderIntegrationTest extends IntegrationTest {
+/**
+ * Moved verbatim from {@code platform.visibility.VisibleFinderIntegrationTest} in Wave 1.6, when
+ * the four sales aggregates' reads moved from {@code VisibleFinder} to {@code SalesVisibility}.
+ * Every assertion and comment below is unchanged — that is what makes this class proof the move
+ * changed no behaviour, rather than a test rewritten to agree with the new code.
+ */
+class SalesVisibilityTest extends IntegrationTest {
 
     @Autowired
-    VisibleFinder finder;
+    SalesVisibility visibility;
 
     @Autowired
     CustomerRepository customers;
@@ -59,7 +61,7 @@ class VisibleFinderIntegrationTest extends IntegrationTest {
 
     /**
      * Quotations don't carry their own assigned_to -- visibility is derived from the
-     * customer via an EXISTS subquery (VisibilityPolicy.viaCustomer). The count query is
+     * customer via an EXISTS subquery (SalesVisibility.viaCustomer). The count query is
      * the case an earlier review flagged as untested: forcing PageableExecutionUtils to
      * actually run COUNT(*) here proves the subquery form survives that translation, not
      * only the data query's.
@@ -67,7 +69,7 @@ class VisibleFinderIntegrationTest extends IntegrationTest {
     @Test
     void pagingAppliesVisibilityToTheQuotationCountQuery() {
         run(execA, "SALES_EXEC", () -> {
-            var page = finder.pageQuotations(null, PageRequest.of(0, 1));
+            var page = visibility.pageQuotations(null, PageRequest.of(0, 1));
             assertThat(page.getContent()).hasSize(1);
             assertThat(page.getTotalElements()).isEqualTo(2);
         });
@@ -77,7 +79,7 @@ class VisibleFinderIntegrationTest extends IntegrationTest {
     @Test
     void pagingAppliesVisibilityToTheOrderCountQuery() {
         run(execA, "SALES_EXEC", () -> {
-            var page = finder.pageOrders(null, PageRequest.of(0, 1));
+            var page = visibility.pageOrders(null, PageRequest.of(0, 1));
             assertThat(page.getContent()).hasSize(1);
             assertThat(page.getTotalElements()).isEqualTo(2);
         });

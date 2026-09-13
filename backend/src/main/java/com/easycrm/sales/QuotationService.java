@@ -5,7 +5,6 @@ import com.easycrm.crm.CustomerVisibility;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.sales.web.dto.AcceptRequest;
 import com.easycrm.sales.web.dto.ItemRequest;
@@ -42,7 +41,7 @@ public class QuotationService {
     private final DocumentNumberService documentNumbers;
     private final OrderRepository orders;
     private final ApplicationEventPublisher events;
-    private final VisibleFinder finder;
+    private final SalesVisibility visibility;
     private final CustomerVisibility customerVisibility;
 
     public QuotationService(
@@ -54,7 +53,7 @@ public class QuotationService {
             DocumentNumberService documentNumbers,
             OrderRepository orders,
             ApplicationEventPublisher events,
-            VisibleFinder finder,
+            SalesVisibility visibility,
             CustomerVisibility customerVisibility) {
         this.quotations = quotations;
         this.versions = versions;
@@ -64,7 +63,7 @@ public class QuotationService {
         this.documentNumbers = documentNumbers;
         this.orders = orders;
         this.events = events;
-        this.finder = finder;
+        this.visibility = visibility;
         this.customerVisibility = customerVisibility;
     }
 
@@ -79,8 +78,9 @@ public class QuotationService {
         boolean interState = isInterState(customer.getStateCode());
 
         if (req.enquiryId() != null) {
-            Enquiry enquiry =
-                    finder.findEnquiry(req.enquiryId()).orElseThrow(() -> new NotFoundException("enquiry not found"));
+            Enquiry enquiry = visibility
+                    .findEnquiry(req.enquiryId())
+                    .orElseThrow(() -> new NotFoundException("enquiry not found"));
             enquiry.markConverted(); // 422 if the enquiry is already terminal
         }
 
@@ -99,7 +99,7 @@ public class QuotationService {
 
     @Transactional(readOnly = true)
     public PageResponse<QuotationResponse> list(QuotationStatus status, UUID customerId, Pageable pageable) {
-        Page<Quotation> page = finder.pageQuotations(QuotationSpecifications.filter(status, customerId), pageable);
+        Page<Quotation> page = visibility.pageQuotations(QuotationSpecifications.filter(status, customerId), pageable);
         return PageResponse.of(page.map(this::toResponse));
     }
 
@@ -338,7 +338,7 @@ public class QuotationService {
     }
 
     Quotation findQuotation(UUID id) {
-        return finder.findQuotation(id).orElseThrow(() -> new NotFoundException("quotation not found"));
+        return visibility.findQuotation(id).orElseThrow(() -> new NotFoundException("quotation not found"));
     }
 
     QuotationResponse toResponse(Quotation q) {

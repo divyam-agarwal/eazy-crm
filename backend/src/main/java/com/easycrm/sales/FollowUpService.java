@@ -25,6 +25,7 @@ public class FollowUpService {
 
     private final FollowUpRepository followUps;
     private final VisibleFinder finder;
+    private final SalesVisibility visibility;
     private final AssignableUsers assignableUsers;
     private final ActivityService activities;
     private final Clock clock;
@@ -32,11 +33,13 @@ public class FollowUpService {
     public FollowUpService(
             FollowUpRepository followUps,
             VisibleFinder finder,
+            SalesVisibility visibility,
             AssignableUsers assignableUsers,
             ActivityService activities,
             Clock clock) {
         this.followUps = followUps;
         this.finder = finder;
+        this.visibility = visibility;
         this.assignableUsers = assignableUsers;
         this.activities = activities;
         this.clock = clock;
@@ -66,7 +69,8 @@ public class FollowUpService {
             Pageable pageable) {
         Instant now = clock.instant();
         Instant endOfToday = DueWindow.today(now).endOfToday();
-        return PageResponse.of(finder.pageFollowUps(
+        return PageResponse.of(visibility
+                .pageFollowUps(
                         FollowUpSpecifications.filter(
                                 scope, status, assignedTo, subjectType, subjectId, now, endOfToday),
                         pageable)
@@ -89,7 +93,8 @@ public class FollowUpService {
     }
 
     private long countIn(FollowUpScope scope, Instant now, Instant endOfToday) {
-        return finder.pageFollowUps(
+        return visibility
+                .pageFollowUps(
                         FollowUpSpecifications.filter(scope, null, null, null, null, now, endOfToday),
                         PageRequest.of(0, 1))
                 .getTotalElements();
@@ -111,7 +116,7 @@ public class FollowUpService {
      * <p>The activity is MANUAL, not SYSTEM: a user typed that body, so they must be able
      * to correct it later, and a SYSTEM row is permanently uneditable. It goes through
      * logManualForGatedCaller rather than the normal create path because the subject does
-     * not need re-resolving — find(id) above already loaded this row through VisibleFinder,
+     * not need re-resolving — find(id) above already loaded this row through SalesVisibility,
      * and the follow-up's subject was itself gated when the row was created.
      */
     @Transactional
@@ -136,7 +141,9 @@ public class FollowUpService {
 
     /** Visibility-filtered load; 404 when the caller may not see it. Used by transitions. */
     FollowUp find(UUID id) {
-        return finder.findFollowUp(id).orElseThrow(() -> new NotFoundException("follow-up " + id + " was not found"));
+        return visibility
+                .findFollowUp(id)
+                .orElseThrow(() -> new NotFoundException("follow-up " + id + " was not found"));
     }
 
     private static UUID currentUserId() {

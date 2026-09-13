@@ -88,14 +88,14 @@ public class ActivityService {
      * Writes a SYSTEM activity for something the application observed. Deliberately does
      * NOT call requireVisibleSubject: the caller is an internal flow that has already
      * loaded and authorised the subject (an event listener, or a follow-up transition on a
-     * row the caller just read through VisibleFinder). Re-resolving would be a second
+     * row the caller just read through SalesVisibility). Re-resolving would be a second
      * query for no gain, and worse, it would fail outright for a listener running under a
-     * synthetic principal that VisibilityPolicy treats as unrestricted-but-userless.
+     * synthetic principal that SalesVisibility treats as unrestricted-but-userless.
      *
      * <p>The safety argument is therefore "the caller already passed the gate", which is
      * only sound because every call site can make it. There are two:
      * QuotationAcceptedActivityListener, and QuotationExpiredActivityListener (whose
-     * subject was loaded through VisibleFinder.listQuotations inside
+     * subject was loaded through SalesVisibility.listQuotations inside
      * QuotationExpirySweep). Any new caller must be able to make the same claim; one that
      * cannot wants create() and the full gate.
      * (The activity written when a follow-up is completed does NOT come through here: a
@@ -111,7 +111,7 @@ public class ActivityService {
     /**
      * A MANUAL activity written on behalf of a caller that has ALREADY passed the subject
      * gate — currently only FollowUpService.complete, which loaded its follow-up through
-     * VisibleFinder, whose subject was gated when that row was created.
+     * SalesVisibility, whose subject was gated when that row was created.
      *
      * <p>Distinct from logSystem in exactly one way that matters: these rows are editable,
      * because a human wrote them. Any new caller must be able to make the same

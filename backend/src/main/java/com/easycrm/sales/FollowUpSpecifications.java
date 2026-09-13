@@ -10,7 +10,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 /**
  * AND-composes whichever filters are non-null. Tenant scoping comes from RLS and
- * visibility from VisibilityPolicy — neither is expressed here.
+ * visibility from SalesVisibility — neither is expressed here.
  *
  * <p>Uses string-keyed {@code root.get(...)} like the four specification classes that
  * preceded it, so a field rename fails at runtime rather than at compile time. That is a

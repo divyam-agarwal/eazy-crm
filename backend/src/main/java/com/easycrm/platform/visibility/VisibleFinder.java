@@ -2,108 +2,29 @@ package com.easycrm.platform.visibility;
 
 import com.easycrm.crm.CustomerVisibility;
 import com.easycrm.platform.error.NotFoundException;
-import com.easycrm.sales.Enquiry;
-import com.easycrm.sales.EnquiryRepository;
-import com.easycrm.sales.FollowUp;
-import com.easycrm.sales.FollowUpRepository;
-import com.easycrm.sales.Order;
-import com.easycrm.sales.OrderRepository;
-import com.easycrm.sales.Quotation;
-import com.easycrm.sales.QuotationRepository;
-import java.util.List;
-import java.util.Optional;
+import com.easycrm.sales.SalesVisibility;
 import java.util.UUID;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
 /**
- * The ONLY class permitted to call a read method on the four visibility-scoped
- * repositories. VisibilityScopingArchTest fails the build on any other caller — see spec
- * 2026-08-29-record-visibility-design.md §8. Services keep their repositories for save()
- * and nothing else.
+ * The polymorphic subject gate. Everything that filtered a specific aggregate has moved to the
+ * package that owns that aggregate's table — {@code crm.CustomerVisibility} and {@code
+ * sales.SalesVisibility} — leaving only the switch that resolves a {@link SubjectType}.
+ *
+ * <p>This class is the last thing keeping {@code platform} pointing at a domain package, and
+ * ModuleDirectionArchTest stays red until it moves too (Wave 1.6 Task 5). It is a {@code sales}
+ * concern, not a platform one: {@code SubjectType}'s three non-customer values are all sales
+ * aggregates and the activity table it protects lives in {@code sales}.
  */
 @Component
 public class VisibleFinder {
 
-    private final VisibilityPolicy policy;
     private final CustomerVisibility customerVisibility;
-    private final EnquiryRepository enquiries;
-    private final QuotationRepository quotations;
-    private final OrderRepository orders;
-    private final FollowUpRepository followUps;
+    private final SalesVisibility sales;
 
-    public VisibleFinder(
-            VisibilityPolicy policy,
-            CustomerVisibility customerVisibility,
-            EnquiryRepository enquiries,
-            QuotationRepository quotations,
-            OrderRepository orders,
-            FollowUpRepository followUps) {
-        this.policy = policy;
+    public VisibleFinder(CustomerVisibility customerVisibility, SalesVisibility sales) {
         this.customerVisibility = customerVisibility;
-        this.enquiries = enquiries;
-        this.quotations = quotations;
-        this.orders = orders;
-        this.followUps = followUps;
-    }
-
-    public Optional<Enquiry> findEnquiry(UUID id) {
-        return enquiries.findOne(policy.enquiries().and(hasId(id)));
-    }
-
-    public Optional<Quotation> findQuotation(UUID id) {
-        return quotations.findOne(policy.quotations().and(hasId(id)));
-    }
-
-    public Optional<Order> findOrder(UUID id) {
-        return orders.findOne(policy.orders().and(hasId(id)));
-    }
-
-    public Page<Enquiry> pageEnquiries(Specification<Enquiry> filter, Pageable pageable) {
-        return enquiries.findAll(and(policy.enquiries(), filter), pageable);
-    }
-
-    public Page<Quotation> pageQuotations(Specification<Quotation> filter, Pageable pageable) {
-        return quotations.findAll(and(policy.quotations(), filter), pageable);
-    }
-
-    /**
-     * Unpaged list read, for internal sweeps that must see every matching row rather than a
-     * page of them. Exists here and not on the caller because QuotationRepository is a
-     * guarded repository — VisibilityScopingArchTest fails the build on any read of it
-     * outside this package. Under a synthetic SYSTEM principal the policy is unrestricted,
-     * so the filter argument does the real work; the routing is what the guard requires.
-     */
-    public List<Quotation> listQuotations(Specification<Quotation> filter) {
-        return quotations.findAll(and(policy.quotations(), filter));
-    }
-
-    public Page<Order> pageOrders(Specification<Order> filter, Pageable pageable) {
-        return orders.findAll(and(policy.orders(), filter), pageable);
-    }
-
-    public Optional<FollowUp> findFollowUp(UUID id) {
-        return followUps.findOne(policy.followUps().and(hasId(id)));
-    }
-
-    public Page<FollowUp> pageFollowUps(Specification<FollowUp> filter, Pageable pageable) {
-        return followUps.findAll(and(policy.followUps(), filter), pageable);
-    }
-
-    private static <T> Specification<T> hasId(UUID id) {
-        return (root, query, cb) -> cb.equal(root.get("id"), id);
-    }
-
-    /**
-     * {@code Specification.and(null)} throws in the Spring Data JPA version this project
-     * is on — it is not the null-safe no-op the brief assumed. A caller-supplied filter is
-     * routinely null (an unfiltered list view), so guard here rather than push the null
-     * check onto every call site.
-     */
-    private static <T> Specification<T> and(Specification<T> base, Specification<T> filter) {
-        return filter == null ? base : base.and(filter);
+        this.sales = sales;
     }
 
     /**
@@ -120,9 +41,9 @@ public class VisibleFinder {
         boolean visible =
                 switch (type) {
                     case CUSTOMER -> customerVisibility.isVisible(id);
-                    case ENQUIRY -> findEnquiry(id).isPresent();
-                    case QUOTATION -> findQuotation(id).isPresent();
-                    case ORDER -> findOrder(id).isPresent();
+                    case ENQUIRY -> sales.findEnquiry(id).isPresent();
+                    case QUOTATION -> sales.findQuotation(id).isPresent();
+                    case ORDER -> sales.findOrder(id).isPresent();
                 };
         if (!visible) {
             throw new NotFoundException(type.name().toLowerCase() + " " + id + " was not found");

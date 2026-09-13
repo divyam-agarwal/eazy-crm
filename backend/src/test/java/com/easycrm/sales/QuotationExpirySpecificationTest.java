@@ -3,7 +3,6 @@ package com.easycrm.sales;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.support.IntegrationTest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,7 +32,7 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
     QuotationVersionRepository versions;
 
     @Autowired
-    VisibleFinder finder;
+    SalesVisibility visibility;
 
     @Autowired
     TransactionTemplate tx;
@@ -100,7 +99,7 @@ class QuotationExpirySpecificationTest extends IntegrationTest {
     private List<UUID> idsOfCandidates() {
         TenantContext.set(new TenantContext.TenantPrincipal(tenantId, null, "SYSTEM"));
         try {
-            return tx.execute(s -> finder.listQuotations(QuotationSpecifications.expirableAsOf(AS_OF)).stream()
+            return tx.execute(s -> visibility.listQuotations(QuotationSpecifications.expirableAsOf(AS_OF)).stream()
                     .map(Quotation::getId)
                     .toList());
         } finally {

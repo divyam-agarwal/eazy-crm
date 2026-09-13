@@ -30,7 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Endpoint-level: proves quotations and orders -- neither of which carries its own
  * assigned_to -- derive visibility from their customer via the EXISTS subquery in
- * {@code VisibilityPolicy.viaCustomer}, on both reads and writes, and that OWNER remains
+ * {@code SalesVisibility.viaCustomer}, on both reads and writes, and that OWNER remains
  * fully visible. See spec 2026-08-29-record-visibility-design.md §4, §5.2, §6.1.
  */
 @SpringBootTest

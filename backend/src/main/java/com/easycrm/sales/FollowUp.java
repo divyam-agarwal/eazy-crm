@@ -17,7 +17,7 @@ import java.util.UUID;
  * 2026-08-30-activity-follow-up-design.md §5.2, §7.2.
  *
  * <p>Unlike Activity, this row carries its own assigned_to and therefore has intrinsic
- * visibility: it joins the guarded-repository set and is filtered by VisibilityPolicy
+ * visibility: it joins the guarded-repository set and is filtered by SalesVisibility
  * (§4.1). That asymmetry is deliberate, not an oversight.
  */
 @Entity
@@ -36,8 +36,8 @@ public class FollowUp extends TenantScopedEntity {
 
     /**
      * NOT NULL by design. A follow-up nobody owns is precisely the failure this feature
-     * exists to prevent, which is also why VisibilityPolicy.followUps() is a plain
-     * equality rather than the ownedOrUnassigned() shape the other aggregates use — the
+     * exists to prevent, which is also why SalesVisibility's follow-up spec is a plain
+     * equality rather than the owned-or-unassigned shape the other aggregates use — the
      * IS NULL branch would be unreachable (§4.1).
      */
     @Column(name = "assigned_to", nullable = false)
