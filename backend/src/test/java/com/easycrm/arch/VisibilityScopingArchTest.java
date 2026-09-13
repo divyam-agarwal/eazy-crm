@@ -31,6 +31,12 @@ class VisibilityScopingArchTest {
      * <p>Adding an entry here is a visibility decision and needs the same review as adding a table
      * to TenantScopingArchTest.GLOBAL_TABLES. See spec
      * 2026-09-13-wave-1.6-module-boundaries-design.md §4.4.
+     *
+     * <p>The restated rule (design spec W6) has two clauses: exactly one named class may read each
+     * guarded repository, AND that class must consult the role claim. This test enforces only the
+     * first clause structurally. The second clause is not checkable by import analysis — it is
+     * enforced behaviourally, by asserting the actual restricted-vs-unrestricted read outcomes, in
+     * {@code CustomerVisibilityContractTest} and {@code SalesVisibilityContractTest}.
      */
     private static final Map<String, String> PERMITTED_READER = Map.of(
             "com.easycrm.crm.CustomerRepository", "com.easycrm.crm.CustomerVisibility",

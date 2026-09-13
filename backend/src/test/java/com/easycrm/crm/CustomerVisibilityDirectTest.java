@@ -132,7 +132,7 @@ class CustomerVisibilityDirectTest extends IntegrationTest {
     /**
      * Ported from VisibilityPolicyIntegrationTest.ownerSeesEveryCustomer. The original also
      * asserted {@code assertThat(policy.unrestricted()).isTrue()} directly; {@code
-     * CustomerVisibility.unrestricted()} is package-private by design (it is an implementation
+     * CustomerVisibility.unrestricted()} is private by design (it is an implementation
      * detail behind {@code spec()}, not part of the class's public contract), so that line has no
      * direct equivalent here. The behaviour it certified -- OWNER sees every row -- is still
      * fully asserted below via the observable result of {@code spec()}.

@@ -17,8 +17,8 @@ top to bottom direction
 
 System_Boundary("EasyCrmApplication_boundary", "EasyCrmApplication", $tags="") {
   Container_Boundary("EasyCrmApplication.EasyCrmApplication_boundary", "EasyCrmApplication", $tags="") {
-    Component(EasyCrmApplication.EasyCrmApplication.Platform, "Platform", $techn="Module", $descr="", $tags="", $link="")
     Component(EasyCrmApplication.EasyCrmApplication.Catalog, "Catalog", $techn="Module", $descr="", $tags="", $link="")
+    Component(EasyCrmApplication.EasyCrmApplication.Platform, "Platform", $techn="Module", $descr="", $tags="", $link="")
   }
 
 }

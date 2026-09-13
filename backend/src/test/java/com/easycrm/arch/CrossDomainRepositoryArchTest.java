@@ -120,7 +120,6 @@ class CrossDomainRepositoryArchTest {
         return found;
     }
 
-    /** Non-null only when this is a cross-domain repository dependency. */
     /**
      * Non-null only when this is a cross-domain repository dependency.
      *

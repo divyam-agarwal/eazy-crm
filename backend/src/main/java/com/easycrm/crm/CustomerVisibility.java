@@ -36,7 +36,7 @@ public class CustomerVisibility {
      * reason: {@code TenantPrincipal.role} is a String, {@code iam.Role} lives in {@code iam}, and
      * depending on {@code iam} for a type would put a compile edge on what becomes a separate
      * deployable. The literal is checked against the enum in test scope
-     * (CustomerVisibilityRoleLiteralTest, added in Task 6), which may depend on anything.
+     * (CustomerVisibilityRoleLiteralTest), which may depend on anything.
      */
     static final String RESTRICTED_ROLE = "SALES_EXEC";
 

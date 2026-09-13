@@ -16,11 +16,13 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Moved verbatim from {@code VisibleFinderIntegrationTest} (formerly in the platform module's
- * visibility package) in Wave 1.6, when
- * the four sales aggregates' reads moved from {@code VisibleFinder} to {@code SalesVisibility}.
- * Every assertion and comment below is unchanged — that is what makes this class proof the move
- * changed no behaviour, rather than a test rewritten to agree with the new code.
+ * Moved from {@code VisibleFinderIntegrationTest} (formerly in the platform module's visibility
+ * package) in Wave 1.6, when the four sales aggregates' reads moved from {@code VisibleFinder} to
+ * {@code SalesVisibility}. Five test methods that covered the customer side of that original file
+ * were relocated out of this class into {@code CustomerVisibilityDirectTest} during the same
+ * slice. What remains here is moved verbatim: every assertion and comment below is unchanged --
+ * that is what makes this class proof the sales-side move changed no behaviour, rather than a
+ * test rewritten to agree with the new code.
  */
 class SalesVisibilityTest extends IntegrationTest {
 

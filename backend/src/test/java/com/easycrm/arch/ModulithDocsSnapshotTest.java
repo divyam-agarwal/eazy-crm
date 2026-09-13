@@ -133,23 +133,42 @@ class ModulithDocsSnapshotTest {
             // kind of incidental difference this method exists to remove, not introduce.
             String content = Files.readString(file, StandardCharsets.UTF_8);
             boolean trailingNewline = content.endsWith("\n");
-            List<String> sorted = sortRelBlocks(content.lines().toList());
+            List<String> sorted = canonicalizeUnorderedRuns(content.lines().toList());
             String rewritten = String.join("\n", sorted) + (trailingNewline ? "\n" : "");
             Files.writeString(file, rewritten, StandardCharsets.UTF_8);
         }
     }
 
-    private static List<String> sortRelBlocks(List<String> lines) {
+    /**
+     * Sorts each contiguous run of {@code Rel(...)} lines and each contiguous run of {@code
+     * Component(...)} lines in every {@code .puml} file in place. Both render from the same family
+     * of internal, unordered/insertion-ordered structurizr collections: {@code Rel(...)} lines are
+     * Modulith's inter-module dependency edges, {@code Component(...)} lines are a container's
+     * member modules, and in neither case does relative order carry meaning -- each is an edge or
+     * member <em>set</em>, not a sequence. That makes sorting lossless: it can only change the byte
+     * order of a set that was never ordered in the first place. Without it, {@link Files#mismatch}
+     * cannot distinguish a meaningless reshuffle of one of these sets from real content drift, so
+     * canonicalizing before comparison removes that ambiguity rather than papering over it.
+     *
+     * <p>{@code Rel(...)} lines sit unindented at file scope; {@code Component(...)} lines sit
+     * indented 4 spaces inside a {@code Container_Boundary}. Matching is done on the trimmed line
+     * for the latter and the raw line for the former so the two families are told apart and each
+     * run is sorted only among lines of its own kind -- a run of one kind immediately followed by a
+     * run of the other is never merged into a single sorted block. Every other line, and every
+     * {@code .adoc} file, is left untouched -- nothing else was observed to reorder.
+     */
+    private static List<String> canonicalizeUnorderedRuns(List<String> lines) {
         List<String> out = new ArrayList<>(lines.size());
         int i = 0;
         while (i < lines.size()) {
-            if (!lines.get(i).startsWith("Rel(")) {
+            String kind = unorderedRunKind(lines.get(i));
+            if (kind == null) {
                 out.add(lines.get(i));
                 i++;
                 continue;
             }
             List<String> block = new ArrayList<>();
-            while (i < lines.size() && lines.get(i).startsWith("Rel(")) {
+            while (i < lines.size() && kind.equals(unorderedRunKind(lines.get(i)))) {
                 block.add(lines.get(i));
                 i++;
             }
@@ -157,5 +176,16 @@ class ModulithDocsSnapshotTest {
             out.addAll(block);
         }
         return out;
+    }
+
+    /**
+     * Classifies a line as belonging to the {@code Rel(...)} family, the {@code Component(...)}
+     * family, or neither (returning {@code null}). Used to group only contiguous lines of the same
+     * family into one sortable run.
+     */
+    private static String unorderedRunKind(String line) {
+        if (line.startsWith("Rel(")) return "REL";
+        if (line.trim().startsWith("Component(")) return "COMPONENT";
+        return null;
     }
 }

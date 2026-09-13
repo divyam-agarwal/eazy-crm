@@ -11,9 +11,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * H4 — {@code platform} is the ONE shared library every future service takes, so it must depend
- * on no domain package. Today {@code platform -> sales(12) tenant(3) crm(3)}, which means
- * extracting any service would drag {@code sales.Quotation} and {@code sales.Order} along with
- * the shared library (MF1). See spec 2026-09-13-wave-1.6-module-boundaries-design.md §3.4.
+ * on no domain package. Before this rule, {@code platform} imported from {@code sales}, {@code
+ * tenant}, and {@code crm} (16 imports across three files; ArchUnit's own violation count was 53,
+ * because {@code dependOnClassesThat} also counts field, parameter, return, annotation, and
+ * generic types, not just imports), which meant extracting any service would have dragged {@code
+ * sales.Quotation} and {@code sales.Order} along with the shared library (MF1). See spec
+ * 2026-09-13-wave-1.6-module-boundaries-design.md §3.4.
  *
  * <p><b>This rule exists because Spring Modulith's {@code verify()} cannot replace it.</b>
  * {@code platform} is declared an OPEN module (M4), and OPEN suppresses every cycle that routes

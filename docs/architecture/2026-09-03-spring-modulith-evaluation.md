@@ -210,7 +210,7 @@ Modulith 2.1.1. Full design consequences:
 |---|---|
 | **MA1** — real violation count is a floor of 3 | **446.** 12 cycles + 434 "depends on non-exposed type", 0 other. The 434 concentrate in `platform.persistence.TenantScopedEntity`, `platform.error.*` and `platform.web.PageResponse` |
 | **MA2** — does detection see 7 modules? | **Confirmed. Exactly 7**, `platform`'s 12 subpackages collapsing into one. `demo` is detected as a module, so **MF4 is real** |
-| **MA3** — is `Documenter` output byte-stable? | **Confirmed. 16 files, 0 differ** across two consecutive runs. The M3 snapshot guard is viable |
+| **MA3** — is `Documenter` output byte-stable? | **Recorded "Confirmed. 16 files, 0 differ" across two consecutive runs — this was a false positive.** Both runs executed inside the same test method in the same JVM, exactly the context that hides the instability: it is a function of execution context, not of merely re-running the generator. Wave 1.6 Task 9 found the bytes differ reproducibly between `updateModulithDocs` (sole test in its JVM) and `clean check` (same test, ~550th of 598, forked JVM) — same machine, same JDK (challenge #79). The M3 snapshot guard is viable only because it now canonicalizes the unordered output before comparing; the risk this predicted was real, just on a different axis than expected — cross-machine and cross-JDK-patch drift is *still* unverified |
 
 ## 7.1 M2 and M4 conflict — the finding that reshaped Wave 1.6
 
