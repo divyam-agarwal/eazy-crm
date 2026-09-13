@@ -1,10 +1,6 @@
 package com.easycrm.platform.job;
 
 import com.easycrm.platform.tenancy.TenantContext;
-import com.easycrm.tenant.Tenant;
-import com.easycrm.tenant.TenantRepository;
-import com.easycrm.tenant.TenantStatus;
-import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
@@ -42,24 +38,23 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li><b>Failure isolation.</b> One tenant's bad data must not abort the sweep.</li>
  * </ol>
  *
- * <p>The principal is synthetic: {@code (tenantId, null, "SYSTEM")}, the same shape
- * AuthService uses pre-authentication. VisibilityPolicy treats it as unrestricted (only
- * SALES_EXEC is restricted), which is correct -- a job must see the whole tenant -- and
- * AuditLog.actorUserId is nullable, so the null user id records honestly that no human
- * did this. See spec 2026-08-31-quotation-auto-expiry-design.md §3.1.
+ * <p>The principal is synthetic: {@code (tenantId, null, "SYSTEM")}, the same shape AuthService
+ * uses pre-authentication. Record visibility treats it as unrestricted -- each domain package
+ * derives restriction from the role claim and only SALES_EXEC is restricted, so a synthetic
+ * principal sees the whole tenant, which is what a job must do. AuditLog.actorUserId is nullable,
+ * so the null user id records honestly that no human did this.
+ * See spec 2026-08-31-quotation-auto-expiry-design.md §3.1.
  */
 @Component
 public class TenantJobRunner {
 
     private static final Logger log = LoggerFactory.getLogger(TenantJobRunner.class);
 
-    private static final List<TenantStatus> JOB_ELIGIBLE = List.of(TenantStatus.TRIAL, TenantStatus.ACTIVE);
-
-    private final TenantRepository tenants;
+    private final JobEligibleTenants eligibleTenants;
     private final TransactionTemplate tx;
 
-    public TenantJobRunner(TenantRepository tenants, PlatformTransactionManager transactionManager) {
-        this.tenants = tenants;
+    public TenantJobRunner(JobEligibleTenants eligibleTenants, PlatformTransactionManager transactionManager) {
+        this.eligibleTenants = eligibleTenants;
         this.tx = new TransactionTemplate(transactionManager);
         this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -72,8 +67,9 @@ public class TenantJobRunner {
      * tenant context bound. The body returns how many items it processed, purely so the
      * summary can say something useful.
      *
-     * <p>Reading the tenant list happens with NO tenant context, which is safe because
-     * Tenant is a global table (TenantScopingArchTest.GLOBAL_TABLES).
+     * <p>Reading the tenant list happens through {@link JobEligibleTenants}, with NO tenant
+     * context bound, which is safe for the same reason it always was: Tenant is a global table
+     * (TenantScopingArchTest.GLOBAL_TABLES).
      *
      * <p>The body MAY RUN TWICE for a tenant, because of the optimistic-lock retry. Database
      * work is rolled back between attempts, but anything that escapes the transaction --
@@ -85,13 +81,13 @@ public class TenantJobRunner {
         int failed = 0;
         int items = 0;
 
-        for (Tenant tenant : tenants.findByStatusIn(JOB_ELIGIBLE)) {
+        for (UUID tenantId : eligibleTenants.ids()) {
             try {
-                items += runWithRetry(jobName, tenant.getId(), body);
+                items += runWithRetry(jobName, tenantId, body);
                 swept++;
             } catch (RuntimeException e) {
                 failed++;
-                log.warn("job {} failed for tenant {}", jobName, tenant.getId(), e);
+                log.warn("job {} failed for tenant {}", jobName, tenantId, e);
             }
         }
 
