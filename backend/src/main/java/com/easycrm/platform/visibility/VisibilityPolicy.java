@@ -35,10 +35,6 @@ public class VisibilityPolicy {
         return TenantContext.get().map(p -> !"SALES_EXEC".equals(p.role())).orElse(true);
     }
 
-    public Specification<Customer> customers() {
-        return ownedOrUnassigned();
-    }
-
     public Specification<Enquiry> enquiries() {
         return ownedOrUnassigned();
     }

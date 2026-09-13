@@ -4807,3 +4807,57 @@ known defect must be run against that defect before it is trusted.** The defect 
 identified, already written down, and sitting in the tree — so "does the new gate flag H4?" was a
 question with a cheap, decisive answer available at any point. Adopting the gate without asking it
 would have converted an open, documented blocker into a closed one that the build affirmed.
+
+---
+
+## Challenge 76 — SpotBugs's `instanceHash` is keyed to a constructor's exact signature, so an unrelated parameter change quietly re-hashes a baselined finding
+
+**Phase:** Implementation (module-boundaries, Task 3)
+
+### The problem
+
+Task 3 moves the Customer half of `VisibleFinder`/`VisibilityPolicy` into `crm.CustomerVisibility`
+and threads the new collaborator through `QuotationService`'s constructor alongside the
+`VisibleFinder` it still needs for non-customer subjects. Nothing about that constructor's
+*existing* parameters changed — only a tenth parameter was appended. `./gradlew spotbugsMain`
+still failed, with exit code 3 and zero HTML/XML findings visible under the normal report (baseline
+filtering hides everything it matches, per challenge #58): the failure was a genuinely NEW-looking
+`EI_EXPOSE_REP2` on `QuotationService.items`, the exact same field, exact same finding in
+substance, that `config/spotbugs/baseline.xml` already carried from the build-hygiene slice.
+
+The two entries did not match because `-excludeBugs` matches by `instanceHash`, and `instanceHash`
+is evidently derived in part from the constructor's descriptor string (`(L...;L...;...)V`), which
+now had eleven segments instead of ten. Appending an unrelated, unread-by-SpotBugs parameter to a
+constructor is enough to change the hash of every finding SpotBugs attributes to that constructor
+— including ones with no logical relationship to the new parameter at all. `config/spotbugs/
+baseline.xml`'s own header is explicit that this file must not be used to launder new findings
+("do NOT append new findings... new findings must be fixed in the code that introduced them"), so
+the two failure modes — a genuinely new finding, and an old finding wearing a new hash — needed to
+be told apart before doing anything, not after.
+
+### The solution
+
+Diffed the finding's `LongMessage` against the baselined one: same class, same field
+(`QuotationService.items`), same bug type, same rank, and a constructor parameter list identical
+except for one appended type (`CustomerVisibility`). That is the signature of a hash shift, not a
+new code path introducing a new exposure — the `items` field was stored the same way, by the same
+line of code, before this task touched the file. Confirmed by running `spotbugsMain` before and
+after adding the constructor parameter: the finding's hash changes the instant the parameter is
+added, with no other code difference. Updated the single baseline `<BugInstance>` block in place
+(replacing the old `instanceHash`, `LongMessage`, `Method` signature and `SourceLine` offsets with
+the freshly-generated ones for the same field) rather than appending a second entry or turning to
+`exclude.xml`, since the old entry no longer matches anything and a stale entry sitting next to a
+live one is worse than either being absent or current.
+
+### Lesson
+
+A hash-based suppression mechanism (`-excludeBugs`, and the class of tool it represents —
+snapshot testing, golden-file diffing, any `instanceHash`/content-hash allowlist) does not
+distinguish "this exact finding, unchanged" from "a finding that moved because something nearby,
+unrelated to the finding's own logic, changed shape." Before concluding a build failure is a new
+defect that must be fixed in code, check whether an *existing* baselined entry is a near-exact
+match on everything except the hash and the literal signature text — same field, same class, same
+bug type, same source line — because that is the fingerprint of drift, not novelty. The fix is
+different in each case: a real new finding gets fixed in the code that introduced it (challenge
+#62's rule still holds); a re-hashed existing one gets its baseline entry regenerated in place, not
+appended to, and the regeneration is disclosed rather than silent.

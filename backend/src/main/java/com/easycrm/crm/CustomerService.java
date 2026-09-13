@@ -8,7 +8,6 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.gst.Gstin;
 import com.easycrm.platform.gst.StateCode;
-import com.easycrm.platform.visibility.VisibleFinder;
 import com.easycrm.platform.web.PageResponse;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
@@ -19,12 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerService {
 
     private final CustomerRepository customers;
-    private final VisibleFinder finder;
+    private final CustomerVisibility customerVisibility;
     private final AssignableUsers assignableUsers;
 
-    public CustomerService(CustomerRepository customers, VisibleFinder finder, AssignableUsers assignableUsers) {
+    public CustomerService(
+            CustomerRepository customers, CustomerVisibility customerVisibility, AssignableUsers assignableUsers) {
         this.customers = customers;
-        this.finder = finder;
+        this.customerVisibility = customerVisibility;
         this.assignableUsers = assignableUsers;
     }
 
@@ -57,7 +57,8 @@ public class CustomerService {
 
     @Transactional(readOnly = true)
     public PageResponse<CustomerResponse> list(Boolean active, Pageable pageable) {
-        return PageResponse.of(finder.pageCustomers(CustomerSpecifications.filter(active), pageable)
+        return PageResponse.of(customerVisibility
+                .page(CustomerSpecifications.filter(active), pageable)
                 .map(CustomerResponse::of));
     }
 
@@ -99,7 +100,7 @@ public class CustomerService {
      * caller must not be able to tell them apart.
      */
     private Customer find(UUID id) {
-        return finder.findCustomer(id).orElseThrow(() -> new NotFoundException("customer not found"));
+        return customerVisibility.find(id).orElseThrow(() -> new NotFoundException("customer not found"));
     }
 
     private int creditDays(CustomerRequest req) {

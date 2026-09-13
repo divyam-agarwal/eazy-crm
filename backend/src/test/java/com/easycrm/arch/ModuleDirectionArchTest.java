@@ -35,11 +35,7 @@ class ModuleDirectionArchTest {
      * exist. {@code platform} does not currently depend on it either way.
      */
     private static final String[] DOMAIN_PACKAGES = {
-        "com.easycrm.crm..",
-        "com.easycrm.sales..",
-        "com.easycrm.catalog..",
-        "com.easycrm.tenant..",
-        "com.easycrm.iam.."
+        "com.easycrm.crm..", "com.easycrm.sales..", "com.easycrm.catalog..", "com.easycrm.tenant..", "com.easycrm.iam.."
     };
 
     private static JavaClasses importedClasses() {

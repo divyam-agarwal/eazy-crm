@@ -427,18 +427,18 @@
       <Message>At FollowUp.java:[line 68]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="b0c0811891c4c26da16ad94199b347bc" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="58cedeb2562ec4022d4b71a84e5f8ca4" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
     <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
-    <LongMessage>new com.easycrm.sales.QuotationService(QuotationRepository, QuotationVersionRepository, QuotationItemRepository, TenantRepository, PriceResolver, DocumentNumberService, OrderRepository, ApplicationEventPublisher, VisibleFinder) may expose internal representation by storing an externally mutable object into QuotationService.items</LongMessage>
+    <LongMessage>new com.easycrm.sales.QuotationService(QuotationRepository, QuotationVersionRepository, QuotationItemRepository, TenantRepository, PriceResolver, DocumentNumberService, OrderRepository, ApplicationEventPublisher, VisibleFinder, CustomerVisibility) may expose internal representation by storing an externally mutable object into QuotationService.items</LongMessage>
     <Class classname="com.easycrm.sales.QuotationService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
-      <SourceLine classname="com.easycrm.sales.QuotationService" start="55" end="325" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
-        <Message>At QuotationService.java:[lines 55-325]</Message>
+      <SourceLine classname="com.easycrm.sales.QuotationService" start="58" end="348" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
+        <Message>At QuotationService.java:[lines 58-348]</Message>
       </SourceLine>
       <Message>In class com.easycrm.sales.QuotationService</Message>
     </Class>
-    <Method classname="com.easycrm.sales.QuotationService" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/QuotationRepository;Lcom/easycrm/sales/QuotationVersionRepository;Lcom/easycrm/sales/QuotationItemRepository;Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/sales/PriceResolver;Lcom/easycrm/sales/DocumentNumberService;Lcom/easycrm/sales/OrderRepository;Lorg/springframework/context/ApplicationEventPublisher;Lcom/easycrm/platform/visibility/VisibleFinder;)V" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.sales.QuotationService" start="55" end="65" startBytecode="0" endBytecode="227" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java"/>
-      <Message>In method new com.easycrm.sales.QuotationService(QuotationRepository, QuotationVersionRepository, QuotationItemRepository, TenantRepository, PriceResolver, DocumentNumberService, OrderRepository, ApplicationEventPublisher, VisibleFinder)</Message>
+    <Method classname="com.easycrm.sales.QuotationService" name="&lt;init&gt;" signature="(Lcom/easycrm/sales/QuotationRepository;Lcom/easycrm/sales/QuotationVersionRepository;Lcom/easycrm/sales/QuotationItemRepository;Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/sales/PriceResolver;Lcom/easycrm/sales/DocumentNumberService;Lcom/easycrm/sales/OrderRepository;Lorg/springframework/context/ApplicationEventPublisher;Lcom/easycrm/platform/visibility/VisibleFinder;Lcom/easycrm/crm/CustomerVisibility;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.sales.QuotationService" start="58" end="69" startBytecode="0" endBytecode="247" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java"/>
+      <Message>In method new com.easycrm.sales.QuotationService(QuotationRepository, QuotationVersionRepository, QuotationItemRepository, TenantRepository, PriceResolver, DocumentNumberService, OrderRepository, ApplicationEventPublisher, VisibleFinder, CustomerVisibility)</Message>
     </Method>
     <Field classname="com.easycrm.sales.QuotationService" name="items" signature="Lcom/easycrm/sales/QuotationItemRepository;" isStatic="false" primary="true">
       <SourceLine classname="com.easycrm.sales.QuotationService" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
@@ -449,8 +449,8 @@
     <LocalVariable name="items" register="3" pc="16" role="LOCAL_VARIABLE_NAMED">
       <Message>Local variable named items</Message>
     </LocalVariable>
-    <SourceLine classname="com.easycrm.sales.QuotationService" primary="true" start="58" end="58" startBytecode="16" endBytecode="16" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
-      <Message>At QuotationService.java:[line 58]</Message>
+    <SourceLine classname="com.easycrm.sales.QuotationService" primary="true" start="61" end="61" startBytecode="16" endBytecode="16" sourcefile="QuotationService.java" sourcepath="com/easycrm/sales/QuotationService.java" relSourcepath="java/com/easycrm/sales/QuotationService.java">
+      <Message>At QuotationService.java:[line 61]</Message>
     </SourceLine>
   </BugInstance>
   <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="72a5d4a4ef560238fef816f8da5ac44f" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">

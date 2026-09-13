@@ -1,7 +1,6 @@
 package com.easycrm.platform.visibility;
 
-import com.easycrm.crm.Customer;
-import com.easycrm.crm.CustomerRepository;
+import com.easycrm.crm.CustomerVisibility;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.sales.Enquiry;
 import com.easycrm.sales.EnquiryRepository;
@@ -29,7 +28,7 @@ import org.springframework.stereotype.Component;
 public class VisibleFinder {
 
     private final VisibilityPolicy policy;
-    private final CustomerRepository customers;
+    private final CustomerVisibility customerVisibility;
     private final EnquiryRepository enquiries;
     private final QuotationRepository quotations;
     private final OrderRepository orders;
@@ -37,21 +36,17 @@ public class VisibleFinder {
 
     public VisibleFinder(
             VisibilityPolicy policy,
-            CustomerRepository customers,
+            CustomerVisibility customerVisibility,
             EnquiryRepository enquiries,
             QuotationRepository quotations,
             OrderRepository orders,
             FollowUpRepository followUps) {
         this.policy = policy;
-        this.customers = customers;
+        this.customerVisibility = customerVisibility;
         this.enquiries = enquiries;
         this.quotations = quotations;
         this.orders = orders;
         this.followUps = followUps;
-    }
-
-    public Optional<Customer> findCustomer(UUID id) {
-        return customers.findOne(policy.customers().and(hasId(id)));
     }
 
     public Optional<Enquiry> findEnquiry(UUID id) {
@@ -64,10 +59,6 @@ public class VisibleFinder {
 
     public Optional<Order> findOrder(UUID id) {
         return orders.findOne(policy.orders().and(hasId(id)));
-    }
-
-    public Page<Customer> pageCustomers(Specification<Customer> filter, Pageable pageable) {
-        return customers.findAll(and(policy.customers(), filter), pageable);
     }
 
     public Page<Enquiry> pageEnquiries(Specification<Enquiry> filter, Pageable pageable) {
@@ -128,7 +119,7 @@ public class VisibleFinder {
     public UUID requireVisibleSubject(SubjectType type, UUID id) {
         boolean visible =
                 switch (type) {
-                    case CUSTOMER -> findCustomer(id).isPresent();
+                    case CUSTOMER -> customerVisibility.isVisible(id);
                     case ENQUIRY -> findEnquiry(id).isPresent();
                     case QUOTATION -> findQuotation(id).isPresent();
                     case ORDER -> findOrder(id).isPresent();

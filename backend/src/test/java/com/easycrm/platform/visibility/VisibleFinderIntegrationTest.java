@@ -57,44 +57,6 @@ class VisibleFinderIntegrationTest extends IntegrationTest {
         });
     }
 
-    @Test
-    void byIdReturnsAVisibleRecord() {
-        run(execA, "SALES_EXEC", () -> assertThat(finder.findCustomer(mine)).isPresent());
-    }
-
-    @Test
-    void byIdReturnsEmptyForAnInvisibleRecord() {
-        run(execA, "SALES_EXEC", () -> assertThat(finder.findCustomer(theirs)).isEmpty());
-    }
-
-    @Test
-    void byIdReturnsAnUnassignedRecord() {
-        run(execA, "SALES_EXEC", () -> assertThat(finder.findCustomer(pool)).isPresent());
-    }
-
-    @Test
-    void ownerSeesEvenAnotherExecsRecordById() {
-        run(execA, "OWNER", () -> assertThat(finder.findCustomer(theirs)).isPresent());
-    }
-
-    /**
-     * The paging path builds a COUNT query too, and {@code PageableExecutionUtils} only
-     * executes it when the content page is not already known to be complete: it
-     * short-circuits whenever {@code offset == 0 && pageSize > content.size()}. A page
-     * size of 50 over 2 visible rows would hit that short-circuit and never run the count
-     * query at all, so this uses page size 1 -- {@code content.size() == 1 == pageSize}
-     * fails the short-circuit's strict {@code >}, forcing the real COUNT(*) to execute --
-     * to prove the visibility filter actually survives translation into a count query.
-     */
-    @Test
-    void pagingAppliesVisibilityToBothTheDataAndCountQueries() {
-        run(execA, "SALES_EXEC", () -> {
-            var page = finder.pageCustomers(null, PageRequest.of(0, 1));
-            assertThat(page.getContent()).hasSize(1);
-            assertThat(page.getTotalElements()).isEqualTo(2);
-        });
-    }
-
     /**
      * Quotations don't carry their own assigned_to -- visibility is derived from the
      * customer via an EXISTS subquery (VisibilityPolicy.viaCustomer). The count query is

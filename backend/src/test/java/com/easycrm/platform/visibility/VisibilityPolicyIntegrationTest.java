@@ -57,33 +57,6 @@ class VisibilityPolicyIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    void ownerSeesEveryCustomer() {
-        asPrincipal(execA, "OWNER", () -> {
-            assertThat(policy.unrestricted()).isTrue();
-            assertThat(ids(customers.findAll(policy.customers())))
-                    .containsExactlyInAnyOrder(customerA, customerB, customerUnassigned);
-        });
-    }
-
-    @Test
-    void salesManagerSeesEveryCustomer() {
-        asPrincipal(execA, "SALES_MANAGER", () -> {
-            assertThat(policy.unrestricted()).isTrue();
-            assertThat(ids(customers.findAll(policy.customers()))).hasSize(3);
-        });
-    }
-
-    @Test
-    void salesExecSeesOwnAndUnassignedCustomersOnly() {
-        asPrincipal(execA, "SALES_EXEC", () -> {
-            assertThat(policy.unrestricted()).isFalse();
-            assertThat(ids(customers.findAll(policy.customers())))
-                    .containsExactlyInAnyOrder(customerA, customerUnassigned)
-                    .doesNotContain(customerB);
-        });
-    }
-
-    @Test
     void salesExecSeesQuotationsThroughTheirCustomer() {
         asPrincipal(
                 execA,

@@ -1,6 +1,7 @@
 package com.easycrm.sales;
 
 import com.easycrm.crm.Customer;
+import com.easycrm.crm.CustomerVisibility;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.tenancy.TenantContext;
@@ -42,6 +43,7 @@ public class QuotationService {
     private final OrderRepository orders;
     private final ApplicationEventPublisher events;
     private final VisibleFinder finder;
+    private final CustomerVisibility customerVisibility;
 
     public QuotationService(
             QuotationRepository quotations,
@@ -52,7 +54,8 @@ public class QuotationService {
             DocumentNumberService documentNumbers,
             OrderRepository orders,
             ApplicationEventPublisher events,
-            VisibleFinder finder) {
+            VisibleFinder finder,
+            CustomerVisibility customerVisibility) {
         this.quotations = quotations;
         this.versions = versions;
         this.items = items;
@@ -62,14 +65,17 @@ public class QuotationService {
         this.orders = orders;
         this.events = events;
         this.finder = finder;
+        this.customerVisibility = customerVisibility;
     }
 
     @Transactional
     public QuotationResponse create(QuotationCreateRequest req) {
         // An exec must not be able to raise a quote against a customer (or enquiry) they
-        // cannot see, so both loads go through the finder rather than the raw repository.
-        Customer customer =
-                finder.findCustomer(req.customerId()).orElseThrow(() -> new NotFoundException("customer not found"));
+        // cannot see, so both loads go through the visibility layer rather than the raw
+        // repository.
+        Customer customer = customerVisibility
+                .find(req.customerId())
+                .orElseThrow(() -> new NotFoundException("customer not found"));
         boolean interState = isInterState(customer.getStateCode());
 
         if (req.enquiryId() != null) {
@@ -127,10 +133,11 @@ public class QuotationService {
         QuotationVersion v = requireDraft(q);
         items.deleteByVersionId(v.getId());
         // Reached only from an already-visible quotation, so this cannot change an
-        // outcome -- routed through the finder anyway for guard consistency
+        // outcome -- routed through the visibility layer anyway for guard consistency
         // (VisibilityScopingArchTest).
-        Customer customer =
-                finder.findCustomer(q.getCustomerId()).orElseThrow(() -> new NotFoundException("customer not found"));
+        Customer customer = customerVisibility
+                .find(q.getCustomerId())
+                .orElseThrow(() -> new NotFoundException("customer not found"));
         buildItems(v, q.getCustomerId(), req.items(), isInterState(customer.getStateCode()));
         return toResponse(q);
     }
@@ -151,8 +158,9 @@ public class QuotationService {
         // Freeze the buyer as they are NOW, not as they were when the draft was created:
         // a draft that sat for two weeks while someone corrected a typo'd GSTIN must send
         // the corrected one. From here the version renders the same document forever (F11).
-        Customer customer =
-                finder.findCustomer(q.getCustomerId()).orElseThrow(() -> new NotFoundException("customer not found"));
+        Customer customer = customerVisibility
+                .find(q.getCustomerId())
+                .orElseThrow(() -> new NotFoundException("customer not found"));
         // placeOfSupply froze at creation because the per-line CGST/SGST/IGST was computed
         // against it then. Buyer identity has no such coupling — which is what makes
         // freezing it late safe — but a customer who MOVED STATE breaks the coupling that

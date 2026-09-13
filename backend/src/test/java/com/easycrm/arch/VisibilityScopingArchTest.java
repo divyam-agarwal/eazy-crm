@@ -11,18 +11,35 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class VisibilityScopingArchTest {
 
-    /** Repositories whose rows are subject to intra-tenant visibility filtering. */
-    private static final Set<String> GUARDED_REPOSITORIES = Set.of(
-            "com.easycrm.crm.CustomerRepository",
-            "com.easycrm.sales.EnquiryRepository",
-            "com.easycrm.sales.QuotationRepository",
-            "com.easycrm.sales.OrderRepository",
-            "com.easycrm.sales.FollowUpRepository");
+    /**
+     * Each visibility-scoped repository and the ONE class permitted to read it.
+     *
+     * <p>This was a single package rule — "only com.easycrm.platform.visibility.. may read a
+     * guarded repository" — until Wave 1.6 deleted that package. The reads now live with the data
+     * they filter, so the rule is stated per repository instead. <b>That is a tightening, not a
+     * weakening:</b> it previously said "some class in one package", and it now names exactly one
+     * class per table. The invariant was never "one class for everything" — it was "no read
+     * bypasses the policy" — and this states that per table.
+     *
+     * <p>Adding an entry here is a visibility decision and needs the same review as adding a table
+     * to TenantScopingArchTest.GLOBAL_TABLES. See spec
+     * 2026-09-13-wave-1.6-module-boundaries-design.md §4.4.
+     *
+     * <p>The four sales entries below still point at VisibleFinder — deliberately temporary,
+     * Tasks 4 and 5 repoint them to the sales-owned equivalent of CustomerVisibility.
+     */
+    private static final Map<String, String> PERMITTED_READER = Map.of(
+            "com.easycrm.crm.CustomerRepository", "com.easycrm.crm.CustomerVisibility",
+            "com.easycrm.sales.EnquiryRepository", "com.easycrm.platform.visibility.VisibleFinder",
+            "com.easycrm.sales.QuotationRepository", "com.easycrm.platform.visibility.VisibleFinder",
+            "com.easycrm.sales.OrderRepository", "com.easycrm.platform.visibility.VisibleFinder",
+            "com.easycrm.sales.FollowUpRepository", "com.easycrm.platform.visibility.VisibleFinder");
 
     /**
      * Methods any class may still call on a guarded repository. Everything else must go
@@ -60,8 +77,6 @@ class VisibilityScopingArchTest {
                 .importPackages("com.easycrm");
 
         ArchRule rule = noClasses()
-                .that()
-                .resideOutsideOfPackage("com.easycrm.platform.visibility..")
                 .should(callAGuardedRepositoryOutsideTheAllowlist())
                 .because("intra-tenant visibility is applied in VisibleFinder; a read that "
                         + "bypasses it silently returns another user's records");
@@ -81,7 +96,7 @@ class VisibilityScopingArchTest {
                 // method (`customers::findById`, `::findAll`, `::save`, ...) resolves its
                 // target owner to the Spring Data supertype, not to the local repository
                 // interface, so it is NOT caught by this or any owner-name check -- verified
-                // empirically while writing this fix. Widening GUARDED_REPOSITORIES to
+                // empirically while writing this fix. Widening PERMITTED_READER's keys to
                 // include CrudRepository/JpaRepository would catch it but would also flag
                 // every unguarded repository's method references across the whole app.
                 checkAccesses(item, events, item.getMethodCallsFromSelf());
@@ -91,7 +106,9 @@ class VisibilityScopingArchTest {
             private void checkAccesses(JavaClass item, ConditionEvents events, Set<? extends JavaAccess<?>> accesses) {
                 for (JavaAccess<?> call : accesses) {
                     String owner = call.getTargetOwner().getFullName();
-                    if (!GUARDED_REPOSITORIES.contains(owner)) continue;
+                    String permitted = PERMITTED_READER.get(owner);
+                    if (permitted == null) continue; // not a guarded repository
+                    if (permitted.equals(item.getFullName())) continue; // the one permitted reader
                     if (ALLOWED_METHODS.contains(call.getName())) continue;
                     events.add(SimpleConditionEvent.satisfied(item, call.getDescription()));
                 }
