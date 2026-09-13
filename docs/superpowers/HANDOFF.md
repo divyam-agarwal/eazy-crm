@@ -9,15 +9,20 @@ drags `sales`, `crm` and `tenant` along with it. **Baseline is now 626 tests (59
 [spec](specs/2026-09-13-wave-1.6-module-boundaries-design.md) ·
 [plan](plans/2026-09-13-wave-1.6-module-boundaries.md).
 
-**Read this first if `check` fails on a machine that is not the one it was built on.**
-`ModulithDocsSnapshotTest` compares generated C4 documentation byte-for-byte and **fails `check`**
-rather than reporting. Modulith emits `Rel(...)` edges and `Component(...)` declarations from unordered
-collections, so the test canonicalizes both by sorting before comparing — that is what makes the guard
-viable at all (challenge #79). **Cross-machine and cross-JDK-patch stability is the one axis never
-measured locally**, so if you hit a mismatch: the answer is NOT to delete the guard and NOT to keep
-regenerating. Diff the two generations after sorting every line — if the multisets match, it is another
-unordered collection and the fix is to canonicalize that family too. If they genuinely differ, make the
-guard report-only and say so in the spec. `./gradlew updateModulithDocs` regenerates the snapshot.
+**CI is green on the merge — including the one axis that was never measured locally.** Run
+`34774259997` on `f81362b`: `check`, `supply-chain` and `dependency-check` all green. That matters
+specifically because `ModulithDocsSnapshotTest` compares generated C4 documentation byte-for-byte and
+**fails `check`** rather than reporting, and until this run the bytes had only ever been compared on one
+machine. Modulith emits `Rel(...)` edges and `Component(...)` declarations from unordered collections, so
+the test canonicalizes both by sorting before comparing (challenge #79) — and that canonicalization now
+demonstrably holds across macOS/JDK 25 locally and CI's Linux/JDK 25. **WA4's remaining risk is narrowed,
+not eliminated:** one machine pair is not every machine pair, and a JDK patch bump is still untested.
+
+**If it ever does fail on a new machine, the answer is NOT to delete the guard and NOT to keep
+regenerating.** Diff the two generations after sorting every line. If the multisets match, it is another
+unordered collection and the fix is to canonicalize that family too — which is exactly how
+`Component(...)` came to be covered. If they genuinely differ, make the guard report-only and say so in
+the spec. `./gradlew updateModulithDocs` regenerates the snapshot.
 
 **The design was reshaped by a spike before any code was written, and that is the part worth reading.**
 The Modulith evaluation doc's Appendix A admitted `verify()` had never actually been run. It was, on a

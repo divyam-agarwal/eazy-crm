@@ -12,11 +12,12 @@ and the `wave-1.6-module-boundaries` branch was deleted; the baseline before it 
 scans first ran in CI earlier that day (run `34713136667`, green on all three jobs), so the "never
 executed in CI" caveat that travelled with every Wave 1.5 claim is **discharged**.
 
-**One thing to watch on the first `check` run from a different machine.** Wave 1.6 added
-`ModulithDocsSnapshotTest`, which compares generated C4 documentation byte-for-byte and **fails**
-rather than reports. It canonicalizes Modulith's unordered `Rel(...)` and `Component(...)` output before
-comparing, which is what makes it viable — but cross-machine and cross-JDK-patch byte stability was
-never measured locally. HANDOFF.md has the diagnostic path; the answer is never to delete the guard.
+**CI is green on the merge** — run `34774259997` on `f81362b`, all three jobs. That retires the one
+open question Wave 1.6 shipped with: `ModulithDocsSnapshotTest` compares generated C4 documentation
+byte-for-byte and **fails** rather than reports, and its canonicalization of Modulith's unordered
+`Rel(...)`/`Component(...)` output had only ever been checked on one machine. It now holds across local
+macOS and CI Linux, both JDK 25. Narrowed, not eliminated — a JDK patch bump is still untested, and
+HANDOFF.md carries the diagnostic path. The answer is never to delete the guard.
 
 **Verify before relying on any of this** — `git rev-parse --short main`,
 `git rev-parse --short origin/main` (as two separate invocations; passing both refs to one
