@@ -71,15 +71,16 @@ class VisibilityScopingArchTest {
             "countByAssignedToAndStatus");
 
     @Test
-    void onlyTheVisibilityPackageMayReadAGuardedRepository() {
+    void onlyThePermittedReaderMayReadEachGuardedRepository() {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
                 .importPackages("com.easycrm");
 
         ArchRule rule = noClasses()
                 .should(callAGuardedRepositoryOutsideTheAllowlist())
-                .because("intra-tenant visibility is applied in VisibleFinder; a read that "
-                        + "bypasses it silently returns another user's records");
+                .because("intra-tenant visibility is applied by exactly one permitted reader per "
+                        + "guarded repository (PERMITTED_READER); a read from any other class "
+                        + "bypasses it and silently returns another user's records");
 
         rule.check(classes);
     }

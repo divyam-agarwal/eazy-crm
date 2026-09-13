@@ -158,6 +158,7 @@ it as a bean automatically. `@Repository` is implied semantically but not writte
 | `@Test` | `org.junit.jupiter.api` | Marks a test method. | — |
 | `@DisplayName` | `org.junit.jupiter.api` | Gives a test method (or class) a human-readable name shown in test reports instead of the method name. Used throughout `SupplyChainWorkflowTest` and `OasdiffWorkflowTest`, where the thing under test is a CI workflow assertion ("the secret scan runs and blocks") rather than a Java behavior, so a sentence reads far better in a failure report than a method-name-cased equivalent. | — |
 | `@Disabled` | `org.junit.jupiter.api` | Skips a test with a required reason string (`QuotationEditTest.editingItemsOnSentVersionReturns422`, pending the `/send` endpoint that lands in Task 9). | — |
+| `@BeforeEach` | `org.junit.jupiter.api` | Runs before each test method in the class. `CustomerVisibilityDirectTest.seedThreeCustomers` uses it to seed the same three-customer shape (execA-owned, execB-owned, unassigned) once per test rather than repeating the setup inline in every ported test method (Wave 1.6 Task 3). | — |
 | `@AfterEach` | `org.junit.jupiter.api` | Runs after each test (we clear `TenantContext`). | — |
 | `@SpringBootTest` | `org.springframework.boot.test.context` | Boots the full application context for integration tests. | Meta-annotated with `@ExtendWith(SpringExtension.class)` etc. |
 | `@Testcontainers` | `org.testcontainers.junit.jupiter` | JUnit 5 extension that manages container lifecycle. | `@ExtendWith(TestcontainersExtension.class)` |

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * CustomerVisibility's own API, as distinct from CustomerVisibilityTest which exercises the same
@@ -31,6 +32,9 @@ class CustomerVisibilityDirectTest extends IntegrationTest {
 
     @Autowired
     CustomerRepository customers;
+
+    @Autowired
+    TransactionTemplate tx;
 
     @Test
     void salesExecSeesOwnedAndUnassignedButNotSomeoneElses() {
@@ -161,6 +165,39 @@ class CustomerVisibilityDirectTest extends IntegrationTest {
                 () -> assertThat(ids(customers.findAll(visibility.spec())))
                         .containsExactlyInAnyOrder(mine, pool)
                         .doesNotContain(theirs));
+    }
+
+    /**
+     * Proves the fail-OPEN branch actually fires, not merely that a permissive role also comes
+     * out unrestricted -- {@code unrestricted()}'s {@code .orElse(true)} only runs when {@code
+     * TenantContext.get()} is truly empty, which a bound principal (of any role) never produces.
+     *
+     * <p>An absent principal is what internal flows with no user to attribute run under: async
+     * listeners, {@code TenantJobRunner}'s synthetic {@code "SYSTEM"} principal, and tenant
+     * provisioning. None of them carry a role to restrict, so defaulting to unrestricted is
+     * correct -- the alternative (fail CLOSED) would silently hide rows from code that never
+     * opted into any restriction in the first place. The tenant wall is unaffected either way:
+     * RLS is a separate layer that does not depend on this decision.
+     *
+     * <p>Clearing {@code TenantContext} INSIDE an already-open transaction, rather than before
+     * one starts, is deliberate: {@code TenantAwareTransactionManager} reads {@code
+     * TenantContext.tenantId()} once at {@code doBegin} to set the RLS GUC, and Hibernate
+     * resolves a session's tenant once at session-open -- neither is re-read afterward (see
+     * {@code TenantContext.runAs}'s javadoc). So the query below still runs against execA's
+     * tenant (RLS still applies), while the ROLE decision it makes is based on no principal at
+     * all -- isolating the fail-open branch from the tenant wall it is not supposed to touch.
+     */
+    @Test
+    void absentPrincipalIsUnrestrictedEvenThoughRlsStillScopesTheQuery() {
+        TenantContext.runAs(
+                new TenantContext.TenantPrincipal(tenantId, execA, "SALES_EXEC"),
+                () -> tx.executeWithoutResult(status -> {
+                    TenantContext.clear();
+                    // theirs is execB's row -- invisible to execA under SALES_EXEC (see
+                    // byIdReturnsEmptyForAnInvisibleRecord) whenever a principal IS bound. With
+                    // none bound, it must be visible.
+                    assertThat(visibility.find(theirs)).isPresent();
+                }));
     }
 
     private void run(UUID userId, String role, Runnable body) {
