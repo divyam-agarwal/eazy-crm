@@ -30,6 +30,9 @@ class AuthCookieTest extends IntegrationTest {
     @Autowired
     MockMvc mvc;
 
+    @Autowired
+    com.easycrm.support.TestTokens tokens;
+
     @AfterEach
     void clear() {
         TenantContext.clear();
@@ -167,6 +170,52 @@ class AuthCookieTest extends IntegrationTest {
                         .cookie(new Cookie("easycrm_rt", raw))
                         .header(CLIENT, "web"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void loggingInAsSomeoneElseRevokesTheCookieTheBrowserSent() throws Exception {
+        String stale = cookieValue(signup("ck-" + UUID.randomUUID().toString().substring(0, 8)));
+        String slugB = "ck-" + UUID.randomUUID().toString().substring(0, 8);
+        signup(slugB);
+
+        mvc.perform(post("/api/v1/auth/login")
+                        .cookie(new Cookie("easycrm_rt", stale))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"slug":"%s","email":"owner@%s.test","password":"correct-horse"}""".formatted(slugB, slugB)))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie("easycrm_rt", stale))
+                        .header(CLIENT, "web"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void acceptingAnInvitationRevokesTheCookieTheBrowserSent() throws Exception {
+        String stale = cookieValue(signup("ck-" + UUID.randomUUID().toString().substring(0, 8)));
+        var owner = tokens.provisionOwner("27");
+        String inviteBody = mvc.perform(post("/api/v1/invitations")
+                        .header("Authorization", "Bearer " + owner.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"stale-" + UUID.randomUUID() + "@shop.in\",\"role\":\"SALES_EXEC\"}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String acceptUrl = com.jayway.jsonpath.JsonPath.read(inviteBody, "$.acceptUrl");
+        String token = acceptUrl.substring(acceptUrl.lastIndexOf('/') + 1);
+
+        mvc.perform(post("/api/v1/auth/invitations/" + token + "/accept")
+                        .cookie(new Cookie("easycrm_rt", stale))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"correct-horse\"}"))
+                .andExpect(status().isCreated());
+
+        mvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie("easycrm_rt", stale))
+                        .header(CLIENT, "web"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

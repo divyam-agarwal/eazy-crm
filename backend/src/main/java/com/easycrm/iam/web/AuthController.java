@@ -39,8 +39,13 @@ public class AuthController {
 
     @SecurityRequirements
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
-        return issue(auth.login(req), response);
+    public AuthResponse login(
+            @Valid @RequestBody LoginRequest req, HttpServletRequest request, HttpServletResponse response) {
+        IssuedSession session = auth.login(req);
+        // Switching users on a device must not leave the previous refresh token live for 30 days.
+        // Revoked only after a SUCCESSFUL login, and never used to authenticate (spec §3.1).
+        cookie.read(request).ifPresent(auth::logout);
+        return issue(session, response);
     }
 
     @SecurityRequirements

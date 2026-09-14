@@ -1,11 +1,13 @@
 package com.easycrm.iam.web;
 
+import com.easycrm.iam.AuthService;
 import com.easycrm.iam.InvitationService;
 import com.easycrm.iam.IssuedSession;
 import com.easycrm.iam.web.dto.AcceptInvitationRequest;
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.InvitationPreviewResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -32,10 +34,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class PublicInvitationController {
 
     private final InvitationService invitations;
+    private final AuthService auth;
     private final RefreshCookie cookie;
 
-    public PublicInvitationController(InvitationService invitations, RefreshCookie cookie) {
+    public PublicInvitationController(InvitationService invitations, AuthService auth, RefreshCookie cookie) {
         this.invitations = invitations;
+        this.auth = auth;
         this.cookie = cookie;
     }
 
@@ -45,8 +49,12 @@ public class PublicInvitationController {
     @SecurityRequirements
     @PostMapping("/{token}/accept")
     public ResponseEntity<AuthResponse> accept(
-            @PathVariable String token, @Valid @RequestBody AcceptInvitationRequest req, HttpServletResponse response) {
+            @PathVariable String token,
+            @Valid @RequestBody AcceptInvitationRequest req,
+            HttpServletRequest request,
+            HttpServletResponse response) {
         IssuedSession session = invitations.accept(token, req);
+        cookie.read(request).ifPresent(auth::logout); // same reason as AuthController.login
         cookie.write(response, session.refreshToken());
         return ResponseEntity.status(HttpStatus.CREATED).body(session.body());
     }
