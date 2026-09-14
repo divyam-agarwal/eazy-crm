@@ -5117,6 +5117,18 @@ re-authenticate. Optimistic-locking exceptions are Spring's generic vocabulary f
 changed this row first," not domain-shaped for an auth endpoint, and nothing at the call site was
 translating it.
 
+The design draft that preceded this implementation had actually misdiagnosed the race one level
+further back: it claimed `rotate` could *fork* a session under concurrency — "no lock, no `@Version`"
+— and planned a test proving exactly one successor survives. `RefreshToken extends BaseEntity`, which
+already carries `@Version`, so that test would have passed against the unfixed code and proven
+nothing: no fork was ever possible, only the loser's exception type was wrong. The same draft had
+declined implementing full token-family revocation (revoking every descendant token on detected reuse)
+on the grounds that it "would log every tab out when a refresh response is lost on 4G" — but that
+concern turns out to apply just as much to the plain 401 this challenge fixes: either way, a lost
+`Set-Cookie` leaves the browser holding a revoked token that signs every tab out on next use. Declining
+the fancier mechanism didn't avoid the failure mode; it just meant the failure mode showed up
+undiagnosed, as #81 below.
+
 The naive fix — catch `ObjectOptimisticLockingFailureException` around the save and rethrow as
 `UnauthorizedException` — would have worked but kept `@Version` on the hot path for a table where a
 version bump is not otherwise meaningful (no other writer needs to observe intermediate revisions of
@@ -5189,8 +5201,10 @@ just ignore an already-revoked token.
 
 ### The solution
 
-Grace is deliberately narrower than "let it rotate again": it recovers a specific, verifiable
-condition — *this exact revoked token's successor is still unused* — rather than merely allowing reuse.
+Any recovery that lets a revoked token succeed once more necessarily reopens some window in which a
+genuinely stolen token could be replayed — that cost cannot be designed away, only bounded. Grace is
+deliberately narrower than "let it rotate again": it recovers a specific, verifiable condition — *this
+exact revoked token's successor is still unused* — rather than merely allowing reuse.
 `findGraceSuccessor` (native, `FOR UPDATE`) returns the orphaned successor only when the presented
 token was revoked within the last `GRACE` (30s), has not already used its one grace attempt
 (`grace_used_at IS NULL`), and was revoked *by a rotation* rather than by logout (`replaced_by_id IS

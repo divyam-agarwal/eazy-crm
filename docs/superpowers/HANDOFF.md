@@ -1,5 +1,21 @@
 # EasyCRM — Handoff
 
+## 2026-09-14 — F0a (backend auth prep) is done
+
+**F0a is complete**, on branch `f0a-backend-auth` at `e442071` (the tip before this docs commit —
+merge base with `main` is `8465feb`). Built in a worktree; **not pushed, not merged.**
+
+- `./gradlew clean check` from `backend/`: **BUILD SUCCESSFUL**. Measured from JUnit XML (not the
+  plan's 663 estimate — later tasks legitimately added JaCoCo-driven `ConflictException` tests and a
+  logout-grace test beyond the original tally): **668 tests, 0 failures, 0 errors** (633 root +
+  35 `platform-primitives`).
+- Dependabot (Task 1): gradle-wrapper 9.7.1, spotless 8.10.2, jjwt 0.13.0, and springdoc 3.1.1 were
+  merged. `test-tooling-0181f48dd2` (testcontainers 2.0.5 / junit 6.1.3 / archunit 1.5.0) was
+  **skipped** — its module coordinates fail to resolve in `compileTestJava` — and remains open.
+- The contract now has **zero `*/*` responses** and a **cookie-based refresh** (`easycrm_rt`,
+  httpOnly, race-safe rotation with a 30s lost-response grace window — challenges #80–81).
+- **Next step: the F0b plan**, written against the regenerated `docs/api/openapi.yaml`.
+
 **Last updated:** 2026-09-14 — **No application code changed. The frontend is next, and it is
 mid-brainstorm.** Three things happened, none of them backend code:
 

@@ -147,7 +147,8 @@ cannot silently remove the defence.
 - **The successor must still be unused.** If the legitimate client already rotated the successor,
   presenting the old token is not a lost response — it is a replay, and it gets 401.
 - **Grace is single-use** (`grace_used_at IS NULL`), so a replay loop is impossible.
-- **An `OptimisticLockingFailureException` inside `rotate` maps to 401**, never 409.
+- **`rotate` performs no versioned entity write** (the presented row is changed only by conditional
+  native UPDATEs), so no optimistic-lock exception — and no 409 — can arise from it.
 - **Owed: engineering-challenges entry** — the lost-ACK problem on a non-idempotent rotation, why Web Locks
   alone cannot fix it, why the grace condition requires an *unused* successor, and the replay-window
   cost. Include that the first draft of this spec misdiagnosed a fork `@Version` already prevented.
@@ -187,8 +188,9 @@ routes are keyed `application/pdf`.
 **Field reason codes (F0-11).** `ApiError` gains an **additive, optional** `fieldCodes: Map<String,
 String>` beside `fields` (omitted when null, like `fields`). Existing consumers and tests are unaffected.
 
-- **Bean validation (400):** `fieldCodes` is populated automatically from `FieldError.getCode()`
-  (`NotBlank`, `Size`, `Pattern`, `Email`) — every endpoint gets codes for free.
+- **Bean validation (400):** `fieldCodes` is populated automatically from `FieldError.getCode()`,
+  converted to SCREAMING_SNAKE (`NOT_BLANK`, `SIZE`, `PATTERN`, `EMAIL`) — every endpoint gets codes for
+  free.
 - **`ValidationException` (422):** gains a constructor taking a code. F0's call sites pass one:
   `GSTIN_REQUIRED` / `GSTIN_LENGTH` / `GSTIN_CHARSET` / `GSTIN_CHECKSUM` (the four failure modes of
   `Gstin.parse` in `platform-primitives`), `STATE_CODE_INVALID` (`StateCode.requireValid`),
