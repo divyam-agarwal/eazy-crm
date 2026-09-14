@@ -58,8 +58,15 @@ easycrm:
         path: /public/q/*
         capacity: 60
         refill-period: 1h
-      # Credential stuffing. Well above any real office's login + 15-minute refresh
-      # traffic, far below what makes stuffing worthwhile.
+      # Session resumption. Every tab boot and every 15-minute access-token expiry hits these, and an
+      # office sits behind one NAT IP, so they cannot share the credential-stuffing bucket below:
+      # starving refresh signs people out. MUST stay above `auth` -- policyFor is first match.
+      - name: session
+        path: /api/v1/auth/{endpoint:refresh|logout|me}
+        capacity: 120
+        refill-period: 1m
+      # Credential stuffing: login, signup, invitation preview/accept. Session resumption has its own
+      # bucket above, so this only has to fit real humans typing passwords.
       - name: auth
         path: /api/v1/auth/**
         capacity: 30

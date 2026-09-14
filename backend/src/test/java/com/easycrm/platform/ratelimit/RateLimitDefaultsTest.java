@@ -62,4 +62,24 @@ class RateLimitDefaultsTest {
                 props.policyFor("/actuator/health").isEmpty(),
                 "throttling health checks would take the app out of its own load balancer");
     }
+
+    @Test
+    void sessionResumptionHasItsOwnLooserBucketAndCredentialRoutesKeepTheStrictOne() throws Exception {
+        RateLimitProperties props = shippedProperties();
+
+        for (String path : java.util.List.of("/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/auth/me")) {
+            RateLimitPolicy p = props.policyFor(path).orElseThrow(() -> new AssertionError(path + " is unprotected"));
+            assertEquals("session", p.name(), path + " must be governed by session, not auth (policy ORDER decides)");
+            assertEquals(120, p.capacity());
+            assertEquals(Duration.ofMinutes(1), p.refillPeriod());
+        }
+        for (String path : java.util.List.of(
+                "/api/v1/auth/login",
+                "/api/v1/auth/signup",
+                "/api/v1/auth/signup/status",
+                "/api/v1/auth/invitations/abc",
+                "/api/v1/auth/invitations/abc/accept")) {
+            assertEquals("auth", props.policyFor(path).orElseThrow().name(), path);
+        }
+    }
 }
