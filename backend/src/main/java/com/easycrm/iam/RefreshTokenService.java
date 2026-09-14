@@ -81,12 +81,28 @@ public class RefreshTokenService {
         return new RotationResult(newRaw, userId, tenantId);
     }
 
+    /**
+     * Idempotent: a token presented for logout may be live, already revoked with no orphan (a
+     * plain replay), or already revoked with an unused orphaned successor (the token was rotated
+     * but its response never arrived, and the user then logged out on the same stale token).
+     *
+     * <p>That last case must burn the token's grace here, not merely leave it alone — otherwise
+     * the orphaned successor stays recoverable via {@link #rotate(String, Instant)}'s grace path
+     * for up to {@link #GRACE} after the session has already ended (spec §3.3).
+     */
     @Transactional
     public void revoke(String rawToken) {
-        tokens.findByTokenHash(hasher.sha256Hex(rawToken)).ifPresent(t -> {
+        String hash = hasher.sha256Hex(rawToken);
+        tokens.findByTokenHash(hash).ifPresent(t -> {
             if (t.getRevokedAt() == null) {
                 t.revoke(Instant.now(), null);
                 tokens.save(t);
+                return;
+            }
+            if (t.getReplacedById() != null && t.getGraceUsedAt() == null) {
+                Instant now = Instant.now();
+                tokens.revokeByIdIfLive(t.getReplacedById(), now);
+                tokens.markGraceUsed(hash, t.getReplacedById(), now);
             }
         });
     }

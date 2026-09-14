@@ -83,6 +83,18 @@ class RefreshTokenGraceTest extends IntegrationTest {
     }
 
     @Test
+    void noGraceAfterLogoutOfARotatedToken() throws Exception {
+        // A rotates to B, the response is lost, the browser still holds A. The user then logs out
+        // (presenting A, the only token the browser has). Logout must burn A's grace: an attacker
+        // holding A cannot recover the orphaned B after the session has ended (spec §3.3).
+        Owner o = issue();
+        refreshTokens.rotate(o.raw(), t0); // response never arrives; orphaned successor B is live
+        refreshTokens.revoke(o.raw());
+        assertThrows(UnauthorizedException.class, () -> refreshTokens.rotate(o.raw(), t0.plusSeconds(5)));
+        assertEquals(0, liveTokensFor(o.userId()));
+    }
+
+    @Test
     void aRealConcurrentRotationLeavesExactlyOneLiveToken() throws Exception {
         Owner o = issue();
         ExecutorService pool = Executors.newSingleThreadExecutor();
