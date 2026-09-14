@@ -5291,3 +5291,53 @@ literal; the moment a property needs env-var overridability (`${VAR:default}`), 
 `Binder.get(environment)` (or pass an explicit `PropertySourcesPlaceholdersResolver`) rather than the raw
 constructor, and that requirement is invisible until the test is actually run — the compiler cannot catch
 it, and the two constructors' signatures give no hint that one resolves placeholders and the other doesn't.
+
+## Challenge 83 — An ArchUnit caller guard that only checked `getMethodCallsFromSelf()` missed a method-reference bypass
+
+**Phase:** Implementation (F0a, Task 12)
+
+### The problem
+
+`AuthSessionBoundaryArchTest.onlyAuthServiceRotatesRefreshTokens()` pins the invariant that only
+`AuthService` may call `RefreshTokenService.rotate(...)` — the token rotation the refresh cookie
+authenticates. The first version collected callers with `c.getMethodCallsFromSelf().stream().filter(...)`
+alone, which is the obvious, seemingly-complete way to enumerate "who calls this method" via ArchUnit.
+It compiled, ran, and passed on the real codebase — nothing currently calls `rotate` any other way.
+
+A code review caught that this was incomplete by pointing at a sibling test,
+`VisibilityScopingArchTest`, which documents the same ArchUnit behaviour for a different guard: ArchUnit
+tracks a bound method reference (`refreshTokens::rotate`) as a *separate* access kind
+(`JavaMethodReference`) from a direct call (`refreshTokens.rotate(...)`, a `JavaMethodCall`), reachable
+only via `getMethodReferencesFromSelf()`. `getMethodCallsFromSelf()` never sees it. A planted violation
+proved the gap concretely: adding `Function<String, ?> probe() { return refreshTokens::rotate; }` to
+`MemberService` left the calls-only rule green (`BUILD SUCCESSFUL`) while a genuine new caller of
+`rotate` existed — the exact failure mode the guard exists to catch, passing silently.
+
+### The solution
+
+Checked both accessor kinds, following `VisibilityScopingArchTest`'s established pattern: factor the
+filter-and-collect logic into a helper taking `Set<? extends JavaAccess<?>>` (the common supertype of
+both `JavaMethodCall` and `JavaMethodReference`), and call it once with `getMethodCallsFromSelf()` and
+once with `getMethodReferencesFromSelf()`, accumulating into the same `Set<String>` of caller names. The
+equality assertion (`containsExactly(AuthService)`) is unchanged — only the collection now covers both
+ways Java code can reach `rotate`. Re-planting the same method-reference violation after the fix failed
+correctly, naming `MemberService`; re-planting the original direct-call violation still failed too,
+confirming the fix is additive, not a replacement that lost the first case.
+
+### Lesson
+
+An ArchUnit "who calls X" guard written against `getMethodCallsFromSelf()` alone is a subset check
+wearing the clothes of a complete one: it reads as "every caller of X", passes on every case anyone
+thinks to test by hand, and silently exempts an entire access kind (method references) that Java code
+reaches for constantly (`.map(x::method)`, `Runnable r = x::method`, `Supplier<T> s = x::method`) without
+the author necessarily framing it as "calling" anything. This is not a one-off gotcha specific to
+`rotate` — it is a property of the ArchUnit API itself (`getMethodCallsFromSelf()` and
+`getMethodReferencesFromSelf()` are genuinely disjoint sets), so *every* future "only class C may invoke
+method M" guard in this codebase needs the same two-accessor check, not just this one. The existing
+precedent (`VisibilityScopingArchTest`) already documented this exact trap in its own Javadoc, which is
+what made the review catch fast — but the trap did not transfer from one arch test to a new one
+automatically, because "write an ArchUnit caller guard" doesn't visibly rhyme with "read a guarded
+repository" until someone already knows the API's two-accessor split. A brief that hands over a working
+`getMethodCallsFromSelf()`-only test as the literal, verbatim thing to write can still ship an incomplete
+guard; the fix is checking a new caller/target guard against the codebase's own prior art for the same
+ArchUnit method-vs-reference distinction, not just against "does it compile and pass today."
