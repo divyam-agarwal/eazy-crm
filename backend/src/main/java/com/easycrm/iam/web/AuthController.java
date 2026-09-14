@@ -6,6 +6,7 @@ import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.MeResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
+import com.easycrm.iam.web.dto.SignupStatusResponse;
 import com.easycrm.platform.error.ForbiddenException;
 import com.easycrm.platform.error.UnauthorizedException;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
@@ -68,6 +69,12 @@ public class AuthController {
     @GetMapping("/me")
     public MeResponse me() {
         return auth.me();
+    }
+
+    @SecurityRequirements
+    @GetMapping("/signup/status")
+    public SignupStatusResponse signupStatus() {
+        return new SignupStatusResponse(auth.signupOpen());
     }
 
     private AuthResponse issue(IssuedSession session, HttpServletResponse response) {

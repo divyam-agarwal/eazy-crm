@@ -6,6 +6,7 @@ import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.MeResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.platform.error.ConflictException;
+import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.UnauthorizedException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.gst.Gstin;
@@ -36,6 +37,7 @@ public class AuthService {
     private final AuditService audit;
     private final EmailSender emailSender;
     private final TransactionTemplate tx;
+    private final SignupProperties signup;
 
     public AuthService(
             TenantRepository tenants,
@@ -45,7 +47,8 @@ public class AuthService {
             RefreshTokenService refreshTokens,
             AuditService audit,
             EmailSender emailSender,
-            TransactionTemplate tx) {
+            TransactionTemplate tx,
+            SignupProperties signup) {
         this.tenants = tenants;
         this.users = users;
         this.encoder = encoder;
@@ -54,6 +57,11 @@ public class AuthService {
         this.audit = audit;
         this.emailSender = emailSender;
         this.tx = tx;
+        this.signup = signup;
+    }
+
+    public boolean signupOpen() {
+        return signup.enabled();
     }
 
     /**
@@ -65,6 +73,11 @@ public class AuthService {
      * See engineering-challenges #9.
      */
     public IssuedSession signup(SignupRequest req) {
+        // Before the slug lookup: a closed signup must not answer 409-vs-404 depending on whether the
+        // slug exists (spec §3.6).
+        if (!signup.enabled()) {
+            throw new NotFoundException("signup is closed");
+        }
         if (tenants.findBySlug(req.slug()).isPresent()) {
             throw new ConflictException(
                     "slug already taken", Map.of("slug", "slug already taken"), Map.of("slug", "SLUG_TAKEN"));

@@ -47,6 +47,10 @@ public class SecurityConfig {
                         // (business name, email, role). See InvitationService.preview.
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/invitations/*")
                         .permitAll()
+                        // Whether self-serve signup is open. Reveals one boolean; governed by the auth
+                        // rate-limit policy like the rest of the prefix.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/signup/status")
+                        .permitAll()
                         .requestMatchers("/api/**")
                         .authenticated()
                         .anyRequest()

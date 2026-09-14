@@ -219,6 +219,14 @@ class AuthCookieTest extends IntegrationTest {
     }
 
     @Test
+    void statusReportsOpenByDefault() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/v1/auth/signup/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.open").value(true));
+    }
+
+    @Test
     void aCrossOriginPreflightToRefreshIsRefused() throws Exception {
         // No CORS configuration exists, so a cross-origin fetch carrying the custom header can never
         // pass its preflight. If CORS is ever added, this test forces a deliberate decision.

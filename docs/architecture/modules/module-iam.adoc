@@ -18,6 +18,10 @@ _Repositories_
 * `c.e.i.RefreshTokenRepository`
 * `c.e.i.UserRepository`
 
+_Configuration properties_
+
+* `c.e.i.SignupProperties`
+
 _Others_
 
 * `c.e.i.AssignableUsers`

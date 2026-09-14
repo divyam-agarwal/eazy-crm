@@ -57,6 +57,9 @@
     QuotationPdfService.items, both EI_EXPOSE_REP2: their constructors took
     `VisibleFinder` and now take `sales.SalesVisibility`. Entry count
     unchanged.
+    2026-09-14 (F0a Task 11) — AuthService.tx, EI_EXPOSE_REP2: the
+    constructor gained a trailing `SignupProperties signup` parameter (the
+    signup switch). Entry count unchanged.
 -->
 <BugCollection version="4.10.4" sequence="0" timestamp="0" analysisTimestamp="0" release="">
   <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="ad07f82c55d7ee639233a92a582fd12e" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
@@ -160,21 +163,21 @@
       <Message>At AuditLog.java:[line 31]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="7b53538e013b0d36646d3d6fdeda4b90" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
+  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="9bb67d19dd141df34dd84bcd6fe5e5b6" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
     <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
-    <LongMessage>new com.easycrm.iam.AuthService(TenantRepository, UserRepository, PasswordEncoder, JwtService, RefreshTokenService, AuditService, EmailSender, TransactionTemplate) may expose internal representation by storing an externally mutable object into AuthService.tx</LongMessage>
+    <LongMessage>new com.easycrm.iam.AuthService(TenantRepository, UserRepository, PasswordEncoder, JwtService, RefreshTokenService, AuditService, EmailSender, TransactionTemplate, SignupProperties) may expose internal representation by storing an externally mutable object into AuthService.tx</LongMessage>
     <Class classname="com.easycrm.iam.AuthService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
-      <SourceLine classname="com.easycrm.iam.AuthService" start="49" end="195" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
-        <Message>At AuthService.java:[lines 49-195]</Message>
+      <SourceLine classname="com.easycrm.iam.AuthService" start="51" end="237" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="src/main/java/com/easycrm/iam/AuthService.java">
+        <Message>At AuthService.java:[lines 51-237]</Message>
       </SourceLine>
       <Message>In class com.easycrm.iam.AuthService</Message>
     </Class>
-    <Method classname="com.easycrm.iam.AuthService" name="&lt;init&gt;" signature="(Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/iam/UserRepository;Lorg/springframework/security/crypto/password/PasswordEncoder;Lcom/easycrm/platform/security/JwtService;Lcom/easycrm/iam/RefreshTokenService;Lcom/easycrm/iam/AuditService;Lcom/easycrm/iam/email/EmailSender;Lorg/springframework/transaction/support/TransactionTemplate;)V" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.iam.AuthService" start="49" end="58" startBytecode="0" endBytecode="207" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java"/>
-      <Message>In method new com.easycrm.iam.AuthService(TenantRepository, UserRepository, PasswordEncoder, JwtService, RefreshTokenService, AuditService, EmailSender, TransactionTemplate)</Message>
+    <Method classname="com.easycrm.iam.AuthService" name="&lt;init&gt;" signature="(Lcom/easycrm/tenant/TenantRepository;Lcom/easycrm/iam/UserRepository;Lorg/springframework/security/crypto/password/PasswordEncoder;Lcom/easycrm/platform/security/JwtService;Lcom/easycrm/iam/RefreshTokenService;Lcom/easycrm/iam/AuditService;Lcom/easycrm/iam/email/EmailSender;Lorg/springframework/transaction/support/TransactionTemplate;Lcom/easycrm/iam/SignupProperties;)V" isStatic="false" primary="true">
+      <SourceLine classname="com.easycrm.iam.AuthService" start="51" end="61" startBytecode="0" endBytecode="227" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="src/main/java/com/easycrm/iam/AuthService.java"/>
+      <Message>In method new com.easycrm.iam.AuthService(TenantRepository, UserRepository, PasswordEncoder, JwtService, RefreshTokenService, AuditService, EmailSender, TransactionTemplate, SignupProperties)</Message>
     </Method>
     <Field classname="com.easycrm.iam.AuthService" name="tx" signature="Lorg/springframework/transaction/support/TransactionTemplate;" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.iam.AuthService" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
+      <SourceLine classname="com.easycrm.iam.AuthService" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="src/main/java/com/easycrm/iam/AuthService.java">
         <Message>In AuthService.java</Message>
       </SourceLine>
       <Message>Field com.easycrm.iam.AuthService.tx</Message>
@@ -182,8 +185,8 @@
     <LocalVariable name="tx" register="8" pc="46" role="LOCAL_VARIABLE_NAMED">
       <Message>Local variable named tx</Message>
     </LocalVariable>
-    <SourceLine classname="com.easycrm.iam.AuthService" primary="true" start="57" end="57" startBytecode="46" endBytecode="46" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="java/com/easycrm/iam/AuthService.java">
-      <Message>At AuthService.java:[line 57]</Message>
+    <SourceLine classname="com.easycrm.iam.AuthService" primary="true" start="59" end="59" startBytecode="46" endBytecode="46" sourcefile="AuthService.java" sourcepath="com/easycrm/iam/AuthService.java" relSourcepath="src/main/java/com/easycrm/iam/AuthService.java">
+      <Message>At AuthService.java:[line 59]</Message>
     </SourceLine>
   </BugInstance>
   <BugInstance type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" priority="2" rank="13" abbrev="NP" category="STYLE" instanceHash="d278f48011a9f6ced6053fb4b0f440d" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="476">
