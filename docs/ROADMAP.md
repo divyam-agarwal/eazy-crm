@@ -1,7 +1,16 @@
 # EasyCRM — Execution Roadmap
 
-**Date:** 2026-09-03
+**Date:** 2026-09-03 · **last updated 2026-09-14**
 **Status:** Living document. Supersedes no design doc; sequences all of them.
+
+**2026-09-14 — what changed since the block below.** No application code moved; the 626-test baseline
+stands. (1) **D-g's name and hostname are settled**: `easycustomerrelationship.site`, public links on
+`https://app.easycustomerrelationship.site` (`185bf4c`, pushed). (2) **The owner put the frontend first,
+ahead of H7**, and **D-d is settled** — F0–F3 (Phase 1). (3) **Specialist reviewer agents exist**: five
+frontend lenses in `.claude/agents/`, a registry imported into `CLAUDE.md`, and a CI drift guard that runs
+first in the `check` job (`d019524`). **`d019524` was pushed together with the docs commit that records it; its CI result was not checked
+at the time of writing** — confirm the `check` job (and its new first step) is green. Verify with the commands below. §6.1 has the order.
+
 **Code baseline:** `main` at `f81362b` — **626 tests (598 root + 28 primitives), 0 failures**, verified by `./gradlew clean
 check` from clean on the merged result. Wave 1.5 (item 2) merged fast-forward on 2026-09-12 and
 the `supply-chain` branch was deleted; 591 before it, plus 13 in `SupplyChainWorkflowTest`. (The
@@ -259,7 +268,7 @@ Each phase ends somewhere it is safe to stop.
 2. ~~**Wave 1.5 — supply chain.**~~ **DONE 2026-09-12, merged at `7f6a700`.** `gitleaks`,
    `actionlint` and `squawk` blocking; Dependabot weekly; OWASP Dependency-Check reporting. See
    [`superpowers/specs/2026-09-12-supply-chain-design.md`](superpowers/specs/2026-09-12-supply-chain-design.md).
-   **Not yet pushed — CI has never run these gates.**
+   Pushed 2026-09-13; green in CI since run `34713136667`.
 3. ~~**Wave 1.6 — module boundaries.**~~ **DONE 2026-09-13.** Modulith `verify()` + `Documenter`, and the H4 cycle fix that
    comes with it.
 4. ~~**Settle D-g and register the domain — the name only, not the site.**~~ **Name DONE 2026-09-13:
@@ -284,6 +293,16 @@ change.*
    get proved here, by this step, rather than inherited already-working.
 6. **Frontend core flows** — customers/contacts, products/price lists, the wedge, PDF and share,
    activity timeline, members admin.
+
+   **Decomposed 2026-09-14 (D-d settled).** Items 5–6 are four sub-projects, each with its own
+   spec → plan → build cycle: **F0** foundation (backend prep: refresh token to an httpOnly cookie and
+   `*/*` → `application/json` in the contract; `frontend/` scaffold on the spec §5 stack; generated
+   client with a drift guard; login/logout/silent refresh; layout; error-envelope → form mapping;
+   `/invite/{token}`; frontend CI job and JS budget) → **F1** master data (customers/contacts,
+   products, price lists, tenant settings) → **F2** the wedge (enquiries, quotation builder, versions,
+   send/PDF/share, accept → orders) → **F3** daily work + team (follow-ups, activity timeline,
+   role-aware dashboard from existing endpoints only, members/invitations admin). **Deferred:** the
+   import wizard and owner analytics — neither has a backend API yet.
 7. **Flip oasdiff to blocking.** Its documented trigger is "the frontend exists and consumes this
    spec." At that point there is a real party to break.
 
@@ -382,10 +401,10 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 
 | Track | Have | Left |
 |---|---|---|
-| **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 604 tests | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
+| **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 626 tests | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
 | **Frontend** | Nothing. A drift-guarded contract to build against | Everything. `/invite/{token}` first |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
-| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, Wave 1.5 supply chain (green in CI since 2026-09-13), **Wave 1.6 module boundaries — four hand-written boundary gates plus Modulith, C4 docs drift-guarded** | Blocking oasdiff, branch protection, 32 SpotBugs findings |
+| **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, Wave 1.5 supply chain (green in CI since 2026-09-13), **Wave 1.6 module boundaries — four hand-written boundary gates plus Modulith, C4 docs drift-guarded**, specialist reviewer registry drift guard (2026-09-14) | Blocking oasdiff, branch protection, 32 SpotBugs findings |
 | **Local dev** | Gradle + Testcontainers + ngrok | Dockerfile, compose stack, seed data |
 | **AWS** | Design only. Zero resources | SP2, SP3, SP4, SP7, all three environments, CD |
 | **Observability** | Nothing | Wave 2 (app), SP3 (AWS) |
@@ -405,7 +424,7 @@ Ranked. **Effort** is relative, not calendar.
 | ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **DONE 2026-09-12, merged fast-forward at `7f6a700`** (eleven commits, `5053d42`..`7f6a700`; 604 tests, 0 failures). `gitleaks`, `actionlint` and `squawk` block; Dependabot opens weekly PRs; OWASP Dependency-Check reports without blocking (D1, flip trigger = branch protection). None is wired into `./gradlew check` — `SupplyChainWorkflowTest`'s 13 assertions are what make that safe, and they guard against `if:`, `continue-on-error`, `\|\| true`, a shallow `fetch-depth` and floating tags, not merely against a step's absence. **Still unpushed, so CI has never run any of it.** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
 | ~~**3**~~ | ~~**Wave 1.6 — module boundaries + cycle fix**~~ — **DONE 2026-09-13**, [spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) · [plan](superpowers/plans/2026-09-13-wave-1.6-module-boundaries.md). Twelve commits; **598 tests, 0 failures**; `clean check` green end to end. **H4 closed:** `platform.visibility` deleted rather than inverted (its returns are domain aggregates, so no port in `platform` could name them — unlike `iam.AssignedWorkload`, which returns a `long`), the rule now derived independently per module from the JWT claim for split-readiness. The H4 gate is a hand-written ArchUnit direction rule, **not** `verify()`, because declaring `platform` OPEN suppresses all 12 cycles (challenge #75). A second rule registers cross-domain repository reads with an exit per edge (item 3b), Modulith is adopted for module detection and C4 docs with its blind spot documented, and the generated docs are committed and drift-guarded. Challenges #75–79 | S–M | — |
 | **3b** | **Cross-service data access design** (Layer 2) — **owed, does not exist** | Wave 1.6 closes Layer 1 (package acyclicity) and *freezes* Layer 2 rather than fixing it. Layer 2 is the actual extraction work and **no gate can see it** — a cross-service read is not a cycle. Four direct reads exist (`sales → crm.ContactRepository`, `sales → catalog.{Product,PriceListItem}Repository`, `sales`/`iam` → `tenant.TenantRepository`), plus the `viaCustomer` **cross-service SQL join** that Wave 1.6 relocates into `sales` where it looks local. Decide port-vs-event-vs-freeze per edge, and the `quotation`/`sales_order` owner denormalisation. **Ahead of SP8, which has no design for these edges** — the service-scope doc that names them is stale by its own §3.2. Layer 3 needs nothing: zero FK constraints in all 34 migrations | M | 3 |
-| **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse | **L** | — (wants decomposing before a spec) |
+| **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse. **Taken NEXT, ahead of H7, at the owner's direction (2026-09-14).** Decomposed into F0–F3 (D-d settled, see Phase 1); **F0 is mid-brainstorm** | **L** | DNS provider (rest of D-g) before any public link ships |
 | **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
 | **6** | **Wave 2 — observability** | Prerequisite for scaling, for reading load tests, and for seeing H2/H3 at all | M | — |
 | **7** | **SP2 — AWS foundation + dev env** | Largest single piece; delivers a production-shaped deployment on its own. Fix S1 inside it | **L** | 5 |
@@ -422,40 +441,27 @@ Ranked. **Effort** is relative, not calendar.
 
 ## 6.1 If you only do three things
 
-**Items 1, 2 and 3 are all DONE, and pushing is done. The next three are: settle D-g, item 3b, and
-item 4 (frontend) — D-g's name half was settled 2026-09-13 (`easycustomerrelationship.site`), and its hostname
-2026-09-14 (`app.`), leaving only the DNS provider — — with H7 arguably jumping the queue, see below.**
+**As of 2026-09-14 the owner has put the frontend (item 4) FIRST, ahead of H7.** Items 1, 2 and 3
+are done and pushed; D-g's name and hostname are settled (`easycustomerrelationship.site`, links on
+`app.`), leaving only the DNS provider. The order is now:
 
-**Wave 1.6 landed 2026-09-13** (598 tests, `clean check` green; H4 closed). What it deliberately did
-NOT do is Layer 2 — it *froze* cross-service data access behind a register rather than resolving it,
-which is item **3b**, and 3b is the thing SP8 silently assumed existed.
+1. **Item 4, the frontend — sub-project F0 first.** D-d (the decomposition) is settled: F0 foundation
+   + auth + invite page → F1 master data → F2 the wedge → F3 daily work + team, with the import wizard
+   and owner analytics deferred because no backend exists for them. F0 is **mid-brainstorm, no spec
+   yet** — HANDOFF.md "What the next agent should pick up" has the open question and the backend gaps
+   F0 must close first (refresh token in the JSON body; 458 `*/*` response media types).
+2. **H7 — freeze the seller on a sent quotation.** Still a live correctness bug of H1's exact class and
+   still small; the owner chose to defer it behind F0, not to drop it. The seller is not frozen and the
+   *tax presentation* is computed against the live tenant `stateCode`, so a tenant changing registered
+   state flips an already-`SENT` quotation between CGST/SGST and IGST on re-render, through a share
+   link the buyer holds. Needs its own freeze decision (challenge #69's test).
+3. **Item 3b — cross-service data access (Layer 2).** Wave 1.6 *froze* it behind a register; it did
+   not resolve it, and SP8 silently assumed this design existed.
+4. **The DNS provider (rest of D-g)** — must be chosen before F0 ships a public link to production.
 
-**H7 arguably outranks everything below it on severity.** It is a live correctness bug of H1's exact
-class — the seller is not frozen on a sent quotation, and the *tax presentation* is computed against
-the live tenant `stateCode`, so a tenant changing registered state flips an already-`SENT` quotation
-between CGST/SGST and IGST on re-render, through a share link the buyer holds. It is small (a seller
-snapshot beside the existing buyer one) and it mis-states tax on a document a customer already has.
-It was found by Wave 1.6's design pass, not by its build, and recorded rather than fixed because it
-needs its own freeze decision.
-
-**The older standing advice still holds for the rest:** Items 1 and 2 are both done and merged. Wave 1.6 is designed as of
-2026-09-13 and unblocked, and stops the module graph drifting further before the frontend doubles
-the surface. Settling D-g is not a build item at all — a decision plus a registrar checkout — and it
-is the one thing on this page that gets more expensive the longer it waits, because every public
-link minted before it is settled is a link you later have to strand or permanently redirect.
-
-**Two things moved onto the board on 2026-09-13, both found by designing Wave 1.6 rather than by
-building it.** **H7** is a live correctness bug of H1's exact class — the seller is not frozen on a
-sent quotation and the *tax presentation* is computed against the live tenant `stateCode`, so it
-outranks most of this list on severity even though it is small. And **item 3b** is a design that
-does not exist and that SP8 silently assumed: Wave 1.6 can only *freeze* cross-service data access,
-not fix it.
-
-**The third is not a slice: push.** Thirteen commits sit on local `main`, including every scan
-Wave 1.5 added, and CI has executed none of them. Until that push happens the supply-chain gates
-exist only on one laptop, which is very nearly the same as not existing.
-
-Then take **4 (frontend)** with its own session and a decomposition pass.
+**Every review of a spec, plan or diff now consults the specialist reviewer registry**
+(`docs/reviewers/registry.md`, imported into `CLAUDE.md`, drift-guarded in CI). Five frontend lenses
+exist; F0's spec is their first real use.
 
 **What changed on 2026-09-12:** the domain-and-marketing-site item was item 2 and is now item 16.
 The reasoning that put it at 2 — that it is the only item that acquires a customer — still holds,
@@ -490,7 +496,7 @@ site waits for the product. The name does not wait for anything.
 | **D-a** | **S5 — `notification-svc` has no schema**, yet at-least-once consumption requires a `processed_event` table. It is "a name, not a scope" until its four open questions (provider abstraction, template store, suppression/quiet hours, delivery-status ingestion) are answered | SP6, SP8 |
 | **D-b** | **S8 — `QuotationSent` carries the full render payload** and is bounded by SNS's 256 KB limit. Decide the claim-check fallback *before* the first extraction | SP6 |
 | **D-c** | **PF19 — entitlement metering.** `/public/q/{token}` has no JWT, so there is structurally nowhere to charge the most expensive uncapped operation. Needs billing's *design* decisions, not effort | SP10–13 |
-| **D-d** | **Frontend decomposition.** Unscoped and large enough to need sub-projects before a spec | Item 4 |
+| ~~**D-d**~~ | ~~**Frontend decomposition.**~~ **SETTLED 2026-09-14** — F0 foundation+auth+invite → F1 master data → F2 wedge → F3 daily work+team; import wizard and owner analytics deferred (no backend). See Phase 1 | ~~Item 4~~ |
 | **D-e** | **M7 — packages or Gradle modules as the boundary source of truth.** Both can grow rules; only one may own them | Wave 1.6, LLDs #2–#6 |
 | **D-g** | **Name SETTLED 2026-09-13: `easycustomerrelationship.site`** (GoDaddy, expires 2027-09-13). **Public-link hostname SETTLED 2026-09-14: `https://app.easycustomerrelationship.site`**, which is what `PUBLIC_BASE_URL` gets set to in every deployed environment. The apex stays reserved for the marketing site (item 16). This choice is as durable as the name. **Still open and still gating item 4: the DNS provider** (GoDaddy by default today; track H recommends Cloudflare DNS with the registrar left where it is). `application.yml` already reads it from `PUBLIC_BASE_URL`, so it is set per environment at SP2 and no code changes. *Original entry follows.* **The domain name itself, and the DNS provider.** All four obvious candidates are taken (track H has the RDAP results and the costs); the live choice is a prefixed `.com`, a `.in` at a second registrar, or buying `eazycrm.com` off Afternic at an unknown price. The AWS design names ACM and `us-east-1` (F15) but never a DNS provider, and `easycrm.public-base-url` still defaults to `http://localhost:8080`. Both share links and invite links are durable and get pasted into WhatsApp | Item 4 (frontend) and item 16 (the site); every public URL the product mints. **Deprioritising the site on 2026-09-12 did not deprioritise this decision** — it is now the gate in front of the frontend, not in front of the site |
 | **D-f** | Two Boot 4 / Postgres behaviours the platform LLDs rest on: whether `java-test-fixtures` reaches package-private main-source members, and whether Postgres ORs permissive RLS policies. If policies AND, the outbox relay reads zero rows | SP6, LLDs #2–#6 |

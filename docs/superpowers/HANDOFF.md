@@ -1,6 +1,91 @@
 # EasyCRM — Handoff
 
-**Last updated:** 2026-09-13 (final) — **Wave 1.6 is MERGED. H4 is closed.** Fast-forwarded to `main`
+**Last updated:** 2026-09-14 — **No application code changed. The frontend is next, and it is
+mid-brainstorm.** Three things happened, none of them backend code:
+
+1. **D-g's name and hostname are settled.** The owner bought **`easycustomerrelationship.site`**
+   (GoDaddy registrar and DNS, registered 2026-09-13, **expires 2027-09-13**, verified by RDAP at
+   `rdap.radix.host`). Public links live at **`https://app.easycustomerrelationship.site`**; the apex is
+   reserved for the marketing site. `application.yml` already reads `PUBLIC_BASE_URL`, so this is set per
+   environment at SP2 and **no code changes**. Only the **DNS provider** is still open (roadmap
+   recommends Cloudflare DNS with the registrar left at GoDaddy). Commit `185bf4c`, pushed. The owner was
+   told to turn on auto-renew and 2FA: a lapsed name would send every `/public/q/{token}` in buyers'
+   WhatsApp history to whoever re-registers it.
+2. **The owner put the frontend (roadmap item 4) ahead of H7**, and approved its decomposition (D-d):
+   **F0** foundation + auth + invite page → **F1** master data → **F2** the wedge → **F3** daily work + team;
+   the import wizard and owner analytics are deferred (no backend API exists for either). ROADMAP Phase 1
+   has the contents of each.
+3. **Specialist reviewer agents exist**, because the owner is new to frontend and wants experienced eyes on
+   specs and plans. Commit **`d019524`** — pushed together with this handoff update; **its CI run was not checked at the
+   time of writing**, so confirm the `check` job (whose first step is now the registry check) is green.
+   - Five read-only lenses in `.claude/agents/`: `frontend-review-{architecture,performance,security,a11y-i18n,testing}`.
+     Checklists are paraphrased from vetted sources (Bulletproof React, TkDodo, react.dev, Vercel's
+     guidelines, web.dev, IETF browser-apps BCP, OWASP, WCAG 2.2, Kent C. Dodds) — sources and licences in
+     `docs/reviewers/frontend/protocol.md`, which also fixes severity, evidence rules and output format.
+   - **`docs/reviewers/registry.md`** has one "Use when" sentence per reviewer plus the choosing rule, and is
+     **imported into `CLAUDE.md`** so any agent requesting a review can pick specialists.
+     `docs/reviewers/README.md` is the recipe for adding a reviewer in any domain.
+   - **`scripts/check-reviewer-registry.sh`** fails when the registry and agent files disagree; it runs as the
+     first step of CI's `check` job. All seven drift modes were made to fail on purpose (exit 1); the clean
+     tree exits 0. actionlint and `SupplyChainWorkflowTest` (13/13) pass on the edited workflow.
+   - `.gitignore` now tracks `.claude/agents/` while ignoring the rest of `.claude/`.
+
+**Two things are UNVERIFIED — check them first.**
+- **Does the `@docs/reviewers/registry.md` import reach agents?** A probe subagent in the session that
+  created it saw `CLAUDE.md` but **not** the registry. The likely cause is that the session had loaded
+  `CLAUDE.md` before the import was added — but that is not proven. In a fresh session, ask a throwaway
+  subagent (no tools) whether it sees "Specialist Reviewer Registry". If not, inline the registry into
+  `CLAUDE.md` and point the drift script at it.
+- **Are the reviewer agents callable by name?** Claude Code loads agent definitions at session start. If
+  `subagent_type: frontend-review-security` is rejected, dispatch a `general-purpose` agent with the agent
+  file's body as its prompt — same review.
+- (Resolved, for the record: the same probe reported that a subagent **does** have the Agent tool, so the
+  registry's rule is "if you *cannot* dispatch, name the specialists", not "subagents never dispatch".)
+
+## What the next agent should pick up (2026-09-14)
+
+**1. Continue the F0 brainstorm** (`superpowers:brainstorming`, architectural path). Classified, context
+explored, decomposition approved. **The pending question the owner has not yet answered:**
+
+> **Does F0 include self-serve tenant signup?** `POST /api/v1/auth/signup` exists, but the design spec
+> describes onboarding via an internal SOP "before self-serve launch".
+> **A (recommended):** no signup page in F0 — login, logout, silent refresh, `/invite/{token}`; pilot
+> tenants are created by the owner; keeps an abusable public form offline until it has protection.
+> **B:** include a signup page.
+
+Then keep asking one question at a time, propose approaches, present the design in sections, write the spec
+to `docs/superpowers/specs/`, **dispatch the relevant specialist reviewers on the spec in parallel** (all five
+plausibly apply to F0), verify their findings, and only then `writing-plans`.
+
+**Backend gaps F0 must close — found while exploring, verified against the code:**
+- **The refresh token travels in JSON.** `AuthResponse.refreshToken` and `RefreshRequest.refreshToken` in
+  `docs/api/openapi.yaml`; there is **no cookie or CORS code** anywhere in `backend/src/main/java`. Spec §5
+  requires an httpOnly Secure SameSite cookie. So F0 starts with a backend auth change (cookie issuance on
+  login/refresh, cookie-read refresh, cookie clear on logout, CSRF defence-in-depth on those endpoints, a
+  deliberate OpenAPI snapshot update).
+- **458 responses in the contract are typed `'*/*'`, only 32 `application/json`.** `openapi-typescript`
+  keys generated types by media type, so the generated client would be badly typed. Needs a springdoc
+  `produces` fix and a regenerated snapshot.
+- **No `/imports` API** and **no dashboard aggregates** (only `/follow-ups/summary`) — why the import wizard
+  and owner analytics are deferred.
+- **Same-origin deployment** (`app.` serves the SPA, `/api/*` routes to the backend) means no CORS and
+  `SameSite=Strict` works; Vite's dev proxy mirrors it locally.
+- **Rotating refresh tokens + multiple tabs** is a real race (both tabs present the same token) — check
+  `iam/AuthService.refresh` for reuse detection before designing the client's refresh coordination.
+
+**2. H7** (seller not frozen on a sent quotation) — deferred behind F0 by the owner, not dropped. The
+2026-09-13 notes below still describe it exactly.
+
+**3. Roadmap item 3b** and **the DNS provider** — unchanged.
+
+**Housekeeping:** five Dependabot branches are open on `origin` (spotless 8.10.2, gradle wrapper 9.7.1,
+jjwt 0.13.0, springdoc 3.1.1, a test-tooling group) and untriaged. springdoc may change `openapi.yaml`
+(and F0 is about to change it deliberately); jjwt touches auth. Clear them before or alongside F0's backend
+prep. `docs/architecture/pre-screening-answers.md` is still untracked and not from any slice — leave it.
+
+---
+
+**Previously:** 2026-09-13 (final) — **Wave 1.6 is MERGED. H4 is closed.** Fast-forwarded to `main`
 at **`f81362b`** and pushed; the `wave-1.6-module-boundaries` branch is deleted. Thirteen commits
 (`8f40b62`..`f81362b`) from `main` at `5ec82f1`. **`platform` now has ZERO outbound domain imports**,
 down from 18 across three files, so the one shared library every future service consumes no longer
@@ -70,7 +155,9 @@ on a document a customer holds; it arguably outranks most of the roadmap. **Item
 data access design SP8 assumed existed: Wave 1.6 *froze* Layer 2 behind a register with a named exit per
 edge, it did not resolve it.
 
-## What the next agent should pick up
+## What the next agent should pick up (2026-09-13 — SUPERSEDED by the 2026-09-14 section above)
+
+*The owner has since put the frontend ahead of H7 and settled the domain name and hostname. Kept for the detail on H7 and 3b.*
 
 **Roadmap items 1, 2 and 3 are all done and merged.** In the order I would take them:
 
