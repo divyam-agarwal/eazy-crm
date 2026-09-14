@@ -1,15 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Findings excluded permanently, by category. Distinct from baseline.xml, which is a
-     snapshot of pre-existing findings to be worked off over time. -->
+<!-- Findings excluded permanently. Usually by category (a whole bug pattern this project has
+     decided is never worth failing the build over); a single Match scoped to one class + field,
+     with the reason stated in a comment, is also an acknowledged form, narrower than a category
+     exclusion but still permanent rather than debt to work off. Distinct from baseline.xml,
+     which is a snapshot of pre-existing findings to be worked off over time. -->
 <FindBugsFilter>
-    <!-- com.easycrm.iam.web.RefreshCookie (Task 7, f0a-backend-auth-prep) is a stateless
-         Spring singleton: every field is `static final` (NAME, PATH, MAX_AGE), so no instance
-         carries mutable state a caller could later change out from under the field that stores
-         it. AuthController and PublicInvitationController each hold a reference to it purely to
-         call its (request, response) methods; there is no meaningful defensive copy of a bean,
-         unlike the List/Map fields this project's EI_EXPOSE_REP2 debt (config/spotbugs/
-         baseline.xml, 17 pre-existing instances) is about. Scoped to the specific field, not the
-         bug type, so a genuinely mutable field stored elsewhere still fails the build. -->
+    <!-- com.easycrm.iam.web.RefreshCookie (Task 7, f0a-backend-auth-prep) is flagged not because
+         it holds mutable state (every field is `static final`: NAME, PATH, MAX_AGE) but
+         because SpotBugs' EI_EXPOSE_REP2 mutability check (edu.umd.cs.findbugs.util.MutableClasses,
+         verified by decompiling spotbugs-4.10.4.jar with javap) treats any class with a method
+         whose name starts with one of a fixed list of setter-like prefixes (set, put, add, insert,
+         delete, remove, erase, clear, push, pop, enqueue, dequeue, write, append, replace) as
+         mutable, independent of whether that method actually mutates anything. RefreshCookie's
+         `write` and `clear` methods match two of those prefixes, so a field of that type is
+         flagged; AuthService/InvitationService (method names: signup, login, refresh, logout, me /
+         invite, listPending, revoke, accept, preview) match none, so storing a reference to either
+         is not flagged, in this run or in baseline.xml. AuthController and PublicInvitationController
+         hold the RefreshCookie reference purely to call its (request, response) methods; there is
+         no meaningful defensive copy of a stateless bean. Scoped to the specific class + field, not
+         the bug type, so a genuinely mutable field stored elsewhere still fails the build. -->
     <Match>
         <Class name="com.easycrm.iam.web.AuthController"/>
         <Field name="cookie"/>
