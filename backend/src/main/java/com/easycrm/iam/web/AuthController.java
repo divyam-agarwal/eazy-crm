@@ -6,6 +6,7 @@ import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.MeResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
+import com.easycrm.platform.error.ForbiddenException;
 import com.easycrm.platform.error.UnauthorizedException;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.servlet.http.HttpServletRequest;
@@ -45,6 +46,7 @@ public class AuthController {
     @SecurityRequirements
     @PostMapping("/refresh")
     public AuthResponse refresh(HttpServletRequest request, HttpServletResponse response) {
+        requireWebClient(request);
         String raw = cookie.read(request).orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
         return issue(auth.refresh(raw), response);
     }
@@ -52,6 +54,7 @@ public class AuthController {
     @SecurityRequirements
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        requireWebClient(request);
         cookie.read(request).ifPresent(auth::logout);
         cookie.clear(response);
         return ResponseEntity.noContent().build();
@@ -65,5 +68,18 @@ public class AuthController {
     private AuthResponse issue(IssuedSession session, HttpServletResponse response) {
         cookie.write(response, session.refreshToken());
         return session.body();
+    }
+
+    /**
+     * CSRF defence-in-depth on the two routes that authenticate with the cookie (spec §3.2). A
+     * cross-site form cannot set a custom header, and a cross-origin fetch that sets one fails its
+     * preflight. Explicit code rather than @RequestHeader, which would answer 400 instead of 403.
+     */
+    static final String CLIENT_HEADER = "X-EasyCRM-Client";
+
+    private static void requireWebClient(HttpServletRequest request) {
+        if (!"web".equals(request.getHeader(CLIENT_HEADER))) {
+            throw new ForbiddenException("missing client header");
+        }
     }
 }

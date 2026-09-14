@@ -1,6 +1,7 @@
 package com.easycrm.iam.web;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -142,5 +143,44 @@ class AuthCookieTest extends IntegrationTest {
     @Test
     void logoutWithoutACookieIsStill204() throws Exception {
         mvc.perform(post("/api/v1/auth/logout").header(CLIENT, "web")).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void refreshWithoutTheClientHeaderIs403WithTheEnvelope() throws Exception {
+        String raw = cookieValue(signup("ck-" + UUID.randomUUID().toString().substring(0, 8)));
+        mvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("easycrm_rt", raw)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+        // The header check must run BEFORE rotation: the token is still usable afterwards.
+        mvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie("easycrm_rt", raw))
+                        .header(CLIENT, "web"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void logoutWithoutTheClientHeaderIs403AndRevokesNothing() throws Exception {
+        String raw = cookieValue(signup("ck-" + UUID.randomUUID().toString().substring(0, 8)));
+        mvc.perform(post("/api/v1/auth/logout").cookie(new Cookie("easycrm_rt", raw)))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie("easycrm_rt", raw))
+                        .header(CLIENT, "web"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void aCrossOriginPreflightToRefreshIsRefused() throws Exception {
+        // No CORS configuration exists, so a cross-origin fetch carrying the custom header can never
+        // pass its preflight. If CORS is ever added, this test forces a deliberate decision.
+        MvcResult r = mvc.perform(options("/api/v1/auth/refresh")
+                        .header(HttpHeaders.ORIGIN, "https://evil.example")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, CLIENT))
+                .andReturn();
+        assertNull(r.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+        assertTrue(
+                r.getResponse().getStatus() >= 400,
+                "preflight status " + r.getResponse().getStatus());
     }
 }
