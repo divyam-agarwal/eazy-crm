@@ -26,10 +26,11 @@ archunit = "1.4.2"
 modulith = "2.1.1"
 junit = "5.13.4"
 # --- quality tooling, added by the build-hygiene slice ---
-# Verified against the Gradle Plugin Portal maven repo (plugins.gradle.org/m2) on
-# 2026-09-01. The 8.x line exists upstream (latest 8.10.1) but the brief calls out 7.x
-# as the known-good major line for Gradle 9.6.1; 7.2.1 is the newest patch on that line.
-# Documented floor was 7.0.2 -- this is a verified-latest-on-the-known-good-line pick.
+# Originally pinned to 7.2.1 (the known-good major line for Gradle 9.6.1 at the time --
+# see git history for that rationale). Bumped to 8.10.2 by Dependabot on 2026-09-14,
+# merged alongside the gradle-wrapper bump to 9.7.1: `./gradlew clean check`
+# (spotlessCheck included) passed clean on 9.7.1 with this pin, so 8.x is now the
+# known-good major line here. Documented floor was 7.0.2 -- superseded by this bump.
 spotless = "8.10.2"
 # Verified against plugins.gradle.org/m2 on 2026-09-01: 6.5.11 is both the newest release
 # overall and still the known-good 6.x major line called out in the brief (no 7.x exists
@@ -50,10 +51,12 @@ palantirJavaFormat = "2.97.0"
 # easycrm.quality-conventions.gradle.kts via the untyped catalog lookup. Bump only here.
 findsecbugs = "1.14.0"
 # --- API contract, added by the openapi-contract slice ---
-# Verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release: 3.1.0, published
-# 2026-08-01). The 3.x line is the Spring Boot 4 line -- its POM parent is
-# spring-boot-starter-parent 4.1.0, matching springBoot above. The 2.x line (latest 2.9.0)
-# is the Boot 3 line and will NOT work here; every pre-2026 tutorial names it.
+# Originally verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release then:
+# 3.1.0, published 2026-08-01). The 3.x line is the Spring Boot 4 line -- its POM parent
+# is spring-boot-starter-parent 4.1.0, matching springBoot above. The 2.x line (latest
+# 2.9.0) is the Boot 3 line and will NOT work here; every pre-2026 tutorial names it.
+# Bumped to 3.1.1 by Dependabot on 2026-09-14; `./gradlew clean check` passed clean,
+# including OpenApiSnapshotTest with no snapshot regeneration needed.
 springdoc = "3.1.1"
 # --- supply chain, added by the Wave 1.5 slice ---
 # Verified against plugins.gradle.org/m2 on 2026-09-12: latest and release are both 13.0.0,
