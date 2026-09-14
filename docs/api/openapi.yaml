@@ -3,7 +3,7 @@ info:
   description: |-
     Multi-tenant CRM for Indian distributors, traders and small manufacturers. Scope stops at the Order: no invoicing, stock or ledger.
 
-    Routes under /api/** require a bearer JWT, including GET /api/v1/auth/me. The exceptions are the four unauthenticated auth calls (signup, login, refresh, logout) and the invitation preview/accept pair; each is marked with an empty security requirement below. GET /public/q/{token} is a separate, unauthenticated route that is not under /api/** at all — the share token itself is the credential. Money is carried as a JSON string, never a number. Errors share one envelope: {"error":{"code","message","fields","fieldCodes"}}; clients translate fieldCodes (docs/api/error-codes.md). The refresh token is never in a body: signup, login, invitation accept and refresh set it as the httpOnly easycrm_rt cookie, and refresh and logout read it.
+    Routes under /api/** require a bearer JWT, including GET /api/v1/auth/me. The exceptions are the five unauthenticated auth calls (signup, signup/status, login, refresh, logout) and the invitation preview/accept pair; each is marked with an empty security requirement below. Refresh and logout authenticate with the cookie instead and require the header X-EasyCRM-Client: web. GET /public/q/{token} is a separate, unauthenticated route that is not under /api/** at all — the share token itself is the credential. Money is carried as a JSON string, never a number. Errors share one envelope: {"error":{"code","message","fields","fieldCodes"}}; clients translate fieldCodes (docs/api/error-codes.md). The refresh token is never in a body: signup, login, invitation accept and refresh set it as the httpOnly easycrm_rt cookie, and refresh and logout read it.
   title: EasyCRM API
   version: 0.0.1-SNAPSHOT
 servers:
@@ -267,12 +267,13 @@ paths:
               $ref: "#/components/schemas/AcceptInvitationRequest"
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
-          description: OK
+          description: member created; the refresh token is set as the httpOnly easycrm_rt
+            cookie
         "401":
           content:
             application/json:
@@ -359,22 +360,37 @@ paths:
       - auth-controller
   /api/v1/auth/logout:
     post:
+      description: "Authenticates with the httpOnly easycrm_rt refresh cookie (Path=/api/v1/auth),\
+        \ not a bearer token, and requires the header X-EasyCRM-Client: web. Revokes\
+        \ the presented refresh token (if any) and clears the cookie. Idempotent:\
+        \ answers 204 with or without a cookie, so it never returns 401."
       operationId: logout
+      parameters:
+      - description: "CSRF defence: must be exactly `web`; missing or different answers\
+          \ 403"
+        in: header
+        name: X-EasyCRM-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - web
       responses:
-        "200":
-          description: OK
+        "204":
+          description: signed out; the easycrm_rt cookie is cleared
         "401":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: "missing, expired or invalid bearer token"
+          description: "not returned: logout answers 204 whether or not a valid refresh\
+            \ cookie is sent"
         "403":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: "authenticated, but the role does not permit this operation"
+          description: "the X-EasyCRM-Client: web header is missing"
         "404":
           content:
             application/json:
@@ -442,7 +458,20 @@ paths:
       - auth-controller
   /api/v1/auth/refresh:
     post:
+      description: "Authenticates with the httpOnly easycrm_rt refresh cookie (Path=/api/v1/auth),\
+        \ not a bearer token, and requires the header X-EasyCRM-Client: web. Rotates\
+        \ the cookie and returns a fresh access token."
       operationId: refresh
+      parameters:
+      - description: "CSRF defence: must be exactly `web`; missing or different answers\
+          \ 403"
+        in: header
+        name: X-EasyCRM-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - web
       responses:
         "200":
           content:
@@ -455,13 +484,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: "missing, expired or invalid bearer token"
+          description: "the easycrm_rt refresh cookie is missing, invalid, expired\
+            \ or revoked"
         "403":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: "authenticated, but the role does not permit this operation"
+          description: "the X-EasyCRM-Client: web header is missing"
         "404":
           content:
             application/json:
@@ -494,12 +524,13 @@ paths:
               $ref: "#/components/schemas/SignupRequest"
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
-          description: OK
+          description: workspace created; the refresh token is set as the httpOnly
+            easycrm_rt cookie
         "401":
           content:
             application/json:

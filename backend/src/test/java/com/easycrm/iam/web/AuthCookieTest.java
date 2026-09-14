@@ -192,6 +192,25 @@ class AuthCookieTest extends IntegrationTest {
     }
 
     @Test
+    void signingUpANewWorkspaceRevokesTheCookieTheBrowserSent() throws Exception {
+        String stale = cookieValue(signup("ck-" + UUID.randomUUID().toString().substring(0, 8)));
+        String slugB = "ck-" + UUID.randomUUID().toString().substring(0, 8);
+
+        mvc.perform(post("/api/v1/auth/signup")
+                        .cookie(new Cookie("easycrm_rt", stale))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"slug":"%s","businessName":"Cookie Biz","stateCode":"27",
+                             "email":"Owner@%s.test","password":"correct-horse"}""".formatted(slugB, slugB)))
+                .andExpect(status().isCreated());
+
+        mvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie("easycrm_rt", stale))
+                        .header(CLIENT, "web"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void acceptingAnInvitationRevokesTheCookieTheBrowserSent() throws Exception {
         String stale = cookieValue(signup("ck-" + UUID.randomUUID().toString().substring(0, 8)));
         var owner = tokens.provisionOwner("27");

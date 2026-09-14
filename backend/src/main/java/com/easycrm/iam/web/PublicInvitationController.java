@@ -6,6 +6,7 @@ import com.easycrm.iam.IssuedSession;
 import com.easycrm.iam.web.dto.AcceptInvitationRequest;
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.InvitationPreviewResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -47,6 +48,9 @@ public class PublicInvitationController {
     // permitAll in SecurityConfig; without this the contract would demand a token for
     // the one call that cannot have one.
     @SecurityRequirements
+    @ApiResponse(
+            responseCode = "201",
+            description = "member created; the refresh token is set as the httpOnly easycrm_rt cookie")
     @PostMapping("/{token}/accept")
     public ResponseEntity<AuthResponse> accept(
             @PathVariable String token,

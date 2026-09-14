@@ -7,8 +7,16 @@ import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.MeResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.iam.web.dto.SignupStatusResponse;
+import com.easycrm.platform.error.ApiErrorResponse;
 import com.easycrm.platform.error.ForbiddenException;
 import com.easycrm.platform.error.UnauthorizedException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,9 +41,17 @@ public class AuthController {
     // claim otherwise. An empty @SecurityRequirements clears the document-level
     // bearer-jwt requirement for this operation only.
     @SecurityRequirements
+    @ApiResponse(
+            responseCode = "201",
+            description = "workspace created; the refresh token is set as the httpOnly easycrm_rt cookie")
     @PostMapping("/signup")
-    public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest req, HttpServletResponse response) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(issue(auth.signup(req), response));
+    public ResponseEntity<AuthResponse> signup(
+            @Valid @RequestBody SignupRequest req, HttpServletRequest request, HttpServletResponse response) {
+        IssuedSession session = auth.signup(req);
+        // Same reason as login: creating a workspace in a browser that is already signed in must not
+        // leave that browser's previous refresh token live for 30 days.
+        cookie.read(request).ifPresent(auth::logout);
+        return ResponseEntity.status(HttpStatus.CREATED).body(issue(session, response));
     }
 
     @SecurityRequirements
@@ -50,6 +66,22 @@ public class AuthController {
     }
 
     @SecurityRequirements
+    @Operation(description = COOKIE_AUTH + " Rotates the cookie and returns a fresh access token.")
+    @Parameters(
+            @Parameter(
+                    in = ParameterIn.HEADER,
+                    name = CLIENT_HEADER,
+                    required = true,
+                    description = "CSRF defence: must be exactly `web`; missing or different answers 403",
+                    schema = @Schema(type = "string", allowableValues = "web")))
+    @ApiResponse(
+            responseCode = "401",
+            description = MISSING_COOKIE,
+            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "403",
+            description = MISSING_HEADER,
+            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     @PostMapping("/refresh")
     public AuthResponse refresh(HttpServletRequest request, HttpServletResponse response) {
         requireWebClient(request);
@@ -58,6 +90,26 @@ public class AuthController {
     }
 
     @SecurityRequirements
+    @Operation(
+            description = COOKIE_AUTH
+                    + " Revokes the presented refresh token (if any) and clears the cookie. Idempotent:"
+                    + " answers 204 with or without a cookie, so it never returns 401.")
+    @Parameters(
+            @Parameter(
+                    in = ParameterIn.HEADER,
+                    name = CLIENT_HEADER,
+                    required = true,
+                    description = "CSRF defence: must be exactly `web`; missing or different answers 403",
+                    schema = @Schema(type = "string", allowableValues = "web")))
+    @ApiResponse(responseCode = "204", description = "signed out; the easycrm_rt cookie is cleared")
+    @ApiResponse(
+            responseCode = "401",
+            description = "not returned: logout answers 204 whether or not a valid refresh cookie is sent",
+            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "403",
+            description = MISSING_HEADER,
+            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
         requireWebClient(request);
@@ -81,6 +133,12 @@ public class AuthController {
         cookie.write(response, session.refreshToken());
         return session.body();
     }
+
+    private static final String COOKIE_AUTH = "Authenticates with the httpOnly easycrm_rt refresh cookie"
+            + " (Path=/api/v1/auth), not a bearer token, and requires the header X-EasyCRM-Client: web.";
+    private static final String MISSING_COOKIE =
+            "the easycrm_rt refresh cookie is missing, invalid, expired or revoked";
+    private static final String MISSING_HEADER = "the X-EasyCRM-Client: web header is missing";
 
     /**
      * CSRF defence-in-depth on the two routes that authenticate with the cookie (spec §3.2). A

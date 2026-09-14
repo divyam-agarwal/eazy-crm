@@ -74,6 +74,44 @@ class OpenApiMediaTypesTest {
         assertTrue(json >= 400, "only " + json + " application/json responses; the walker or document is broken");
     }
 
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> post(String route) throws Exception {
+        Map<String, Object> path = (Map<String, Object>) paths().get(route);
+        assertNotNull(path, route + " missing from the document");
+        return (Map<String, Object>) path.get("post");
+    }
+
+    @Test
+    void logoutDeclares204AndNot200() throws Exception {
+        Map<?, ?> responses = (Map<?, ?>) post("/api/v1/auth/logout").get("responses");
+        assertTrue(responses.containsKey("204"), "logout responses " + responses.keySet());
+        assertFalse(responses.containsKey("200"), "logout responses " + responses.keySet());
+    }
+
+    @Test
+    void sessionIssuingCreatesDeclare201AndNot200() throws Exception {
+        for (String route : List.of("/api/v1/auth/signup", "/api/v1/auth/invitations/{token}/accept")) {
+            Map<?, ?> responses = (Map<?, ?>) post(route).get("responses");
+            assertTrue(responses.containsKey("201"), route + " responses " + responses.keySet());
+            assertFalse(responses.containsKey("200"), route + " responses " + responses.keySet());
+        }
+    }
+
+    @Test
+    void cookieRoutesRequireTheClientHeader() throws Exception {
+        for (String route : List.of("/api/v1/auth/refresh", "/api/v1/auth/logout")) {
+            Object params = post(route).get("parameters");
+            List<?> header = params instanceof List<?> l
+                    ? l.stream()
+                            .map(p -> (Map<?, ?>) p)
+                            .filter(p -> "header".equals(p.get("in")) && "X-EasyCRM-Client".equals(p.get("name")))
+                            .filter(p -> Boolean.TRUE.equals(p.get("required")))
+                            .toList()
+                    : List.of();
+            assertEquals(1, header.size(), route + " parameters " + params);
+        }
+    }
+
     @Test
     void bothPdfRoutesDeclareApplicationPdfOnSuccess() throws Exception {
         for (String route : List.of("/api/v1/quotations/{id}/pdf", "/public/q/{token}")) {

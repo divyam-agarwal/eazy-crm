@@ -72,9 +72,11 @@ public class OpenApiConfig {
                                 Scope stops at the Order: no invoicing, stock or ledger.
 
                                 Routes under /api/** require a bearer JWT, including GET /api/v1/auth/me. \
-                                The exceptions are the four unauthenticated auth calls \
-                                (signup, login, refresh, logout) and the invitation preview/accept pair; \
-                                each is marked with an empty security requirement below. \
+                                The exceptions are the five unauthenticated auth calls \
+                                (signup, signup/status, login, refresh, logout) and the invitation \
+                                preview/accept pair; each is marked with an empty security requirement \
+                                below. Refresh and logout authenticate with the cookie instead and \
+                                require the header X-EasyCRM-Client: web. \
                                 GET /public/q/{token} is a separate, unauthenticated route that is not \
                                 under /api/** at all — the share token itself is the credential. \
                                 Money is carried as a JSON string, never a number. Errors share one \
