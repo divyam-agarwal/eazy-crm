@@ -82,6 +82,10 @@ springdoc:
   # different order -- which would make OpenApiSnapshotTest fail intermittently for no real
   # reason, the worst available failure mode. Confirmed present on 3.1.0 in Task 1 Step 3.
   writer-with-order-by-keys: true
+  # Without this springdoc keys every response '*/*', and openapi-typescript (the frontend's
+  # generated client) types a body by its media type -- so the client would be untyped.
+  # OpenApiMediaTypesTest guards it. PDF routes declare produces explicitly instead.
+  default-produces-media-type: application/json
   # Layer 1 of 2. Off by default, so outside dev the routes are never registered and there is
   # nothing for a security rule to have to deny. Layer 2 is SecurityConfig's terminal denyAll()
   # plus DevApiDocsSecurityConfig, which only exists under the dev profile.

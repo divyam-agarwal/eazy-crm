@@ -60,37 +60,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponseActivityResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -108,37 +108,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ActivityResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -164,37 +164,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ActivityResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -213,37 +213,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/InvitationPreviewResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -269,37 +269,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -319,37 +319,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -371,31 +371,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -409,37 +409,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/MeResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -458,37 +458,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -508,37 +508,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -583,37 +583,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponseCustomerResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -631,37 +631,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -681,7 +681,7 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
@@ -689,31 +689,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -738,37 +738,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ContactResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -796,31 +796,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -851,37 +851,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ContactResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -901,37 +901,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -956,37 +956,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1006,37 +1006,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1056,37 +1056,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1154,37 +1154,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponseEnquiryResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1202,37 +1202,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1252,37 +1252,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1307,37 +1307,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1363,37 +1363,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1419,37 +1419,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1529,37 +1529,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponseFollowUpResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1577,37 +1577,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1620,37 +1620,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/FollowUpSummaryResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1670,37 +1670,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1725,37 +1725,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1781,37 +1781,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1837,37 +1837,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1880,7 +1880,7 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
@@ -1888,31 +1888,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1930,37 +1930,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/InvitationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -1982,31 +1982,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2019,7 +2019,7 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
@@ -2027,31 +2027,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2071,37 +2071,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/MemberResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2121,37 +2121,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/MemberResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2177,37 +2177,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/MemberResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2262,37 +2262,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponseOrderResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2312,37 +2312,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2368,37 +2368,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2418,37 +2418,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2468,37 +2468,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2542,37 +2542,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponsePriceListResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2590,37 +2590,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2640,37 +2640,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2695,37 +2695,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2745,37 +2745,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2795,37 +2795,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2845,7 +2845,7 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
@@ -2853,31 +2853,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2902,37 +2902,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PriceListItemResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -2960,31 +2960,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3028,37 +3028,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponseProductResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3076,37 +3076,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3126,37 +3126,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3181,37 +3181,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3231,37 +3231,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3281,37 +3281,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3367,37 +3367,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageResponseQuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3415,37 +3415,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3465,37 +3465,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3520,37 +3520,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3575,37 +3575,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3625,37 +3625,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3681,37 +3681,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3737,38 +3737,38 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/pdf:
               schema:
                 type: string
                 format: byte
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3788,37 +3788,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3838,37 +3838,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3888,37 +3888,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3938,37 +3938,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ShareResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -3988,7 +3988,7 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
@@ -3996,31 +3996,31 @@ paths:
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -4046,37 +4046,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/QuotationVersionResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -4089,37 +4089,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/TenantResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -4137,37 +4137,37 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/TenantResponse"
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
@@ -4186,38 +4186,38 @@ paths:
       responses:
         "200":
           content:
-            '*/*':
+            application/pdf:
               schema:
                 type: string
                 format: byte
           description: OK
         "401":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "missing, expired or invalid bearer token"
         "403":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "authenticated, but the role does not permit this operation"
         "404":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: "the resource does not exist, or belongs to another tenant"
         "409":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: the request conflicts with existing data
         "422":
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending

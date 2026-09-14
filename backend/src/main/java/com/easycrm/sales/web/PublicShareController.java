@@ -37,7 +37,7 @@ public class PublicShareController {
     // Public: the share token in the path is the credential. Mirrors the permitAll in
     // SecurityConfig.
     @SecurityRequirements
-    @GetMapping("/{token}")
+    @GetMapping(value = "/{token}", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> quotation(@PathVariable String token) {
         ShareLinkService.Resolved resolved = shareLinks.resolve(token); // 404 if unknown
         byte[] pdf;

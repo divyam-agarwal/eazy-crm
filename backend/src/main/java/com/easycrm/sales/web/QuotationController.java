@@ -74,7 +74,7 @@ public class QuotationController {
         return service.getVersion(id, versionNo);
     }
 
-    @GetMapping("/{id}/pdf")
+    @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> pdf(@PathVariable UUID id, @RequestParam(required = false) Integer version) {
         byte[] bytes = pdfService.renderByQuotation(id, version);
         return ResponseEntity.ok()
