@@ -2,6 +2,7 @@ package com.easycrm.iam;
 
 import com.easycrm.platform.error.UnauthorizedException;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -13,16 +14,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RefreshTokenService {
 
-    private static final long TTL_DAYS = 30;
+    public static final long TTL_DAYS = 30;
     private final SecureRandom random = new SecureRandom();
     private final Base64.Encoder base64Url = Base64.getUrlEncoder().withoutPadding();
 
     private final RefreshTokenRepository tokens;
     private final TokenHasher hasher;
+    private final Clock clock;
 
-    public RefreshTokenService(RefreshTokenRepository tokens, TokenHasher hasher) {
+    public RefreshTokenService(RefreshTokenRepository tokens, TokenHasher hasher, Clock clock) {
         this.tokens = tokens;
         this.hasher = hasher;
+        this.clock = clock;
     }
 
     public record RotationResult(String newRawToken, UUID userId, UUID tenantId) {}
@@ -31,26 +34,38 @@ public class RefreshTokenService {
     public String issue(UUID userId, UUID tenantId) {
         String raw = randomToken();
         tokens.save(new RefreshToken(
-                hasher.sha256Hex(raw), userId, tenantId, Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS)));
+                hasher.sha256Hex(raw), userId, tenantId, clock.instant().plus(TTL_DAYS, ChronoUnit.DAYS)));
         return raw;
     }
 
     @Transactional
     public RotationResult rotate(String rawToken) {
-        RefreshToken current = tokens.findByTokenHash(hasher.sha256Hex(rawToken))
-                .orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
-        if (current.getRevokedAt() != null || current.getExpiresAt().isBefore(Instant.now())) {
-            throw new UnauthorizedException("invalid refresh token");
-        }
+        return rotate(rawToken, clock.instant());
+    }
+
+    /**
+     * {@code now} is explicit so tests can move time (ClockConfig: no test overrides the Clock bean).
+     *
+     * <p>Order matters: the successor is inserted first so the conditional UPDATE can point at it,
+     * and if the UPDATE matches nothing the throw rolls the insert back with it. The presented row is
+     * read only for its owner; it is never modified through the entity, so no @Version write can lose
+     * a race here and surface as a 409.
+     */
+    @Transactional
+    public RotationResult rotate(String rawToken, Instant now) {
+        String hash = hasher.sha256Hex(rawToken);
+        RefreshToken presented = tokens.findByTokenHash(hash).orElseThrow(RefreshTokenService::invalid);
+        UUID userId = presented.getUserId();
+        UUID tenantId = presented.getTenantId();
+
         String newRaw = randomToken();
-        RefreshToken replacement = tokens.save(new RefreshToken(
-                hasher.sha256Hex(newRaw),
-                current.getUserId(),
-                current.getTenantId(),
-                Instant.now().plus(TTL_DAYS, ChronoUnit.DAYS)));
-        current.revoke(Instant.now(), replacement.getId());
-        tokens.save(current);
-        return new RotationResult(newRaw, current.getUserId(), current.getTenantId());
+        RefreshToken successor = tokens.save(
+                new RefreshToken(hasher.sha256Hex(newRaw), userId, tenantId, now.plus(TTL_DAYS, ChronoUnit.DAYS)));
+
+        if (tokens.revokeIfLive(hash, successor.getId(), now) == 1) {
+            return new RotationResult(newRaw, userId, tenantId);
+        }
+        throw invalid();
     }
 
     @Transactional
@@ -75,6 +90,10 @@ public class RefreshTokenService {
         live.forEach(t -> t.revoke(now, null));
         tokens.saveAll(live);
         return live.size();
+    }
+
+    private static UnauthorizedException invalid() {
+        return new UnauthorizedException("invalid refresh token");
     }
 
     private String randomToken() {

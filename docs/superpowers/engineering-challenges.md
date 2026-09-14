@@ -5099,3 +5099,63 @@ somewhere upstream being rendered as if it were ordered. Canonicalizing the spec
 section — not loosening the comparison, not declaring the whole guard non-viable — keeps the guard
 exactly as strict as it was designed to be, for everything that was never the source of the
 disagreement.
+
+## Challenge 80 — `@Version` correctly stopped the race, but the loser's exception was the wrong status code
+
+**Phase:** Implementation
+
+### The problem
+
+`RefreshTokenService.rotate` read the presented token, inserted a successor, then mutated the
+presented entity's `revokedAt`/`replacedById` through Hibernate and saved it — relying on
+`BaseEntity`'s `@Version` to stop two concurrent rotations of the same token from both succeeding.
+Functionally that worked: of two overlapping rotations, only one could commit. But the loser's write
+failed at flush with `ObjectOptimisticLockingFailureException`, which `ApiExceptionHandler` maps to
+409 Conflict. A refresh failure has exactly one correct status — 401 — because the client's only
+correct response to either "token already used" or "token invalid" is the same: drop the session and
+re-authenticate. Optimistic-locking exceptions are Spring's generic vocabulary for "someone else
+changed this row first," not domain-shaped for an auth endpoint, and nothing at the call site was
+translating it.
+
+The naive fix — catch `ObjectOptimisticLockingFailureException` around the save and rethrow as
+`UnauthorizedException` — would have worked but kept `@Version` on the hot path for a table where a
+version bump is not otherwise meaningful (no other writer needs to observe intermediate revisions of
+a refresh token), and it leaves the successor's insert artifact only rolled back via the transaction
+boundary rather than via a query whose failure mode has one clean meaning.
+
+### The solution
+
+Replace the entity mutation with a conditional native UPDATE:
+`RefreshTokenRepository.revokeIfLive(hash, successorId, now)` sets `revoked_at`, `replaced_by_id`,
+`version`, and `updated_at` in one statement, gated on `revoked_at IS NULL AND expires_at > :now`.
+Postgres row-locks the target on the first UPDATE; a second, concurrent UPDATE against the same row
+blocks until the first commits, then re-evaluates its own WHERE clause against the now-committed row
+and matches zero rows — no exception, just `int == 0`. `rotate` inserts the successor first (so the
+UPDATE can point `replaced_by_id` at an id that already exists in the same transaction) and treats
+`revokeIfLive(...) != 1` as the single, unambiguous "someone else got here first" signal, throwing
+`UnauthorizedException` — which rolls the successor insert back with it, since both live in the same
+`@Transactional` boundary. The presented row is never read into a Hibernate-managed mutation, so no
+`@Version` write is on the path that can lose a race and surface as a 409.
+
+Proven with a test that forces the overlap deterministically rather than relying on timing: a second
+JDBC connection (`IntegrationTest.ownerConnection()`) opens its own transaction, runs the same
+conditional UPDATE directly, and holds it uncommitted while `rotate()` runs on a second thread and
+blocks on the row lock (confirmed via `pg_stat_activity.wait_event_type = 'Lock'`, polled rather than
+slept-and-hoped). Only once the blocked statement is observed does the test commit the winner's
+transaction and assert the loser's outcome is `UnauthorizedException`. Run against the pre-fix code,
+this test failed with exactly the predicted defect — `loser outcome was
+org.springframework.orm.ObjectOptimisticLockingFailureException` — confirming the race was real and
+correctly characterized before the fix was written, not assumed.
+
+### Lesson
+
+A concurrency control can be *correct* (only one of two racing writers succeeds) while still being
+*wrong* for its caller, if the exception it throws on loss is generic infrastructure vocabulary
+(optimistic-lock failure) rather than domain vocabulary (invalid credential). The fix is not always
+"catch and translate" — reshaping the write itself, from an entity mutation gated by `@Version` to a
+single conditional statement gated by the domain predicate that actually defines liveness, made the
+zero-match case both the natural failure mode and the one place text needs to convey the right status
+code. And a race test is only evidence once it demonstrably forces the interleaving it claims to —
+holding a lock from a second connection and polling `pg_stat_activity` for a blocked statement is
+deterministic where two threads racing a timing window is not, and the RED run's exact exception type
+is what confirms the test exercises the failure being fixed, not some other failure entirely.
