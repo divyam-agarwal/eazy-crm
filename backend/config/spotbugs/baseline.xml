@@ -768,55 +768,6 @@
       <Message>Known null at TenantResponse.java:[line 10]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="1dba7d2e2652c8e26a70d0f09d0310db" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
-    <ShortMessage>May expose internal representation by returning reference to mutable object</ShortMessage>
-    <LongMessage>com.easycrm.platform.error.ValidationException.getFields() may expose internal representation by returning ValidationException.fields</LongMessage>
-    <Class classname="com.easycrm.platform.error.ValidationException" primary="true">
-      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="11" end="20" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
-        <Message>At ValidationException.java:[lines 11-20]</Message>
-      </SourceLine>
-      <Message>In class com.easycrm.platform.error.ValidationException</Message>
-    </Class>
-    <Method classname="com.easycrm.platform.error.ValidationException" name="getFields" signature="()Ljava/util/Map;" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="20" end="20" startBytecode="0" endBytecode="46" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java"/>
-      <Message>In method com.easycrm.platform.error.ValidationException.getFields()</Message>
-    </Method>
-    <Field classname="com.easycrm.platform.error.ValidationException" name="fields" signature="Ljava/util/Map;" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.platform.error.ValidationException" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
-        <Message>In ValidationException.java</Message>
-      </SourceLine>
-      <Message>Field com.easycrm.platform.error.ValidationException.fields</Message>
-    </Field>
-    <SourceLine classname="com.easycrm.platform.error.ValidationException" primary="true" start="20" end="20" startBytecode="4" endBytecode="4" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
-      <Message>At ValidationException.java:[line 20]</Message>
-    </SourceLine>
-  </BugInstance>
-  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="95b3f13efaa1e6c0fffee4579a381fc7" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
-    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
-    <LongMessage>new com.easycrm.platform.error.ValidationException(Map) may expose internal representation by storing an externally mutable object into ValidationException.fields</LongMessage>
-    <Class classname="com.easycrm.platform.error.ValidationException" primary="true">
-      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="11" end="20" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
-        <Message>At ValidationException.java:[lines 11-20]</Message>
-      </SourceLine>
-      <Message>In class com.easycrm.platform.error.ValidationException</Message>
-    </Class>
-    <Method classname="com.easycrm.platform.error.ValidationException" name="&lt;init&gt;" signature="(Ljava/util/Map;)V" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.platform.error.ValidationException" start="11" end="13" startBytecode="0" endBytecode="89" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java"/>
-      <Message>In method new com.easycrm.platform.error.ValidationException(Map)</Message>
-    </Method>
-    <Field classname="com.easycrm.platform.error.ValidationException" name="fields" signature="Ljava/util/Map;" isStatic="false" primary="true">
-      <SourceLine classname="com.easycrm.platform.error.ValidationException" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
-        <Message>In ValidationException.java</Message>
-      </SourceLine>
-      <Message>Field com.easycrm.platform.error.ValidationException.fields</Message>
-    </Field>
-    <LocalVariable name="fields" register="1" pc="8" role="LOCAL_VARIABLE_NAMED">
-      <Message>Local variable named fields</Message>
-    </LocalVariable>
-    <SourceLine classname="com.easycrm.platform.error.ValidationException" primary="true" start="12" end="12" startBytecode="8" endBytecode="8" sourcefile="ValidationException.java" sourcepath="com/easycrm/platform/error/ValidationException.java" relSourcepath="java/com/easycrm/platform/error/ValidationException.java">
-      <Message>At ValidationException.java:[line 12]</Message>
-    </SourceLine>
-  </BugInstance>
   <BugInstance type="MS_EXPOSE_REP" priority="2" rank="18" abbrev="MS" category="MALICIOUS_CODE" instanceHash="fda739a4549a90d37e73b88db95b3fb6" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="493">
     <ShortMessage>Public static method may expose internal representation by returning a mutable object or array</ShortMessage>
     <LongMessage>Public static com.easycrm.platform.money.EventJson.mapper() may expose internal representation by returning EventJson.MAPPER</LongMessage>
