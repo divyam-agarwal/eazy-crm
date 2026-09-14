@@ -38,6 +38,25 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     int revokeIfLive(@Param("hash") String hash, @Param("successorId") UUID successorId, @Param("now") Instant now);
 
     /**
+     * Logout's half of {@link #revokeIfLive}: revokes a live token without pointing it at a successor
+     * and without an expiry term (an expired-but-unrevoked token is still worth burning). Like every
+     * other write on this table it bypasses the entity, so a concurrent rotation makes it match zero
+     * rows rather than fail a @Version check with a 409.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE refresh_token SET revoked_at = :now, version = version + 1, updated_at = :now
+             WHERE token_hash = :hash AND revoked_at IS NULL
+            """, nativeQuery = true)
+    int revokeByHashIfLive(@Param("hash") String hash, @Param("now") Instant now);
+
+    /** The successor a revoked token points at, read AFTER a conditional UPDATE has settled any race. */
+    @Query(
+            value = "SELECT replaced_by_id FROM refresh_token WHERE token_hash = :hash AND replaced_by_id IS NOT NULL",
+            nativeQuery = true)
+    Optional<UUID> findReplacedById(@Param("hash") String hash);
+
+    /**
      * The orphaned successor of a token eligible for grace, locking the presented row so two grace
      * attempts serialize. Empty when the token is not recently rotated, already used its grace, is
      * expired, or was revoked by logout (replaced_by_id null).

@@ -7,6 +7,7 @@ import com.easycrm.platform.error.UnauthorizedException;
 import com.easycrm.platform.security.JwtService;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
+import com.easycrm.support.TestTokens;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,9 @@ class AuthServiceRefreshTest extends IntegrationTest {
 
     @Autowired
     TransactionTemplate tx;
+
+    @Autowired
+    TestTokens tokens;
 
     @AfterEach
     void clear() {
@@ -65,6 +69,16 @@ class AuthServiceRefreshTest extends IntegrationTest {
         TenantContext.clear();
 
         // Same generic message as every other refresh failure: no new enumeration signal.
+        UnauthorizedException ex = assertThrows(UnauthorizedException.class, () -> auth.refresh(signed.refreshToken()));
+        assertEquals("invalid refresh token", ex.getMessage());
+    }
+
+    @Test
+    void aSuspendedTenantCannotRefresh() {
+        IssuedSession signed = signup("refresh-suspended");
+        tokens.suspend(signed.tenantId());
+
+        // Login already refuses a suspended tenant; refresh must not keep its sessions alive.
         UnauthorizedException ex = assertThrows(UnauthorizedException.class, () -> auth.refresh(signed.refreshToken()));
         assertEquals("invalid refresh token", ex.getMessage());
     }

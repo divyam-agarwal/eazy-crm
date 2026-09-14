@@ -95,6 +95,17 @@ class RefreshTokenGraceTest extends IntegrationTest {
     }
 
     @Test
+    void logoutAfterADoublyLostRotationLeavesNoLiveToken() throws Exception {
+        // A rotates to S1 (lost), A recovers through grace to S2 (also lost): A now points at S2 with
+        // its grace spent. Logout presenting A must still end S2, or it lives for 30 days.
+        Owner o = issue();
+        refreshTokens.rotate(o.raw(), t0);
+        refreshTokens.rotate(o.raw(), t0.plusSeconds(5));
+        refreshTokens.revoke(o.raw());
+        assertEquals(0, liveTokensFor(o.userId()));
+    }
+
+    @Test
     void aRealConcurrentRotationLeavesExactlyOneLiveToken() throws Exception {
         Owner o = issue();
         ExecutorService pool = Executors.newSingleThreadExecutor();

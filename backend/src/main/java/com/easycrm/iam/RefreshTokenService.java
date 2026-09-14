@@ -30,7 +30,13 @@ public class RefreshTokenService {
         this.clock = clock;
     }
 
-    public record RotationResult(String newRawToken, UUID userId, UUID tenantId) {}
+    public record RotationResult(String newRawToken, UUID userId, UUID tenantId) {
+        /** The generated toString() would print the raw token into any log line that touches this. */
+        @Override
+        public String toString() {
+            return "RotationResult[newRawToken=<redacted>, userId=" + userId + ", tenantId=" + tenantId + "]";
+        }
+    }
 
     @Transactional
     public String issue(UUID userId, UUID tenantId) {
@@ -82,28 +88,28 @@ public class RefreshTokenService {
     }
 
     /**
-     * Idempotent: a token presented for logout may be live, already revoked with no orphan (a
-     * plain replay), or already revoked with an unused orphaned successor (the token was rotated
-     * but its response never arrived, and the user then logged out on the same stale token).
+     * Idempotent and never a 409: a token presented for logout may be live, unknown, already revoked
+     * with no successor (a plain replay), or already rotated — whose successor may never have reached
+     * the browser, possibly twice over (a lost rotation, then a lost grace recovery).
      *
-     * <p>That last case must burn the token's grace here, not merely leave it alone — otherwise
-     * the orphaned successor stays recoverable via {@link #rotate(String, Instant)}'s grace path
-     * for up to {@link #GRACE} after the session has already ended (spec §3.3).
+     * <p>Only native conditional UPDATEs, never an entity save. Login, signup and invitation accept
+     * call this AFTER issuing a new session, so an @Version conflict with a concurrent rotation of the
+     * same token would turn their success into a 409. If the "revoke if live" UPDATE matches nothing
+     * — including because a rotation committed while it waited on the row lock — the token was
+     * rotated or revoked, and the rotated case ends the chain: its successor is revoked whether or not
+     * grace was already spent, and the grace is burned so {@link #rotate(String, Instant)} cannot
+     * recover an orphan after the session has ended (spec §3.3).
      */
     @Transactional
     public void revoke(String rawToken) {
         String hash = hasher.sha256Hex(rawToken);
-        tokens.findByTokenHash(hash).ifPresent(t -> {
-            if (t.getRevokedAt() == null) {
-                t.revoke(Instant.now(), null);
-                tokens.save(t);
-                return;
-            }
-            if (t.getReplacedById() != null && t.getGraceUsedAt() == null) {
-                Instant now = Instant.now();
-                tokens.revokeByIdIfLive(t.getReplacedById(), now);
-                tokens.markGraceUsed(hash, t.getReplacedById(), now);
-            }
+        Instant now = clock.instant();
+        if (tokens.revokeByHashIfLive(hash, now) == 1) {
+            return;
+        }
+        tokens.findReplacedById(hash).ifPresent(successor -> {
+            tokens.revokeByIdIfLive(successor, now);
+            tokens.markGraceUsed(hash, successor, now); // no-op when grace was already used
         });
     }
 
@@ -115,7 +121,7 @@ public class RefreshTokenService {
     @Transactional
     public int revokeAllForUser(UUID userId, UUID tenantId) {
         List<RefreshToken> live = tokens.findByUserIdAndTenantIdAndRevokedAtIsNull(userId, tenantId);
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         live.forEach(t -> t.revoke(now, null));
         tokens.saveAll(live);
         return live.size();

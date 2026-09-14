@@ -5172,6 +5172,16 @@ holding a lock from a second connection and polling `pg_stat_activity` for a blo
 deterministic where two threads racing a timing window is not, and the RED run's exact exception type
 is what confirms the test exercises the failure being fixed, not some other failure entirely.
 
+**Addendum (F0a final review):** the same defect survived in `revoke()`'s live-token branch, which
+still loaded the entity and saved it under `@Version`. That mattered more than it looks: login, signup
+and invitation accept revoke the browser's incoming cookie AFTER issuing the new session, so a rotation
+of that cookie committing between load and save turned an already-successful login — or an accept whose
+invitation was already consumed — into a 409. `revoke()` now issues only conditional native UPDATEs
+(`revokeByHashIfLive`, falling through to the already-rotated branch on zero rows);
+`RefreshTokenRevokeRaceTest` holds the rotation's row lock from a second connection and was RED with
+`ObjectOptimisticLockingFailureException` before the change. Lesson restated: when a write pattern is
+fixed for one method, grep for every other method that writes the same row.
+
 ---
 
 ## Challenge 81 — Recovering a lost refresh response without ever creating two live tokens
@@ -5232,11 +5242,16 @@ that doesn't exist, by design), this one leaves a real, unused orphaned successo
 find.
 
 Logout closes the remaining gap: `revoke()` now branches on the presented row's state. A live token is
-revoked as before. An already-revoked token with an unused orphan (`replacedById != null &&
-graceUsedAt == null`) gets the same two conditional writes grace itself uses —
-`revokeByIdIfLive(replacedById, now)` kills the orphan if it is still live, and `markGraceUsed(hash,
-replacedById, now)` sets `grace_used_at` (repointing `replaced_by_id` at its own current value, a
-no-op write, rather than adding a third native query solely to omit that column). Both calls are
+revoked as before (by a conditional native UPDATE since the final-review fix wave — see #80's addendum).
+An already-rotated token (`replaced_by_id` not null) gets the same two conditional writes grace itself
+uses — `revokeByIdIfLive(replacedById, now)` kills the successor if it is still live, and
+`markGraceUsed(hash, replacedById, now)` sets `grace_used_at` if it is still null (repointing
+`replaced_by_id` at its own current value, a no-op write, rather than adding a third native query solely
+to omit that column). The successor is revoked even when grace was already spent, because a grace
+recovery whose response was *also* lost leaves `replaced_by_id` pointing at a second orphan that would
+otherwise outlive logout by 30 days (`logoutAfterADoublyLostRotationLeavesNoLiveToken`); this is
+deliberately unbounded in time, since a logout that presents the immediately previous token of a chain
+is meant to end that chain. Both calls are
 themselves conditional UPDATEs, so `revoke()` stays idempotent — calling it twice, or racing it against
 a legitimate `rotate()`, just means one of the two conditional writes matches zero rows instead of one.
 `noGraceAfterLogoutOfARotatedToken` proves it: rotate (response lost) → revoke the original → the

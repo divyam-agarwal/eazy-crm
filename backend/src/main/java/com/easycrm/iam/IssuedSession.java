@@ -25,4 +25,10 @@ public record IssuedSession(AuthResponse body, String refreshToken) {
     public String role() {
         return body.role();
     }
+
+    /** The generated toString() would print the raw refresh token into any log line that touches this. */
+    @Override
+    public String toString() {
+        return "IssuedSession[body=" + body + ", refreshToken=<redacted>]";
+    }
 }

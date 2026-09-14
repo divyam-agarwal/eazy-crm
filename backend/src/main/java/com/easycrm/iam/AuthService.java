@@ -201,6 +201,11 @@ public class AuthService {
                 }
                 Tenant tenant = tenants.findById(rot.tenantId())
                         .orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
+                // Login refuses a suspended tenant; refresh must too, or suspension only stops
+                // NEW sessions and an existing one keeps minting access tokens for 30 days.
+                if (tenant.getStatus() == TenantStatus.SUSPENDED) {
+                    throw new UnauthorizedException("invalid refresh token");
+                }
                 String access =
                         jwt.mint(rot.tenantId(), rot.userId(), user.getRole().name());
                 return new IssuedSession(
