@@ -100,8 +100,8 @@ Merge the open Dependabot branches onto `main` if green — at minimum springdoc
   principal change on refresh (§4.4).
 - **Refresh with no cookie** → 401. **Logout** revokes the cookie's token if present, clears the cookie,
   returns **204 whether or not a cookie was sent**.
-- **Login and accept revoke an incoming `easycrm_rt`** belonging to a different session before issuing a
-  new one, so switching users on a device does not leave the previous refresh token live for 30 days.
+- **Signup, login and accept revoke an incoming `easycrm_rt`** after issuing a new session, so switching
+  users (or creating a workspace) on a device does not leave the previous refresh token live for 30 days.
   (These routes may *revoke* the incoming cookie; they never *authenticate* with it.)
 - **Local dev and E2E run on Chromium**, which accepts `Secure` cookies on `http://localhost`. Other
   browsers' localhost behaviour is not relied on.
@@ -149,9 +149,12 @@ cannot silently remove the defence.
 - **Grace is single-use** (`grace_used_at IS NULL`), so a replay loop is impossible.
 - **`rotate` performs no versioned entity write** (the presented row is changed only by conditional
   native UPDATEs), so no optimistic-lock exception — and no 409 — can arise from it.
-- **Owed: engineering-challenges entry** — the lost-ACK problem on a non-idempotent rotation, why Web Locks
-  alone cannot fix it, why the grace condition requires an *unused* successor, and the replay-window
-  cost. Include that the first draft of this spec misdiagnosed a fork `@Version` already prevented.
+- **`revoke` (logout, and the stale-cookie revoke on signup/login/accept) performs no versioned entity
+  write either**: a conditional "revoke if live" UPDATE, falling through on zero rows to revoking the
+  rotated token's successor (always, even after a used grace) and burning its grace. It is idempotent and
+  never 409s.
+- Engineering-challenges entries **#80** (409 vs 401 on a lost race, and the same defect in `revoke`) and
+  **#81** (the grace window, and logout ending an orphaned chain) record the reasoning.
 
 ## 3.4 Rate limits
 
@@ -297,8 +300,12 @@ change.
 **Boot.** `POST /auth/refresh` (one request — identity is in the response).
 - 200 → `establishSession`.
 - 401 → `anonymous`.
+- 403 → a **client bug** (the `X-EasyCRM-Client` header was not sent): log it and show `unreachable`.
+  **Never** treat it as `anonymous`.
 - Network error, timeout, 5xx, 429 → `unreachable`: a retry screen with a button and automatic retry with
-  backoff. **The session is not ended** — the cookie may be fine.
+  backoff. **The session is not ended** — the cookie may be fine. **The first automatic retry happens
+  within 5 s**, well inside the 30 s grace window (§3.3), so a refresh whose response was lost can still
+  recover; later retries may back off further.
 - **Public routes render immediately and do not wait on boot.** `/invite/:token` fetches its preview in
   parallel with boot.
 - The splash is inline in `index.html` (paints before JS parses), has an accessible name ("Loading
@@ -319,10 +326,21 @@ change.
 - Depends on a `LockProvider`; production binds `navigator.locks`, tests bind a fake with the same
   semantics (exclusive, held until the callback's promise settles).
 - Inside `locks.request('easycrm-refresh', …)`: if this tab's token changed since the failing request
-  captured it, return. Otherwise `POST /auth/refresh` through a **bare client with no middleware**.
+  captured it, return. Otherwise `POST /auth/refresh` through a **bare client with no middleware**. The bare
+  client skips only `Authorization` and 401 handling: it **must still send `X-EasyCRM-Client: web`**, or
+  every refresh is a 403. A 403 from refresh is a client bug — log it and surface the `unreachable`/retry
+  state, never `anonymous` and never `endSession`.
+- **Web Locks serialization is load-bearing, not an optimization.** Two concurrent refreshes of the same
+  cookie over HTTP both *succeed* (the second through the grace window), and the later one revokes the
+  earlier one's successor — so a tab whose `Set-Cookie` lands last-but-not-latest leaves the browser
+  holding a dead cookie. Only serialization prevents that.
 - Concurrent callers in one tab share one in-flight promise.
 - **Principal check:** if the refreshed `userId` or `tenantId` differs from `me`, `endSession('principal
   changed')` and reload. Same on receiving a `login` broadcast carrying a different principal.
+
+**Known contract gap.** The generated `AuthResponse` schema has no `required` list, so every field on it
+is optional in `schema.d.ts`. F0b either fixes the backend DTO annotations (and regenerates the snapshot)
+or narrows the type once at `establishSession` — it must not scatter non-null assertions.
 
 **Logout.**
 1. `POST /auth/logout`.
@@ -474,7 +492,9 @@ baseline at the end of F0b, mirroring the backend's JaCoCo floors.
 ## 6.2 Unit tests (Vitest)
 
 - **Refresh coordinator:** serialization; shared in-flight promise; skip when the token already changed;
-  refresh 401 → `endSession`; refresh network/5xx/429 → session kept; principal change → `endSession`.
+  refresh 401 → `endSession`; refresh network/5xx/429 → session kept; refresh 403 → logged, `unreachable`,
+  session not ended; principal change → `endSession`; **the bare client's refresh request carries
+  `X-EasyCRM-Client: web`**.
 - **Middleware:** excluded auth routes never trigger refresh; retry of a POST sends the identical JSON body;
   second 401 → `endSession` + `session-expired` with a sanitized `next`; timeout aborts.
 - **Logout:** 204 → login page; network failure → blocking retry state, session state cleared, login page
@@ -497,6 +517,9 @@ baseline at the end of F0b, mirroring the backend's JaCoCo floors.
 - Invite: loading, invalid, valid+anonymous accept, **valid+authenticated shows sign-out-and-accept**,
   lost-response 404 hint.
 - `RequireSession`: booting → app; booting → redirect; unreachable → retry screen.
+- Boot: the MSW refresh handler **asserts `X-EasyCRM-Client: web` is present** on boot's refresh (and
+  answers 403 without it); a boot 403 renders the retry screen, not the login page; the first automatic
+  retry fires within 5 s.
 
 ## 6.4 End-to-end (Playwright, Chromium, real backend + Postgres)
 
@@ -569,6 +592,9 @@ Not built in F0; recorded so they are not rediscovered:
 - The §4.9 CSP, `Referrer-Policy`, and `frame-ancestors` are served by the hosting layer.
 - `PUBLIC_BASE_URL=https://app.easycustomerrelationship.site`; `/invite/*` must route to the SPA, `/api/*`
   to the backend.
+- **`server.forward-headers-strategy: framework` must be set** behind any proxy or CDN. Without it the
+  backend sees the proxy's IP for every request, so every user shares one `session` and one `auth`
+  rate-limit bucket (§3.4) and one busy office locks everyone out.
 
 ---
 

@@ -14,7 +14,15 @@ merge base with `main` is `8465feb`). Built in a worktree; **not pushed, not mer
   **skipped** — its module coordinates fail to resolve in `compileTestJava` — and remains open.
 - The contract now has **zero `*/*` responses** and a **cookie-based refresh** (`easycrm_rt`,
   httpOnly, race-safe rotation with a 30s lost-response grace window — challenges #80–81).
+- **Final-review fix wave** (after `84246fe`): race-safe logout (no 409 when a stale-cookie revoke races
+  a rotation), logout ends a doubly-lost grace chain, signup revokes a stale incoming cookie, a suspended
+  tenant cannot refresh, raw tokens redacted from record `toString()`, and the contract now documents
+  the cookie routes (required `X-EasyCRM-Client` header, logout 204, signup/accept 201). `clean check`
+  green at **677 tests** (642 root + 35 `platform-primitives`), measured from JUnit XML.
 - **Next step: the F0b plan**, written against the regenerated `docs/api/openapi.yaml`.
+
+> **(Superseded by the F0a section above** — application code has since changed and the F0 brainstorm is
+> done; the paragraph below is kept as the record of that morning.)
 
 **Last updated:** 2026-09-14 — **No application code changed. The frontend is next, and it is
 mid-brainstorm.** Three things happened, none of them backend code:
