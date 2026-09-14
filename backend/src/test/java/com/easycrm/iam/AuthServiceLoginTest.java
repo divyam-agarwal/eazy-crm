@@ -2,7 +2,6 @@ package com.easycrm.iam;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.platform.error.UnauthorizedException;
@@ -24,8 +23,8 @@ class AuthServiceLoginTest extends IntegrationTest {
         TenantContext.clear();
     }
 
-    private AuthResponse signup(String slug, String email, String pass) {
-        AuthResponse res = auth.signup(new SignupRequest(slug, "Biz", "27", null, email, null, pass));
+    private IssuedSession signup(String slug, String email, String pass) {
+        IssuedSession res = auth.signup(new SignupRequest(slug, "Biz", "27", null, email, null, pass));
         TenantContext.clear();
         return res;
     }
@@ -33,7 +32,7 @@ class AuthServiceLoginTest extends IntegrationTest {
     @Test
     void loginWithCorrectPasswordReturnsTokens() {
         signup("login-a", "u@login-a.test", "correct-horse");
-        AuthResponse res = auth.login(new LoginRequest("login-a", "u@login-a.test", "correct-horse"));
+        IssuedSession res = auth.login(new LoginRequest("login-a", "u@login-a.test", "correct-horse"));
         assertNotNull(res.accessToken());
         assertEquals("OWNER", res.role());
     }
@@ -53,7 +52,7 @@ class AuthServiceLoginTest extends IntegrationTest {
 
     @Test
     void failedLoginIsAuditedDespiteThe401Rollback() {
-        AuthResponse signed = signup("login-c", "u@login-c.test", "correct-horse");
+        IssuedSession signed = signup("login-c", "u@login-c.test", "correct-horse");
 
         assertThrows(
                 UnauthorizedException.class, () -> auth.login(new LoginRequest("login-c", "u@login-c.test", "WRONG")));

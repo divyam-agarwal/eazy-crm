@@ -78,7 +78,10 @@ public class OpenApiConfig {
                                 GET /public/q/{token} is a separate, unauthenticated route that is not \
                                 under /api/** at all — the share token itself is the credential. \
                                 Money is carried as a JSON string, never a number. Errors share one \
-                                envelope: {"error":{"code","message","fields"}}.\
+                                envelope: {"error":{"code","message","fields","fieldCodes"}}; clients \
+                                translate fieldCodes (docs/api/error-codes.md). The refresh token is never \
+                                in a body: signup, login, invitation accept and refresh set it as the \
+                                httpOnly easycrm_rt cookie, and refresh and logout read it.\
                                 """))
                 .servers(List.of(new Server()
                         .url(publicBaseUrl)

@@ -2,7 +2,6 @@ package com.easycrm.iam;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.ValidationException;
@@ -40,7 +39,7 @@ class AuthServiceSignupTest extends IntegrationTest {
 
     @Test
     void createsTenantAndOwnerAtomicallyAndReturnsUsableToken() {
-        AuthResponse res = auth.signup(req("acme", "owner@acme.test"));
+        IssuedSession res = auth.signup(req("acme", "owner@acme.test"));
 
         assertNotNull(res.accessToken());
         assertNotNull(res.refreshToken());

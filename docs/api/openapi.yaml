@@ -3,7 +3,7 @@ info:
   description: |-
     Multi-tenant CRM for Indian distributors, traders and small manufacturers. Scope stops at the Order: no invoicing, stock or ledger.
 
-    Routes under /api/** require a bearer JWT, including GET /api/v1/auth/me. The exceptions are the four unauthenticated auth calls (signup, login, refresh, logout) and the invitation preview/accept pair; each is marked with an empty security requirement below. GET /public/q/{token} is a separate, unauthenticated route that is not under /api/** at all — the share token itself is the credential. Money is carried as a JSON string, never a number. Errors share one envelope: {"error":{"code","message","fields"}}.
+    Routes under /api/** require a bearer JWT, including GET /api/v1/auth/me. The exceptions are the four unauthenticated auth calls (signup, login, refresh, logout) and the invitation preview/accept pair; each is marked with an empty security requirement below. GET /public/q/{token} is a separate, unauthenticated route that is not under /api/** at all — the share token itself is the credential. Money is carried as a JSON string, never a number. Errors share one envelope: {"error":{"code","message","fields","fieldCodes"}}; clients translate fieldCodes (docs/api/error-codes.md). The refresh token is never in a body: signup, login, invitation accept and refresh set it as the httpOnly easycrm_rt cookie, and refresh and logout read it.
   title: EasyCRM API
   version: 0.0.1-SNAPSHOT
 servers:
@@ -360,12 +360,6 @@ paths:
   /api/v1/auth/logout:
     post:
       operationId: logout
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RefreshRequest"
-        required: true
       responses:
         "200":
           description: OK
@@ -449,18 +443,12 @@ paths:
   /api/v1/auth/refresh:
     post:
       operationId: refresh
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RefreshRequest"
-        required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TokenResponse"
+                $ref: "#/components/schemas/AuthResponse"
           description: OK
         "401":
           content:
@@ -4390,13 +4378,15 @@ components:
       properties:
         accessToken:
           type: string
-        refreshToken:
+        email:
           type: string
         role:
           type: string
         tenantId:
           type: string
           format: uuid
+        tenantSlug:
+          type: string
         userId:
           type: string
           format: uuid
@@ -5406,14 +5396,6 @@ components:
         versionNo:
           type: integer
           format: int32
-    RefreshRequest:
-      type: object
-      properties:
-        refreshToken:
-          type: string
-          minLength: 1
-      required:
-      - refreshToken
     ShareResponse:
       type: object
       properties:
@@ -5485,13 +5467,6 @@ components:
         phone:
           type: string
         stateCode:
-          type: string
-    TokenResponse:
-      type: object
-      properties:
-        accessToken:
-          type: string
-        refreshToken:
           type: string
   securitySchemes:
     bearer-jwt:

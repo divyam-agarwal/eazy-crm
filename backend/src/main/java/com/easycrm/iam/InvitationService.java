@@ -189,8 +189,9 @@ public class InvitationService {
      * User insert below is @TenantId + RLS, so getting this order wrong does not throw —
      * it silently writes an unbound row. Same trap as challenge #9 and #52.
      */
-    public AuthResponse accept(String rawToken, AcceptInvitationRequest req) {
-        Invitation inv = requireLive(rawToken).invitation();
+    public IssuedSession accept(String rawToken, AcceptInvitationRequest req) {
+        Live live = requireLive(rawToken);
+        Invitation inv = live.invitation();
 
         TenantContext.set(new TenantContext.TenantPrincipal(inv.getTenantId(), null, "SYSTEM"));
         try {
@@ -223,12 +224,15 @@ public class InvitationService {
                 String access = jwt.mint(
                         claimed.getTenantId(), user.getId(), claimed.getRole().name());
                 String refresh = refreshTokens.issue(user.getId(), claimed.getTenantId());
-                return new AuthResponse(
-                        access,
-                        refresh,
-                        claimed.getTenantId(),
-                        user.getId(),
-                        claimed.getRole().name());
+                return new IssuedSession(
+                        new AuthResponse(
+                                access,
+                                user.getId(),
+                                claimed.getTenantId(),
+                                live.tenant().getSlug(),
+                                user.getEmail(),
+                                claimed.getRole().name()),
+                        refresh);
             });
         } finally {
             TenantContext.clear();

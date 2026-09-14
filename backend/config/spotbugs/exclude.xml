@@ -1,5 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Findings excluded permanently, by category. Distinct from baseline.xml, which is a
-     snapshot of pre-existing findings to be worked off over time. Empty for now. -->
+     snapshot of pre-existing findings to be worked off over time. -->
 <FindBugsFilter>
+    <!-- com.easycrm.iam.web.RefreshCookie (Task 7, f0a-backend-auth-prep) is a stateless
+         Spring singleton: every field is `static final` (NAME, PATH, MAX_AGE), so no instance
+         carries mutable state a caller could later change out from under the field that stores
+         it. AuthController and PublicInvitationController each hold a reference to it purely to
+         call its (request, response) methods; there is no meaningful defensive copy of a bean,
+         unlike the List/Map fields this project's EI_EXPOSE_REP2 debt (config/spotbugs/
+         baseline.xml, 17 pre-existing instances) is about. Scoped to the specific field, not the
+         bug type, so a genuinely mutable field stored elsewhere still fails the build. -->
+    <Match>
+        <Class name="com.easycrm.iam.web.AuthController"/>
+        <Field name="cookie"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <Match>
+        <Class name="com.easycrm.iam.web.PublicInvitationController"/>
+        <Field name="cookie"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
 </FindBugsFilter>

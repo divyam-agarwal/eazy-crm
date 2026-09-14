@@ -5,7 +5,6 @@ import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.LoginRequest;
 import com.easycrm.iam.web.dto.MeResponse;
 import com.easycrm.iam.web.dto.SignupRequest;
-import com.easycrm.iam.web.dto.TokenResponse;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.UnauthorizedException;
 import com.easycrm.platform.error.ValidationException;
@@ -65,7 +64,7 @@ public class AuthService {
      * whose session opens already bound to the new tenant (@TenantId + RLS both satisfied).
      * See engineering-challenges #9.
      */
-    public AuthResponse signup(SignupRequest req) {
+    public IssuedSession signup(SignupRequest req) {
         if (tenants.findBySlug(req.slug()).isPresent()) {
             throw new ConflictException(
                     "slug already taken", Map.of("slug", "slug already taken"), Map.of("slug", "SLUG_TAKEN"));
@@ -99,7 +98,7 @@ public class AuthService {
 
         TenantContext.set(new TenantContext.TenantPrincipal(tenant.getId(), null, "SYSTEM"));
         try {
-            AuthResponse res = tx.execute(status -> {
+            IssuedSession res = tx.execute(status -> {
                 tenants.save(tenant);
                 User owner = users.save(new User(
                         req.email(), req.phone(), encoder.encode(req.password()), Role.OWNER, UserStatus.ACTIVE));
@@ -108,7 +107,15 @@ public class AuthService {
 
                 String access = jwt.mint(tenant.getId(), owner.getId(), Role.OWNER.name());
                 String refresh = refreshTokens.issue(owner.getId(), tenant.getId());
-                return new AuthResponse(access, refresh, tenant.getId(), owner.getId(), Role.OWNER.name());
+                return new IssuedSession(
+                        new AuthResponse(
+                                access,
+                                owner.getId(),
+                                tenant.getId(),
+                                tenant.getSlug(),
+                                owner.getEmail(),
+                                Role.OWNER.name()),
+                        refresh);
             });
             // Sent only after the provisioning transaction commits (no email for a rollback).
             emailSender.send(req.email(), "Welcome to EasyCRM", "Your workspace " + req.slug() + " is ready.");
@@ -123,7 +130,7 @@ public class AuthService {
      * user lookup and audit run under the tenant), verify the bcrypt hash, and issue tokens.
      * Every failure throws the same generic 401 (no slug/email enumeration).
      */
-    public AuthResponse login(LoginRequest req) {
+    public IssuedSession login(LoginRequest req) {
         Tenant tenant =
                 tenants.findBySlug(req.slug()).orElseThrow(() -> new UnauthorizedException("invalid credentials"));
         if (tenant.getStatus() == TenantStatus.SUSPENDED) {
@@ -146,12 +153,15 @@ public class AuthService {
                 String access =
                         jwt.mint(tenant.getId(), user.getId(), user.getRole().name());
                 String refresh = refreshTokens.issue(user.getId(), tenant.getId());
-                return new AuthResponse(
-                        access,
-                        refresh,
-                        tenant.getId(),
-                        user.getId(),
-                        user.getRole().name());
+                return new IssuedSession(
+                        new AuthResponse(
+                                access,
+                                user.getId(),
+                                tenant.getId(),
+                                tenant.getSlug(),
+                                user.getEmail(),
+                                user.getRole().name()),
+                        refresh);
             });
         } finally {
             TenantContext.clear();
@@ -162,7 +172,7 @@ public class AuthService {
      * Rotate the opaque refresh token (global table, resolves user+tenant), then load the
      * user under its tenant to mint a fresh access token with the current role.
      */
-    public TokenResponse refresh(String rawToken) {
+    public IssuedSession refresh(String rawToken) {
         RefreshTokenService.RotationResult rot = refreshTokens.rotate(rawToken);
         TenantContext.set(new TenantContext.TenantPrincipal(rot.tenantId(), rot.userId(), "SYSTEM"));
         try {
@@ -176,9 +186,19 @@ public class AuthService {
                 if (user.getStatus() != UserStatus.ACTIVE) {
                     throw new UnauthorizedException("invalid refresh token");
                 }
+                Tenant tenant = tenants.findById(rot.tenantId())
+                        .orElseThrow(() -> new UnauthorizedException("invalid refresh token"));
                 String access =
                         jwt.mint(rot.tenantId(), rot.userId(), user.getRole().name());
-                return new TokenResponse(access, rot.newRawToken());
+                return new IssuedSession(
+                        new AuthResponse(
+                                access,
+                                user.getId(),
+                                tenant.getId(),
+                                tenant.getSlug(),
+                                user.getEmail(),
+                                user.getRole().name()),
+                        rot.newRawToken());
             });
         } finally {
             TenantContext.clear();

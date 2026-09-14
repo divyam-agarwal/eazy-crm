@@ -61,7 +61,12 @@ class InvitationAcceptTest extends IntegrationTest {
                         .content(ACCEPT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.refreshToken").exists())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(jsonPath("$.email").value("new@shop.in"))
+                .andExpect(jsonPath("$.tenantSlug").exists())
+                .andExpect(header().stringValues(
+                                org.springframework.http.HttpHeaders.SET_COOKIE,
+                                org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.startsWith("easycrm_rt="))))
                 .andExpect(jsonPath("$.userId").exists())
                 // The user lands in the INVITING tenant, with the INVITED role.
                 .andExpect(jsonPath("$.tenantId").value(owner.tenantId().toString()))

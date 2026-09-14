@@ -1,10 +1,12 @@
 package com.easycrm.iam.web;
 
 import com.easycrm.iam.InvitationService;
+import com.easycrm.iam.IssuedSession;
 import com.easycrm.iam.web.dto.AcceptInvitationRequest;
 import com.easycrm.iam.web.dto.AuthResponse;
 import com.easycrm.iam.web.dto.InvitationPreviewResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,9 +32,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PublicInvitationController {
 
     private final InvitationService invitations;
+    private final RefreshCookie cookie;
 
-    public PublicInvitationController(InvitationService invitations) {
+    public PublicInvitationController(InvitationService invitations, RefreshCookie cookie) {
         this.invitations = invitations;
+        this.cookie = cookie;
     }
 
     // Public: pre-auth by definition — the invitee has no JWT yet. Mirrors the
@@ -41,8 +45,10 @@ public class PublicInvitationController {
     @SecurityRequirements
     @PostMapping("/{token}/accept")
     public ResponseEntity<AuthResponse> accept(
-            @PathVariable String token, @Valid @RequestBody AcceptInvitationRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(invitations.accept(token, req));
+            @PathVariable String token, @Valid @RequestBody AcceptInvitationRequest req, HttpServletResponse response) {
+        IssuedSession session = invitations.accept(token, req);
+        cookie.write(response, session.refreshToken());
+        return ResponseEntity.status(HttpStatus.CREATED).body(session.body());
     }
 
     @SecurityRequirements
