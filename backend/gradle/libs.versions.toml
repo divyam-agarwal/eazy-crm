@@ -4,7 +4,7 @@ springDependencyManagement = "1.1.7"
 # 1.1.x was never cut upstream (as of 2026-07-28: latest on Maven Central is 1.0.10,
 # dev branch pom.xml reads 1.0.11-SNAPSHOT). 1.0.10 IS the latest.
 openhtmltopdf = "1.0.10"
-jjwt = "0.12.6"
+jjwt = "0.13.0"
 # The artifact id is JDK-qualified as of 8.10: com.bucket4j:bucket4j-core is a stale
 # coordinate that silently resolves to 8.1.x.
 bucket4j = "8.19.0"
