@@ -67,4 +67,29 @@ class ApiErrorWireFormatTest {
                         new ObjectOptimisticLockingFailureException(Object.class, UUID.randomUUID())))
                 .startsWith("{\"error\":{\"code\":\"CONFLICT\""));
     }
+
+    @Test
+    void codedValidationCarriesFieldCodesBesideFields() throws Exception {
+        var tree = mapper.readTree(json(
+                handler.validation(new ValidationException("gstin", "GSTIN checksum is invalid", "GSTIN_CHECKSUM"))));
+
+        assertEquals("GSTIN checksum is invalid", tree.at("/error/fields/gstin").asText());
+        assertEquals("GSTIN_CHECKSUM", tree.at("/error/fieldCodes/gstin").asText());
+    }
+
+    @Test
+    void anUncodedErrorOmitsTheFieldCodesKeyEntirely() throws Exception {
+        String body = json(handler.validation(new ValidationException("gstin", "GSTIN checksum is invalid")));
+        assertFalse(body.contains("fieldCodes"), "absent codes must not serialize, keeping existing bytes identical");
+    }
+
+    @Test
+    void aConflictCanCarryFieldsAndCodes() throws Exception {
+        var tree = mapper.readTree(json(handler.conflict(new ConflictException(
+                "slug already taken",
+                java.util.Map.of("slug", "slug already taken"),
+                java.util.Map.of("slug", "SLUG_TAKEN")))));
+
+        assertEquals("SLUG_TAKEN", tree.at("/error/fieldCodes/slug").asText());
+    }
 }

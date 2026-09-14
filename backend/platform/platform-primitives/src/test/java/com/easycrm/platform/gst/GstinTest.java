@@ -71,4 +71,28 @@ class GstinTest {
         assertFalse(StateCode.isValid(null));
         assertFalse(StateCode.isValid("1"));
     }
+
+    @Test
+    void everyRejectionCarriesAStableReasonCode() {
+        assertEquals(
+                "GSTIN_REQUIRED",
+                assertThrows(ValidationException.class, () -> Gstin.parse(null))
+                        .getCodes()
+                        .get("gstin"));
+        assertEquals(
+                "GSTIN_LENGTH",
+                assertThrows(ValidationException.class, () -> Gstin.parse("27AAPFU0939F1Z"))
+                        .getCodes()
+                        .get("gstin"));
+        assertEquals(
+                "GSTIN_CHARSET",
+                assertThrows(ValidationException.class, () -> Gstin.parse("27AAPFU0939F1Z!"))
+                        .getCodes()
+                        .get("gstin"));
+        assertEquals(
+                "GSTIN_CHECKSUM",
+                assertThrows(ValidationException.class, () -> Gstin.parse("27AAPFU0939F1ZZ"))
+                        .getCodes()
+                        .get("gstin"));
+    }
 }

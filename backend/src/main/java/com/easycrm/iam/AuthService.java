@@ -67,7 +67,8 @@ public class AuthService {
      */
     public AuthResponse signup(SignupRequest req) {
         if (tenants.findBySlug(req.slug()).isPresent()) {
-            throw new ConflictException("slug already taken");
+            throw new ConflictException(
+                    "slug already taken", Map.of("slug", "slug already taken"), Map.of("slug", "SLUG_TAKEN"));
         }
         // MF1: a buyer's GSTIN goes through Gstin.parse and StateCode.requireValid in
         // CustomerService; the seller's went through neither. QuotationService.isInterState
@@ -79,7 +80,8 @@ public class AuthService {
         if (req.gstin() != null && !req.gstin().isBlank()) {
             Gstin parsed = Gstin.parse(req.gstin()); // 422 on charset, checksum or state prefix
             if (!parsed.stateCode().equals(stateCode)) {
-                throw new ValidationException("stateCode", "must match the GSTIN state code");
+                throw new ValidationException(
+                        "stateCode", "must match the GSTIN state code", "STATE_CODE_GSTIN_MISMATCH");
             }
             // Persist the parsed form, not the raw input: CustomerService already stores g.value(),
             // and an un-normalised seller GSTIN prints on every PDF letterhead and defeats exact-match

@@ -51,7 +51,7 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> conflict(ConflictException ex) {
         // body() omits the key entirely when fields is null, so every existing 409 in the
         // codebase stays byte-identical — only a conflict that opts in gains a fields object.
-        return body(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), ex.getFields());
+        return body(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), ex.getFields(), ex.getFieldCodes());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -81,7 +81,7 @@ public class ApiExceptionHandler {
             content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     public ResponseEntity<ApiErrorResponse> validation(ValidationException ex) {
         Map<String, Object> fields = new HashMap<>(ex.getFields());
-        return body(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "request is invalid", fields);
+        return body(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "request is invalid", fields, ex.getCodes());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -91,12 +91,32 @@ public class ApiExceptionHandler {
             content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     public ResponseEntity<ApiErrorResponse> invalid(MethodArgumentNotValidException ex) {
         Map<String, Object> fields = new HashMap<>();
-        ex.getBindingResult().getFieldErrors().forEach(fe -> fields.put(fe.getField(), fe.getDefaultMessage()));
-        return body(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "request is invalid", fields);
+        Map<String, String> codes = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(fe -> {
+            fields.put(fe.getField(), fe.getDefaultMessage());
+            codes.put(fe.getField(), constraintCode(fe.getCode()));
+        });
+        return body(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "request is invalid", fields, codes);
+    }
+
+    /** "NotBlank" -> "NOT_BLANK". Bean Validation's constraint name is already stable per annotation. */
+    static String constraintCode(String constraint) {
+        if (constraint == null) return "INVALID";
+        return constraint.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toUpperCase(java.util.Locale.ROOT);
     }
 
     private ResponseEntity<ApiErrorResponse> body(
             HttpStatus status, String code, String message, Map<String, Object> fields) {
-        return ResponseEntity.status(status).body(new ApiErrorResponse(new ApiError(code, message, fields)));
+        return body(status, code, message, fields, null);
+    }
+
+    private ResponseEntity<ApiErrorResponse> body(
+            HttpStatus status,
+            String code,
+            String message,
+            Map<String, Object> fields,
+            Map<String, String> fieldCodes) {
+        return ResponseEntity.status(status)
+                .body(new ApiErrorResponse(new ApiError(code, message, fields, fieldCodes)));
     }
 }

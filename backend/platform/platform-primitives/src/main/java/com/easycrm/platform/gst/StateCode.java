@@ -24,6 +24,6 @@ public final class StateCode {
     }
 
     public static void requireValid(String code) {
-        if (!isValid(code)) throw new ValidationException("stateCode", "invalid GST state code");
+        if (!isValid(code)) throw new ValidationException("stateCode", "invalid GST state code", "STATE_CODE_INVALID");
     }
 }

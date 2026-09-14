@@ -18,9 +18,12 @@ import java.util.Map;
  * instead of one per component, and does not rest on record-component annotation propagation
  * behaving as assumed. Without it, an error with no field detail would serialize
  * {@code "fields":null} — a different document from today's, which omits the key entirely.
+ *
+ * <p>{@code fieldCodes} maps a field to a stable reason code (docs/api/error-codes.md); omitted
+ * when there are none.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ApiError(String code, String message, Map<String, Object> fields) {
+public record ApiError(String code, String message, Map<String, Object> fields, Map<String, String> fieldCodes) {
 
     // Defensive copy: a record component of type Map stores and returns whatever mutable
     // map the caller passes in, verbatim -- SpotBugs flags that as EI_EXPOSE_REP2 (the
@@ -48,5 +51,14 @@ public record ApiError(String code, String message, Map<String, Object> fields) 
     // introduced for that path is now moot).
     public ApiError {
         fields = fields == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(fields));
+        // Same copy discipline as fields. Null (not empty) when absent, so NON_NULL omits the key
+        // and every existing error keeps its exact bytes.
+        fieldCodes = fieldCodes == null || fieldCodes.isEmpty()
+                ? null
+                : Collections.unmodifiableMap(new LinkedHashMap<>(fieldCodes));
+    }
+
+    public ApiError(String code, String message, Map<String, Object> fields) {
+        this(code, message, fields, null);
     }
 }

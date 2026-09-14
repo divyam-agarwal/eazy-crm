@@ -18,15 +18,15 @@ public final class Gstin {
     }
 
     public static Gstin parse(String raw) {
-        if (raw == null) throw new ValidationException("gstin", "GSTIN is required");
+        if (raw == null) throw new ValidationException("gstin", "GSTIN is required", "GSTIN_REQUIRED");
         String g = raw.trim().toUpperCase();
-        if (g.length() != 15) throw new ValidationException("gstin", "GSTIN must be 15 characters");
+        if (g.length() != 15) throw new ValidationException("gstin", "GSTIN must be 15 characters", "GSTIN_LENGTH");
         for (int i = 0; i < 15; i++) {
             if (CHARSET.indexOf(g.charAt(i)) < 0)
-                throw new ValidationException("gstin", "GSTIN has invalid characters");
+                throw new ValidationException("gstin", "GSTIN has invalid characters", "GSTIN_CHARSET");
         }
         if (checkChar(g.substring(0, 14)) != g.charAt(14))
-            throw new ValidationException("gstin", "GSTIN checksum is invalid");
+            throw new ValidationException("gstin", "GSTIN checksum is invalid", "GSTIN_CHECKSUM");
         // The state prefix is part of what makes a GSTIN a GSTIN. Validating it here rather than
         // leaving it to the caller closes MF1: CustomerService remembered the second step and the
         // signup path did not, and an invalid seller state code silently decides CGST+SGST vs IGST

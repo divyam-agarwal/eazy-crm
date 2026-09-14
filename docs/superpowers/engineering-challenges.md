@@ -5088,3 +5088,60 @@ somewhere upstream being rendered as if it were ordered. Canonicalizing the spec
 section — not loosening the comparison, not declaring the whole guard non-viable — keeps the guard
 exactly as strict as it was designed to be, for everything that was never the source of the
 disagreement.
+
+---
+
+## Challenge 80 — A re-hashed SpotBugs finding is a chance to fix the defect, not just re-baseline it; and a two-nullable-parameter constructor needs all four combinations tested
+
+**Phase:** Implementation (F0a backend auth prep, Task 3)
+
+### The problem
+
+Giving `ValidationException` a `codes` map meant its canonical constructor grew from
+`ValidationException(Map fields)` to `ValidationException(Map fields, Map codes)`. `./gradlew
+:platform:platform-primitives:check` then failed `spotbugsMain` with a "new" `EI_EXPOSE_REP2` on
+that constructor storing `fields` — except `fields` was stored the exact same unguarded way
+(`this.fields = fields;`) before this task touched the file, and `config/spotbugs/baseline.xml`
+already carried an entry for it, keyed to the old one-parameter constructor. Exactly challenge
+#76's mechanism: appending `codes` reshaped the constructor's descriptor, which reshaped
+`instanceHash`, which orphaned the baseline entry and made an unchanged line of code look like a
+brand-new finding.
+
+Separately, once `ConflictException` grew a second nullable parameter (`fields`, `fieldCodes`
+independently nullable), `jacocoTestCoverageVerification` failed platform-primitives' 99% branch
+floor at 0.96 — one branch short. The existing test suite exercised three of the four `(fields,
+fieldCodes)` null/non-null combinations (both null via the 1-arg constructor, fields-only via the
+2-arg, both-present via the new 3-arg used by `AuthService`), but nothing constructed a conflict
+with `fields == null` and `fieldCodes` present — a combination no caller in the codebase actually
+needs yet, since the two are semantically paired in every real use.
+
+### The solution
+
+For the SpotBugs finding: rather than regenerating the baseline entry in place (challenge #76's
+prescribed move for a genuine re-hash), the underlying `fields` field was given the same defensive
+copy already applied to `codes` in the same constructor, and already standard for `ConflictException
+.fields` and `ApiError.fields`: `Collections.unmodifiableMap(new LinkedHashMap<>(fields))`. That
+removes the finding outright — SpotBugs's `EI_EXPOSE_REP2`/`EI_EXPOSE_REP` analysis recognizes an
+`unmodifiableMap` wrap as safe (confirmed by `ConflictException` and `ApiError` never appearing in
+the baseline at all) — so there is no baseline entry left to maintain for this field, ever. Updating
+the baseline would have been correct too, but only papers over a debt the codebase's own established
+pattern for this exact class of field already knows how to pay off in three lines.
+
+For the coverage gap: added `ConflictExceptionTest.fieldCodesCanAccompanyAConflictWithNoStructuredFields`,
+constructing `new ConflictException("m", null, Map.of("slug", "SLUG_TAKEN"))` purely to touch the
+missing branch, with a comment noting no real caller needs this shape today. Confirmed by reading
+`platform/platform-primitives/build/reports/jacoco/test/jacocoTestReport.xml`, which pinpointed the
+miss to `ConflictException.<init>` line 34 (branch 3 of 4) before writing the test, rather than
+guessing which combination was untested.
+
+### Lesson
+
+A SpotBugs baseline re-hash (challenge #76) is not automatically a "just resync the baseline" chore
+— check first whether the class already has an established, cheap fix for that exact finding type
+elsewhere in the same file or a sibling class. If it does, applying it retires the finding instead of
+re-filing the same debt under a new hash, and costs about the same three lines as the baseline edit
+would have. Separately, a coverage floor on a constructor with N independently-nullable parameters
+demands tests for all 2^N null/non-null combinations, not just the ones production call sites
+happen to use — the untested combination is often one nothing in the codebase needs *yet*, which is
+exactly why nothing exercises it and exactly why the gate is right to ask for it before the
+constructor's contract silently narrows to "whatever the current callers pass."

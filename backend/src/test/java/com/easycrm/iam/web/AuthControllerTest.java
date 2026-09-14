@@ -65,4 +65,43 @@ class AuthControllerTest extends IntegrationTest {
                         .content(bad))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void beanValidationFailuresCarryConstraintCodes() throws Exception {
+        mvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"slug":"codes-a","businessName":"Codes","stateCode":"27","email":"o@codes-a.test"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.fieldCodes.password").value("NOT_BLANK"));
+    }
+
+    @Test
+    void aTakenSlugLandsOnTheSlugFieldWithACode() throws Exception {
+        String body = """
+            {"slug":"codes-dupe","businessName":"Codes","stateCode":"27",
+             "email":"%s","password":"correct-horse"}""";
+        mvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted("a@codes.test")))
+                .andExpect(status().isCreated());
+        mvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted("b@codes.test")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.fields.slug").exists())
+                .andExpect(jsonPath("$.error.fieldCodes.slug").value("SLUG_TAKEN"));
+    }
+
+    @Test
+    void aSellerGstinDisagreeingWithTheStateCarriesAMismatchCode() throws Exception {
+        // 27AAPFU0939F1ZV is a valid Maharashtra (27) GSTIN; stateCode 29 is Karnataka.
+        mvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"slug":"codes-mismatch","businessName":"Codes","stateCode":"29","gstin":"27AAPFU0939F1ZV",
+                             "email":"o@codes-m.test","password":"correct-horse"}"""))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.stateCode").value("STATE_CODE_GSTIN_MISMATCH"));
+    }
 }

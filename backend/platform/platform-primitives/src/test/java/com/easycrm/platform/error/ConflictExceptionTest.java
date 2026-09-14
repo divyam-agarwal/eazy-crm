@@ -48,4 +48,37 @@ class ConflictExceptionTest {
     void nullFieldsAreTolerated() {
         assertNull(new ConflictException("m", null).getFields());
     }
+
+    @Test
+    void aConflictCanCarryFieldCodesAlongsideFields() {
+        ConflictException ex = new ConflictException(
+                "slug already taken", Map.of("slug", "slug already taken"), Map.of("slug", "SLUG_TAKEN"));
+        assertEquals("SLUG_TAKEN", ex.getFieldCodes().get("slug"));
+    }
+
+    @Test
+    void fieldCodesAreDefensivelyCopiedAndUnmodifiable() {
+        Map<String, String> source = new HashMap<>();
+        source.put("slug", "SLUG_TAKEN");
+        ConflictException ex = new ConflictException("m", Map.of("slug", "x"), source);
+
+        source.put("other", "OTHER");
+        assertNull(ex.getFieldCodes().get("other"), "must not retain the caller's map");
+        assertThrows(
+                UnsupportedOperationException.class, () -> ex.getFieldCodes().put("x", "Y"));
+    }
+
+    @Test
+    void fieldCodesCanAccompanyAConflictWithNoStructuredFields() {
+        // Not a case any caller in this codebase uses today, but the constructor allows it
+        // independently of fields, so both are exercised: fields absent, fieldCodes present.
+        ConflictException ex = new ConflictException("m", null, Map.of("slug", "SLUG_TAKEN"));
+        assertNull(ex.getFields());
+        assertEquals("SLUG_TAKEN", ex.getFieldCodes().get("slug"));
+    }
+
+    @Test
+    void nullFieldCodesAreTolerated() {
+        assertNull(new ConflictException("m", Map.of("slug", "x"), null).getFieldCodes());
+    }
 }

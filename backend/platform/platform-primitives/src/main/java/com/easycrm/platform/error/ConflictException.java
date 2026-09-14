@@ -20,18 +20,29 @@ import java.util.Map;
 public class ConflictException extends RuntimeException {
 
     private final Map<String, Object> fields;
+    private final Map<String, String> fieldCodes;
 
     public ConflictException(String message) {
-        this(message, null);
+        this(message, null, null);
     }
 
     public ConflictException(String message, Map<String, Object> fields) {
+        this(message, fields, null);
+    }
+
+    public ConflictException(String message, Map<String, Object> fields, Map<String, String> fieldCodes) {
         super(message);
         this.fields = fields == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(fields));
+        this.fieldCodes = fieldCodes == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(fieldCodes));
     }
 
     /** Null when this conflict carries no structured detail — the common case. */
     public Map<String, Object> getFields() {
         return fields;
+    }
+
+    /** Null when this conflict carries no reason codes — the common case. */
+    public Map<String, String> getFieldCodes() {
+        return fieldCodes;
     }
 }
