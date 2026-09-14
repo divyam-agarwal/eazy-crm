@@ -5248,3 +5248,46 @@ to run the *same* conditional writes rotation's grace path already had, against 
 same reason: an orphaned successor and an unused `grace_used_at` are live state that outlives the
 event that created them, and every code path that can observe that state has to account for it, not
 just the one path (`rotate`) the feature was designed around.
+
+## Challenge 82 — A "read `application.yml` directly" test silently stops resolving `${VAR:default}` placeholders
+
+**Phase:** Implementation
+
+### The problem
+
+`RateLimitDefaultsTest` established a pattern for guarding a shipped `application.yml` default
+without booting a full Spring context: load the file with `YamlPropertySourceLoader`, add it to a bare
+`StandardEnvironment`, and bind straight off `new Binder(ConfigurationPropertySources.get(env))`. It
+works, because every value that pattern reads (`rate-limit.enabled: true`, `capacity: 60`) is a literal
+in the YAML — nothing to resolve.
+
+`SignupProperties` needed the opposite: `easycrm.signup.enabled: ${SIGNUP_ENABLED:true}`, because the
+switch has to be overridable by an env var in every profile (spec F0-3), not just hold a literal
+default. Copying the established pattern verbatim for `SignupDefaultsTest` compiled fine and failed at
+run time with `ConversionFailedException: Failed to convert ... "${SIGNUP_ENABLED:true}"` — Spring
+tried to convert the *literal placeholder string* straight to `boolean` and choked, never falling back
+to the record's `@DefaultValue("true")` because, as far as the binder was concerned, the property was
+present.
+
+### The solution
+
+`new Binder(Iterable<ConfigurationPropertySource> sources)` defaults its `placeholdersResolver` field to
+`PlaceholdersResolver.NONE` (confirmed by reading `Binder`'s source in the Spring Boot 4.1 sources jar) —
+it binds raw property text with no `${...}` substitution at all. The static factory `Binder.get(Environment)`
+is a different code path: it additionally builds a `PropertySourcesPlaceholdersResolver(environment)` and
+passes it into the same private constructor. Swapping `new Binder(ConfigurationPropertySources.get(env))`
+for `Binder.get(env)` in `SignupDefaultsTest` was the entire fix — same `StandardEnvironment`, same loaded
+YAML property source, now with placeholder resolution wired in, so `${SIGNUP_ENABLED:true}` resolves to
+`true` and the assertion passes.
+
+### Lesson
+
+Two overloads that both construct the same `Binder` type are not interchangeable once a bound property's
+YAML value contains `${...}`: one silently resolves placeholders, the other silently doesn't, and the
+failure surfaces as a confusing type-conversion error two layers away from the actual cause (missing
+placeholder resolution), not as a missing-property error. A "read the YAML directly" unit test pattern
+copied from a prior property is only safe to reuse unmodified when the new property's YAML is *also* a
+literal; the moment a property needs env-var overridability (`${VAR:default}`), the test has to move to
+`Binder.get(environment)` (or pass an explicit `PropertySourcesPlaceholdersResolver`) rather than the raw
+constructor, and that requirement is invisible until the test is actually run — the compiler cannot catch
+it, and the two constructors' signatures give no hint that one resolves placeholders and the other doesn't.
