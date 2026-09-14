@@ -26,7 +26,10 @@ class RefreshTokenServiceTest extends IntegrationTest {
         assertEquals(user, r.userId());
         assertEquals(tenant, r.tenantId());
 
-        // Old token is now revoked -> rotating it again fails.
+        // Old token is now revoked, but within grace (spec §3.3) it is recoverable once — the
+        // lost-ACK path recovers here and revokes the orphaned successor r minted.
+        assertDoesNotThrow(() -> service.rotate(raw));
+        // Grace is single-use: presenting the old token again fails.
         assertThrows(UnauthorizedException.class, () -> service.rotate(raw));
     }
 

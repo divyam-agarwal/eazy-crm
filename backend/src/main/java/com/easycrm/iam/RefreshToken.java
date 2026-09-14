@@ -34,6 +34,9 @@ public class RefreshToken extends BaseEntity {
     @Column(name = "replaced_by_id")
     private UUID replacedById;
 
+    @Column(name = "grace_used_at")
+    private Instant graceUsedAt;
+
     protected RefreshToken() {}
 
     public RefreshToken(String tokenHash, UUID userId, UUID tenantId, Instant expiresAt) {
@@ -70,5 +73,9 @@ public class RefreshToken extends BaseEntity {
 
     public UUID getReplacedById() {
         return replacedById;
+    }
+
+    public Instant getGraceUsedAt() {
+        return graceUsedAt;
     }
 }

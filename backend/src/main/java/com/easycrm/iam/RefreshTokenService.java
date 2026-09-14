@@ -3,6 +3,7 @@ package com.easycrm.iam;
 import com.easycrm.platform.error.UnauthorizedException;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class RefreshTokenService {
 
     public static final long TTL_DAYS = 30;
+    public static final Duration GRACE = Duration.ofSeconds(30);
     private final SecureRandom random = new SecureRandom();
     private final Base64.Encoder base64Url = Base64.getUrlEncoder().withoutPadding();
 
@@ -65,7 +67,18 @@ public class RefreshTokenService {
         if (tokens.revokeIfLive(hash, successor.getId(), now) == 1) {
             return new RotationResult(newRaw, userId, tenantId);
         }
-        throw invalid();
+
+        // Lost-ACK grace (spec §3.3): the presented token was revoked by a rotation whose response
+        // may never have arrived. Recover exactly once, within GRACE, and only if the successor that
+        // rotation minted is still unused — a used successor means this is a replay, not a lost reply.
+        UUID orphan = tokens.findGraceSuccessor(hash, now.minus(GRACE), now).orElseThrow(RefreshTokenService::invalid);
+        if (tokens.revokeByIdIfLive(orphan, now) != 1) {
+            throw invalid();
+        }
+        if (tokens.markGraceUsed(hash, successor.getId(), now) != 1) {
+            throw invalid();
+        }
+        return new RotationResult(newRaw, userId, tenantId);
     }
 
     @Transactional

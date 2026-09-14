@@ -36,4 +36,37 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
              WHERE token_hash = :hash AND revoked_at IS NULL AND expires_at > :now
             """, nativeQuery = true)
     int revokeIfLive(@Param("hash") String hash, @Param("successorId") UUID successorId, @Param("now") Instant now);
+
+    /**
+     * The orphaned successor of a token eligible for grace, locking the presented row so two grace
+     * attempts serialize. Empty when the token is not recently rotated, already used its grace, is
+     * expired, or was revoked by logout (replaced_by_id null).
+     */
+    @Query(value = """
+            SELECT replaced_by_id FROM refresh_token
+             WHERE token_hash = :hash
+               AND revoked_at > :cutoff
+               AND grace_used_at IS NULL
+               AND expires_at > :now
+               AND replaced_by_id IS NOT NULL
+             FOR UPDATE
+            """, nativeQuery = true)
+    Optional<UUID> findGraceSuccessor(
+            @Param("hash") String hash, @Param("cutoff") Instant cutoff, @Param("now") Instant now);
+
+    /** Revokes one token only if nobody has used it yet. Zero rows means the successor was used. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE refresh_token SET revoked_at = :now, version = version + 1, updated_at = :now
+             WHERE id = :id AND revoked_at IS NULL
+            """, nativeQuery = true)
+    int revokeByIdIfLive(@Param("id") UUID id, @Param("now") Instant now);
+
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE refresh_token
+               SET grace_used_at = :now, replaced_by_id = :successorId, version = version + 1, updated_at = :now
+             WHERE token_hash = :hash AND grace_used_at IS NULL
+            """, nativeQuery = true)
+    int markGraceUsed(@Param("hash") String hash, @Param("successorId") UUID successorId, @Param("now") Instant now);
 }

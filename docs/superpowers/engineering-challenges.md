@@ -5159,3 +5159,68 @@ code. And a race test is only evidence once it demonstrably forces the interleav
 holding a lock from a second connection and polling `pg_stat_activity` for a blocked statement is
 deterministic where two threads racing a timing window is not, and the RED run's exact exception type
 is what confirms the test exercises the failure being fixed, not some other failure entirely.
+
+---
+
+## Challenge 80 — Recovering a lost refresh response without ever creating two live tokens
+
+**Phase:** Implementation
+
+### The problem
+
+Challenge #79 made a losing rotation fail cleanly with 401. But there is a second failure mode a
+strict "second presentation of a revoked token is invalid" rule cannot distinguish from an attack: the
+*server* commits the rotation, but the HTTP response — and its `Set-Cookie` — never reaches the
+browser (a dropped connection, a proxy timeout, a crashed tab mid-flight). Every browser tab shares
+one cookie, so the browser's only copy of the refresh token is now the just-revoked one, and the next
+tab to use it gets treated exactly like a stolen token and signed out — including every *other* tab
+that hadn't done anything wrong. The naive fix, "let a revoked token rotate once more," is unsafe on
+its own: it cannot tell a lost-ACK retry apart from an attacker replaying a token they captured before
+it was rotated, and if the legitimate client already received and used the successor, "rotate again"
+would mint a second live token for one session — silently defeating the single-token-per-session
+invariant Challenge #79 exists to protect.
+
+### The solution
+
+Grace is deliberately narrower than "let it rotate again": it recovers a specific, verifiable
+condition — *this exact revoked token's successor is still unused* — rather than merely allowing reuse.
+`findGraceSuccessor` (native, `FOR UPDATE`) returns the orphaned successor only when the presented
+token was revoked within the last `GRACE` (30s), has not already used its one grace attempt
+(`grace_used_at IS NULL`), and was revoked *by a rotation* rather than by logout (`replaced_by_id IS
+NOT NULL` — `RefreshTokenService.revoke()` never sets it). The row lock this query takes serializes
+two concurrent grace attempts on the same token the same way `revokeIfLive`'s row lock already
+serializes two concurrent rotations (#79) — a second racer re-evaluates `grace_used_at IS NULL` against
+the committed row and finds it already used.
+
+Recovery is then two more conditional, native writes, each meaningful on its own: `revokeByIdIfLive`
+revokes the orphaned successor (it was never delivered, so nothing should still be able to use it) but
+only if nobody has raced ahead and already used it — the same "zero rows means someone else already
+determined the answer" pattern as #79's `revokeIfLive`, applied to the successor instead of the
+presented token. `markGraceUsed` then flips `grace_used_at` on the *presented* token and repoints
+`replaced_by_id` at the grace call's own new successor, single-use by the same `WHERE grace_used_at IS
+NULL` predicate `findGraceSuccessor` reads. Either write returning zero is `invalid()`, same as every
+other zero-match branch in `rotate()`. `noGraceOnceTheSuccessorHasBeenUsed` is the test that would
+catch a regression toward the naive fix: it rotates once, uses the successor, then re-presents the
+original and asserts 401 — because at that point the client evidently *did* receive the response, so a
+second live token would be a real duplicate-session bug, not a recovery.
+
+`aRealConcurrentRotationLeavesExactlyOneLiveToken` reuses #79's real-lock-contention technique
+(a second connection holds the winning UPDATE open, `rotate()` blocks on it, `pg_stat_activity` polling
+confirms the block before the winner commits) but asserts the *opposite* outcome from #79's race test:
+here the loser must recover through grace rather than fail, because unlike #79's race (a successor id
+that doesn't exist, by design), this one leaves a real, unused orphaned successor behind for grace to
+find.
+
+### Lesson
+
+A recovery path for "the response got lost" is not the same feature as "allow the token to be reused,"
+even though both let a revoked token succeed once more — the difference is entirely in what the
+recovery verifies before acting. Here that means checking the *specific* fact that distinguishes
+lost-ACK from replay-after-successful-delivery (the successor's use state), not merely relaxing the
+liveness check that #79 tightened. Every predicate in the grace query earns its place by ruling out one
+attack or one already-consumed case: drop the time window and a stolen token stays replayable forever;
+drop `grace_used_at IS NULL` and grace becomes unlimited-use; drop `replaced_by_id IS NOT NULL` and a
+logged-out token becomes recoverable. And because the whole mechanism exists to preserve "at most one
+live token per session" under concurrency, its own race — two grace attempts on the same lost token —
+needed the same real-lock proof as the rotation race it extends, not a fresh assumption that the new
+code path is race-free just because the old one, once fixed, was.
