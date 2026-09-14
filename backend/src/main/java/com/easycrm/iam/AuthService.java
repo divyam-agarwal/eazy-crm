@@ -132,7 +132,7 @@ public class AuthService {
         TenantContext.set(new TenantContext.TenantPrincipal(tenant.getId(), null, "SYSTEM"));
         try {
             return tx.execute(status -> {
-                User user = users.findByEmail(req.email()).orElse(null);
+                User user = users.findByEmailIgnoreCase(req.email()).orElse(null);
                 if (user == null
                         || user.getStatus() != UserStatus.ACTIVE
                         || !encoder.matches(req.password(), user.getPasswordHash())) {

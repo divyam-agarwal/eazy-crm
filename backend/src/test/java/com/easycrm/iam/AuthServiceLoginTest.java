@@ -65,4 +65,16 @@ class AuthServiceLoginTest extends IntegrationTest {
                 logs.countByAction("LOGIN_FAILED"),
                 "failed login must be recorded even though login threw and rolled back");
     }
+
+    @Test
+    void loginIgnoresEmailCase() {
+        // V32 made membership uniqueness case-insensitive; an Android keyboard capitalises the first
+        // letter. Login must agree with the uniqueness rule, or the user gets the generic 401.
+        signup("login-case", "ravi@login-case.test", "correct-horse");
+        TenantContext.clear();
+
+        var res = auth.login(new LoginRequest("login-case", "Ravi@Login-Case.test", "correct-horse"));
+
+        assertNotNull(res.accessToken());
+    }
 }
