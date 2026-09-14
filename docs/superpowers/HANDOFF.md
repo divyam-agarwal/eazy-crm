@@ -44,7 +44,16 @@ mid-brainstorm.** Three things happened, none of them backend code:
 
 ## What the next agent should pick up (2026-09-14)
 
-**1. Continue the F0 brainstorm** (`superpowers:brainstorming`, architectural path). Classified, context
+**UPDATE (later on 2026-09-14): the F0 brainstorm is DONE and the spec is written** —
+[`specs/2026-09-14-f0-frontend-foundation-design.md`](specs/2026-09-14-f0-frontend-foundation-design.md).
+The owner chose **B (signup page included)**, guarded by a `SIGNUP_ENABLED` switch that defaults open
+everywhere; local-only; Web Locks + atomic rotation for the refresh race; English-only i18n plumbing; a
+remembered workspace field on login; F0a (backend) merged before F0b (frontend). A **platform admin
+role** was added to the roadmap as item 4a. **Next: the owner reviews the spec, then dispatch the five
+frontend reviewers on it, verify findings, then `writing-plans`.** The text below is kept for the
+backend-gap detail, all of which the spec's Part 2 re-verifies.
+
+**1. (Superseded) Continue the F0 brainstorm** (`superpowers:brainstorming`, architectural path). Classified, context
 explored, decomposition approved. **The pending question the owner has not yet answered:**
 
 > **Does F0 include self-serve tenant signup?** `POST /api/v1/auth/signup` exists, but the design spec
