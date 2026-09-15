@@ -3,6 +3,12 @@
 **Date:** 2026-09-03 · **last updated 2026-09-16**
 **Status:** Living document. Supersedes no design doc; sequences all of them.
 
+**2026-09-16 (later) — latest.** **`main` is pushed (`2d9a2aa`), and CI run `35014714570` is green on all
+three jobs.** The "33 commits unpushed, CI has run on none" caveat below is **discharged**. **The F0b plan is
+written:** [`superpowers/plans/2026-09-16-f0b-frontend-foundation.md`](superpowers/plans/2026-09-16-f0b-frontend-foundation.md),
+17 tasks. **Next: specialist review of the plan, then build.** No application code moved; the 677-test baseline
+stands. HANDOFF.md's top section lists the plan's decisions (P1–P13) and its unverified assumptions.
+
 **2026-09-16 — what changed since the blocks below.** **F0a (backend auth prep, the first half of
 item 4's F0) is built, reviewed and merged into local `main` at `186adc4` — NOT pushed: `main` is 33
 commits ahead of `origin/main` (`ce1db36`), and CI has run on none of them.** Pushing is the owner's
@@ -419,7 +425,7 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 | Track | Have | Left |
 |---|---|---|
 | **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 677 tests (F0a, unpushed) | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
-| **Frontend** | No frontend code yet. F0 spec approved and reviewed; **F0a backend prep merged** — cookie auth, `application/json` contract, `fieldCodes` | F0b (scaffold, client, login/signup/invite, shell, CI) → F1–F3. `/invite/{token}` first |
+| **Frontend** | No frontend code yet. F0 spec approved and reviewed; **F0a backend prep merged and pushed**: cookie auth, `application/json` contract, `fieldCodes`. **F0b plan written (2026-09-16), not yet reviewed** | F0b (review the plan, then build: scaffold, client, login/signup/invite, shell, CI) → F1–F3. `/invite/{token}` first |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
 | **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, Wave 1.5 supply chain (green in CI since 2026-09-13), **Wave 1.6 module boundaries — four hand-written boundary gates plus Modulith, C4 docs drift-guarded**, specialist reviewer registry drift guard (2026-09-14) | Blocking oasdiff, branch protection, 32 SpotBugs findings |
 | **Local dev** | Gradle + Testcontainers + ngrok | Dockerfile, compose stack, seed data |
@@ -441,7 +447,7 @@ Ranked. **Effort** is relative, not calendar.
 | ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **DONE 2026-09-12, merged fast-forward at `7f6a700`** (eleven commits, `5053d42`..`7f6a700`; 604 tests, 0 failures). `gitleaks`, `actionlint` and `squawk` block; Dependabot opens weekly PRs; OWASP Dependency-Check reports without blocking (D1, flip trigger = branch protection). None is wired into `./gradlew check` — `SupplyChainWorkflowTest`'s 13 assertions are what make that safe, and they guard against `if:`, `continue-on-error`, `\|\| true`, a shallow `fetch-depth` and floating tags, not merely against a step's absence. **Still unpushed, so CI has never run any of it.** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
 | ~~**3**~~ | ~~**Wave 1.6 — module boundaries + cycle fix**~~ — **DONE 2026-09-13**, [spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) · [plan](superpowers/plans/2026-09-13-wave-1.6-module-boundaries.md). Twelve commits; **598 tests, 0 failures**; `clean check` green end to end. **H4 closed:** `platform.visibility` deleted rather than inverted (its returns are domain aggregates, so no port in `platform` could name them — unlike `iam.AssignedWorkload`, which returns a `long`), the rule now derived independently per module from the JWT claim for split-readiness. The H4 gate is a hand-written ArchUnit direction rule, **not** `verify()`, because declaring `platform` OPEN suppresses all 12 cycles (challenge #75). A second rule registers cross-domain repository reads with an exit per edge (item 3b), Modulith is adopted for module detection and C4 docs with its blind spot documented, and the generated docs are committed and drift-guarded. Challenges #75–79 | S–M | — |
 | **3b** | **Cross-service data access design** (Layer 2) — **owed, does not exist** | Wave 1.6 closes Layer 1 (package acyclicity) and *freezes* Layer 2 rather than fixing it. Layer 2 is the actual extraction work and **no gate can see it** — a cross-service read is not a cycle. Four direct reads exist (`sales → crm.ContactRepository`, `sales → catalog.{Product,PriceListItem}Repository`, `sales`/`iam` → `tenant.TenantRepository`), plus the `viaCustomer` **cross-service SQL join** that Wave 1.6 relocates into `sales` where it looks local. Decide port-vs-event-vs-freeze per edge, and the `quotation`/`sales_order` owner denormalisation. **Ahead of SP8, which has no design for these edges** — the service-scope doc that names them is stale by its own §3.2. Layer 3 needs nothing: zero FK constraints in all 34 migrations | M | 3 |
-| **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse. **Taken NEXT, ahead of H7, at the owner's direction (2026-09-14).** Decomposed into F0–F3 (D-d settled, see Phase 1). **F0 spec written and specialist-reviewed (2026-09-14); F0a (backend auth prep) DONE and merged to local `main` at `186adc4` on 2026-09-16 (unpushed) — [plan](superpowers/plans/2026-09-14-f0a-backend-auth-prep.md); F0b (the frontend itself) is next: write its plan.** | **L** | DNS provider (rest of D-g) before any public link ships |
+| **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse. **Taken NEXT, ahead of H7, at the owner's direction (2026-09-14).** Decomposed into F0–F3 (D-d settled, see Phase 1). **F0 spec written and specialist-reviewed (2026-09-14); F0a (backend auth prep) DONE and merged to `main` at `186adc4` on 2026-09-16, pushed and green in CI — [plan](superpowers/plans/2026-09-14-f0a-backend-auth-prep.md); F0b (the frontend itself) plan WRITTEN 2026-09-16 — [plan](superpowers/plans/2026-09-16-f0b-frontend-foundation.md); next: specialist review of the plan, then build.** | **L** | DNS provider (rest of D-g) before any public link ships |
 | **4a** | **Platform admin role** — an operator role above tenants (not a tenant `OWNER`), with authenticated endpoints for operational toggles that today need a restart. First consumer: the signup switch (`easycrm.signup.enabled`, F0 spec F0-3), which is a property changed by env var + restart until this exists. Added 2026-09-14 at the owner's request | Operational control without restarting the server. Needs its own design: how the role is provisioned (it cannot come from signup or invitations), where runtime flags are stored (the flag must be read per request, not at boot), audit of every toggle, and how it coexists with RLS — a cross-tenant operator is exactly what `@TenantId` + RLS are built to refuse | M | F0a |
 | **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
 | **6** | **Wave 2 — observability** | Prerequisite for scaling, for reading load tests, and for seeing H2/H3 at all | M | — |
@@ -463,9 +469,12 @@ Ranked. **Effort** is relative, not calendar.
 are done and pushed; D-g's name and hostname are settled (`easycustomerrelationship.site`, links on
 `app.`), leaving only the DNS provider. The order is now:
 
-0. **Push `main`, or decide not to (2026-09-16).** 33 commits, including four dependency bumps and the
-   F0a auth rework, have never run in CI. Raise it with the owner; do not push unasked.
-1. **Item 4, the frontend — F0b next.** D-d (the decomposition) is settled: F0 foundation
+0. ~~**Push `main`, or decide not to (2026-09-16).**~~ **DONE 2026-09-16:** pushed at `2d9a2aa`, and CI run
+   `35014714570` is green on check, supply-chain and dependency-check.
+1. **Item 4, the frontend — F0b next. Its plan is WRITTEN (2026-09-16):**
+   [`plans/2026-09-16-f0b-frontend-foundation.md`](superpowers/plans/2026-09-16-f0b-frontend-foundation.md).
+   Next, run the five frontend specialist reviewers on the plan, install Node 24 on the owner's Mac, then build in a
+   worktree with subagent-driven development. The instruction below to "write the F0b plan" is complete. D-d (the decomposition) is settled: F0 foundation
    + auth + invite page → F1 master data → F2 the wedge → F3 daily work + team, with the import wizard
    and owner analytics deferred because no backend exists for them. **F0's spec is approved and
    reviewed; F0a (its backend half) is merged. Write the F0b plan** (spec Parts 4–6) against the

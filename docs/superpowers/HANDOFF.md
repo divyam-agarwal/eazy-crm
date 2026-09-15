@@ -1,6 +1,102 @@
 # EasyCRM — Handoff
 
-## 2026-09-16 — START HERE: F0a is merged to `main` (unpushed); next is the F0b plan
+## 2026-09-16 (later) — START HERE: `main` is pushed and green; the F0b plan is written, not yet reviewed or built
+
+**State.** No application code changed in this session.
+- **`main` pushed:** `ce1db36..2d9a2aa`, at the owner's direction. **CI run `35014714570` is green on all
+  three jobs** (check 4m, supply-chain 13s, dependency-check 11m). The Gradle wrapper 9.7.1 / Spotless 8.10.2 /
+  jjwt 0.13.0 bumps and the whole F0a auth rework have now passed on CI Linux, not just one Mac. One
+  annotation: dependency-check wrote no `dependency-check-report.*`, so its upload step found nothing. That job
+  only reports, so this is not a failure, but nobody has looked into why.
+- **Baseline unchanged:** 677 tests (642 root + 35 primitives), 0 failures.
+- **F0b plan written:** [`plans/2026-09-16-f0b-frontend-foundation.md`](plans/2026-09-16-f0b-frontend-foundation.md).
+  17 test-first tasks with code for every step. It implements spec Parts 4–6 and the F0b items of Part 7.
+  **Neither the plan nor this handoff/roadmap update was committed as of writing.** Check `git status`; if
+  they are still uncommitted, commit them before cutting the worktree.
+
+Verify (as separate invocations):
+```
+git rev-parse --short main           # 2d9a2aa, or later docs-only commits
+git rev-parse --short origin/main
+git rev-list --count origin/main..main
+```
+
+### Next, in order
+
+1. **Dispatch the five frontend specialist reviewers on the plan** (all five match: architecture, performance,
+   security, a11y-i18n, testing), in parallel, **before building anything**. **They were NOT callable by
+   `subagent_type` in this session either.** Use the fallback: a `general-purpose` agent told to read
+   `.claude/agents/frontend-review-<lens>.md` and follow it verbatim. Check every finding against the code and the
+   spec before editing the plan (`superpowers:receiving-code-review`).
+2. **Install Node 24 on the owner's Mac first.** The Mac has Node v25.2.1 and no version manager. The plan pins
+   `engines.node >=24 <25` with `engine-strict`, so Task 2 stops and asks. Suggested: `brew install fnm && fnm
+   install 24`. Do not change their global Node without asking.
+3. **Build it:** worktree `f0b-frontend` + `superpowers:subagent-driven-development`, the same way F0a ran. Do not
+   push; that is the owner's call.
+
+### What the plan decided (its "Plan decisions" table, P1–P13, has the reasoning)
+
+The five handoff gaps from the section below are closed like this:
+- **Gap 1, refresh header:** the bare client sends `X-EasyCRM-Client` at runtime. The contract's required
+  header parameter also makes the call fail to compile without it (P3).
+- **Gap 2, `AuthResponse` optional fields:** fixed in the **backend** (Task 1). Type-level
+  `@Schema(requiredProperties=…)` goes on `AuthResponse`, `MeResponse`, `InvitationPreviewResponse`,
+  `SignupStatusResponse`, `ApiErrorResponse` and `ApiError`, guarded by a new `OpenApiRequiredFieldsTest`, with a
+  snapshot regen (P1).
+- **Gap 3, spec §3.8 wording:** fixed in Task 17.
+- **Gap 4, retry vs `Retry-After`:** a 429 honours `Retry-After`, clamped to 1–60 s, because RateLimitFilter runs
+  before any token is read. Otherwise retries run 2 s → 5 s → 15 s → 30 s (P2).
+- **Gap 5, oasdiff wording:** Task 16 rewords the comment and the test message to name branch protection.
+
+Departures from the spec that a reviewer should look at (Task 17 appends them to the spec as Part 10):
+- **P4:** HTTP retry is openapi-fetch's `fetch` option, snapshotting the body bytes once per request.
+- **P5:** a fifth session status, `signing-out`.
+- **P6:** a boot result arriving after an interactive sign-in is discarded.
+- **P7:** the splash sits outside `#root`, with its CSS in an external file.
+- **P8:** **no toast container in F0.** Sonner injects a `<style>` tag that `style-src 'self'` refuses, and F0 has
+  no background failures.
+- **P9:** hand-written field components and a **native `<select>`**, because Radix Select's scroll-lock injects a
+  `<style>` tag.
+- **P10:** E2E runs `java -jar` on one `bootJar` twice, not `bootRun` twice.
+- **P11:** **E2E test 6 asserts at most one refresh in flight across tabs.** The spec's "stale cookie lands last"
+  cannot be forced, because Playwright's `route.fetch()` shares the cookie jar. Test 7 restores the pre-rotation
+  cookie explicitly so the grace path is really exercised.
+- **P12:** layer lint uses `import-x/no-restricted-paths` zones, not `eslint-plugin-boundaries`, whose config
+  syntax churns between majors.
+- **P13:** the dependency ledger is measured from the production build.
+
+Challenges **#84** (principal change across tabs sharing a cookie jar) and **#85** (P11's E2E design) are drafted
+in the plan's Task 17 and get logged when that task lands. The next free challenge number is still **84**.
+
+### Unverified assumptions in the plan — likely places for Task-level surprises
+
+Each has a concrete fallback written into its step:
+- **jsdom vs Node `AbortSignal` in `Request`:** Task 2 runs a probe test; the fallback is happy-dom.
+- **springdoc honouring type-level `requiredProperties`:** the fallback is per-component `requiredMode`.
+- **`zod/mini` checks (`z.trim()`, `z.toUpperCase()`, `z.refine`) with `@hookform/resolvers` 5:** untested.
+- **Library majors:** the plan lists the majors it was written for; `pnpm add` must pin to those if newer ones
+  resolve.
+- **Spring list-property override for the E2E rate limits:** the launcher restates all three policies because Boot
+  replaces a whole list.
+- **Playwright exposing the `Cookie` header via `allHeaders()` on an intercepted request (test 7):** the step says
+  to stop, not delete the assertion.
+- **Action versions and the exact Postgres image tag:** resolved by lookup commands in Task 16 Step 1.
+
+### Everything below is still true
+
+The 2026-09-16 section still holds:
+- the F0a contract F0b builds against;
+- F0a's deliberately-unfixed follow-ups, including **`CustomerService` `fieldCodes` before F1**;
+- the skipped test-tooling Dependabot group;
+- H7, item 3b and the DNS provider.
+
+**Resolved since then:** "Push `main`" is done. The registry-import question is **answered: yes**. A fresh session
+receives `docs/reviewers/registry.md` through `CLAUDE.md`. **The reviewer agents are still not callable by name**,
+so use the fallback above.
+
+---
+
+## 2026-09-16 — F0a is merged to `main`; next is the F0b plan (SUPERSEDED in part by the section above: `main` is now pushed, the plan is written)
 
 **State.** F0a (backend auth prep for the frontend) is **merged into local `main` at `186adc4`**
 (fast-forward from `8465feb`; branch `f0a-backend-auth` and its worktree are deleted). **`main` is NOT
