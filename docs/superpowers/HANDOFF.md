@@ -1,28 +1,114 @@
 # EasyCRM — Handoff
 
-## 2026-09-14 — F0a (backend auth prep) is done
+## 2026-09-16 — START HERE: F0a is merged to `main` (unpushed); next is the F0b plan
 
-**F0a is complete**, on branch `f0a-backend-auth` at `e442071` (the tip before this docs commit —
-merge base with `main` is `8465feb`). Built in a worktree; **not pushed, not merged.**
+**State.** F0a (backend auth prep for the frontend) is **merged into local `main` at `186adc4`**
+(fast-forward from `8465feb`; branch `f0a-backend-auth` and its worktree are deleted). **`main` is NOT
+pushed: 33 commits ahead of `origin/main` (`ce1db36`), and CI has run on none of them.** That range is
+the F0 spec + F0a plan commits, the four merged Dependabot bumps, and the F0a build. Pushing is the
+owner's call — **raise it before anything else.** When pushed, watch the `check` job first: the Gradle
+wrapper (9.7.1), Spotless (8.10.2) and jjwt (0.13.0) all moved and have only ever built on one Mac.
 
-- `./gradlew clean check` from `backend/`: **BUILD SUCCESSFUL**. Measured from JUnit XML (not the
-  plan's 663 estimate — later tasks legitimately added JaCoCo-driven `ConflictException` tests and a
-  logout-grace test beyond the original tally): **668 tests, 0 failures, 0 errors** (633 root +
-  35 `platform-primitives`).
-- Dependabot (Task 1): gradle-wrapper 9.7.1, spotless 8.10.2, jjwt 0.13.0, and springdoc 3.1.1 were
-  merged. `test-tooling-0181f48dd2` (testcontainers 2.0.5 / junit 6.1.3 / archunit 1.5.0) was
-  **skipped** — its module coordinates fail to resolve in `compileTestJava` — and remains open.
-- The contract now has **zero `*/*` responses** and a **cookie-based refresh** (`easycrm_rt`,
-  httpOnly, race-safe rotation with a 30s lost-response grace window — challenges #80–81).
-- **Final-review fix wave** (after `84246fe`): race-safe logout (no 409 when a stale-cookie revoke races
-  a rotation), logout ends a doubly-lost grace chain, signup revokes a stale incoming cookie, a suspended
-  tenant cannot refresh, raw tokens redacted from record `toString()`, and the contract now documents
-  the cookie routes (required `X-EasyCRM-Client` header, logout 204, signup/accept 201). `clean check`
-  green at **677 tests** (642 root + 35 `platform-primitives`), measured from JUnit XML.
-- **Next step: the F0b plan**, written against the regenerated `docs/api/openapi.yaml`.
+**Baseline: 677 tests (642 root + 35 `platform-primitives`), 0 failures, 0 errors** — `./gradlew clean
+check` from `backend/`, counted from JUnit XML on the exact tree now at `main`. (Was 626.) Verify:
 
-> **(Superseded by the F0a section above** — application code has since changed and the F0 brainstorm is
-> done; the paragraph below is kept as the record of that morning.)
+```
+git rev-parse --short main           # 186adc4
+git rev-parse --short origin/main    # ce1db36 until pushed
+git rev-list --count origin/main..main
+```
+
+**Docs for this slice:** spec [`specs/2026-09-14-f0-frontend-foundation-design.md`](specs/2026-09-14-f0-frontend-foundation-design.md)
+(Part 3 = F0a, Parts 4–6 = F0b, Part 9 = the specialist review record) · plan
+[`plans/2026-09-14-f0a-backend-auth-prep.md`](plans/2026-09-14-f0a-backend-auth-prep.md) ·
+[`../api/error-codes.md`](../api/error-codes.md) (new) · challenges **#80–83**.
+
+### What F0a changed — the contract F0b builds against
+
+- **Refresh token lives only in the `easycrm_rt` cookie** — `HttpOnly; Secure; SameSite=Strict;
+  Path=/api/v1/auth; Max-Age=30d`. Set by signup, login, invitation accept and refresh; read by refresh
+  and logout; cleared by logout. `RefreshRequest` and `TokenResponse` are **deleted**; no body carries a
+  refresh token (`IssuedSession` keeps it out of `AuthResponse` by construction).
+- **Every session response is `AuthResponse(accessToken, userId, tenantId, tenantSlug, email, role)`**,
+  so a browser boots with ONE `POST /auth/refresh` and can detect a principal change.
+- **`POST /auth/refresh` and `POST /auth/logout` require `X-EasyCRM-Client: web`** (403 with the error
+  envelope otherwise), checked before any token is touched. No CORS exists; a preflight test fails if
+  someone adds it. **Logout returns 204 whether or not a cookie was sent.**
+- **Rotation is race-safe and lost responses are recoverable once.** Conditional native UPDATEs; a lost
+  race is 401, never 409. A token rotated within **30 s** whose successor is still **unused** may be
+  presented once more (V35 `refresh_token.grace_used_at`). Logout (and the stale-cookie revoke) ends the
+  whole chain and burns the grace. **Web Locks serialization on the client is load-bearing:** two
+  concurrent same-token refreshes over HTTP both "succeed" and the later one kills the earlier successor.
+- **Login, signup and invitation accept revoke a stale incoming `easycrm_rt`** after issuing the new
+  session. Refresh is refused for a SUSPENDED tenant or non-ACTIVE user.
+- **Rate limits:** new `session` bucket (120/min per IP) for refresh, logout and me, listed before `auth`
+  (first match wins); `auth` stays 30/min for login, signup, signup/status, invitation preview/accept.
+- **Error envelope gains optional `fieldCodes`** (field → `SCREAMING_SNAKE` code). Bean validation emits
+  the constraint name (`NOT_BLANK`, `SIZE`, …); GSTIN/state/slug errors emit domain codes. Existing error
+  bytes unchanged when absent. Rules and the code table: `docs/api/error-codes.md`.
+- **Contract:** zero `*/*` responses (all `application/json`; PDF routes `application/pdf`, guarded by
+  `OpenApiMediaTypesTest`); header param, logout 204, signup/accept 201 documented.
+- **Signup switch:** `SIGNUP_ENABLED` (default **open everywhere**); closed → 404 before any slug lookup;
+  `GET /api/v1/auth/signup/status` → `{open}`. A live toggle waits on ROADMAP item 4a.
+- **Login email is case-insensitive** (was a latent bug vs V32).
+- **`AuthSessionBoundaryArchTest`** pins that only `AuthService` rotates tokens (calls AND method
+  references) and only the two auth controllers touch `RefreshCookie`.
+
+### Next: write the F0b plan (`superpowers:writing-plans`)
+
+The spec is approved and already reviewed by all five frontend lenses; **do not re-brainstorm.** Write the
+plan for **spec Parts 4–6** against the regenerated `docs/api/openapi.yaml`, then run it the same way F0a
+ran (worktree + `superpowers:subagent-driven-development`). Dispatch the specialist reviewers on the
+**plan** (all five plausibly match) before executing. Carry these into the plan explicitly — they are
+known gaps, not surprises:
+
+1. **The bare refresh client must still send `X-EasyCRM-Client: web`** (spec §4.4, corrected after the
+   final review — the first draft would have 403'd every boot). Boot treats a refresh 403 as a client bug,
+   never as `anonymous`; test that the header is present.
+2. **`AuthResponse` has no `required` list in the schema**, so openapi-typescript makes every field
+   optional. Either add `@Schema(requiredMode = REQUIRED)` on the backend DTOs (a small backend commit
+   with a snapshot regen) or handle it in the client — decide in the plan.
+3. **Spec §3.8 wording** still says "login/accept" for the stale-cookie revoke; signup does it too.
+4. **Boot's first refresh retry is ≤5 s (to land inside the 30 s grace), but a 429 carries
+   `Retry-After`** — the plan must say which wins.
+5. **F0-12:** oasdiff stays non-blocking; F0b updates the `ci.yml` comment and `OasdiffWorkflowTest`'s
+   message to name branch protection (roadmap item 8) as the trigger.
+6. **The named reviewer agents were NOT callable by `subagent_type` in the F0a session** (they weren't in
+   the session's agent list). The fallback worked: a `general-purpose` agent told to read
+   `.claude/agents/<name>.md` and follow it verbatim. Try the name first in a fresh session.
+
+### Follow-ups found by F0a's reviews — deliberately NOT fixed (none blocks F0b)
+
+- **Grace use is not audited** — a replay within the 30 s window leaves no trace. Needs a tenant-context
+  design for audit on the global `refresh_token` path.
+- **Logout racing a same-token grace refresh** can leave the grace successor live
+  (`RefreshTokenRepository.findReplacedById` is a plain read; `FOR UPDATE` would close it). Narrow: both
+  must be in flight together, and logout is outside the client's Web Lock.
+- **`IssuedSession.toString()` still prints the 15-min access token** via `AuthResponse` (raw refresh
+  tokens are redacted). Nothing logs it today; one-line fix.
+- **`AuthSessionBoundaryArchTest` is class-level**, not handler-level: a new cookie-reading handler
+  *inside* `AuthController` would not fail it (spec §3.8 asked for handler level).
+- **Logout's grace burn is unbounded in time** — someone holding the immediately previous token can end
+  the current session until it next refreshes. Kept on purpose (logout semantics; doubles as a theft signal).
+- Test hardening: the race tests' `pg_stat_activity` wait isn't tied to the winner's pid
+  (`pg_blocking_pids` would be exact); no negative tests for the `session` path pattern; no test that
+  member-disable blocks grace; the clearing-cookie test checks only `Max-Age`/`Path`.
+- `CustomerService`'s own buyer state/GSTIN mismatch `ValidationException` has no `fieldCodes` code —
+  **needed before F1's customer form.**
+- `RefreshCookie`'s field in both auth controllers has a scoped SpotBugs `exclude.xml` Match: its
+  `write`/`clear` names trip SpotBugs' setter-name mutability heuristic (reason recorded in the file).
+- No `distributionSha256Sum` / wrapper validation for the Gradle wrapper (pre-existing).
+
+### Still open from before
+
+- **Dependabot `test-tooling-0181f48dd2`** (Testcontainers 2.0.5 / JUnit 6.1.3 / ArchUnit 1.5.0) —
+  **skipped**: module coordinates fail to resolve in `compileTestJava`. A real migration, not a bump.
+- **Push `main`** (above) · **H7** (seller not frozen on a sent quotation) · **item 3b** · **DNS
+  provider** (rest of D-g) · the UNVERIFIED registry-import question below.
+- `.tessl/` and `docs/architecture/pre-screening-answers.md` are untracked and not from any slice — leave them.
+
+> **(Superseded by the 2026-09-16 section above** — application code has since changed, the F0 brainstorm
+> is done, and F0a is merged; the paragraph below is kept as the record of 2026-09-14 morning.)
 
 **Last updated:** 2026-09-14 — **No application code changed. The frontend is next, and it is
 mid-brainstorm.** Three things happened, none of them backend code:
@@ -66,7 +152,7 @@ mid-brainstorm.** Three things happened, none of them backend code:
 - (Resolved, for the record: the same probe reported that a subagent **does** have the Agent tool, so the
   registry's rule is "if you *cannot* dispatch, name the specialists", not "subagents never dispatch".)
 
-## What the next agent should pick up (2026-09-14)
+## What the next agent should pick up (2026-09-14 — SUPERSEDED by the 2026-09-16 section at the top)
 
 **UPDATE (later on 2026-09-14): the F0 brainstorm is DONE and the spec is written** —
 [`specs/2026-09-14-f0-frontend-foundation-design.md`](specs/2026-09-14-f0-frontend-foundation-design.md).
