@@ -44,7 +44,13 @@ test('two tabs booting at once never send two /auth/refresh requests concurrentl
   await Promise.all([page.reload(), other.goto('/')]);
 
   await expect(page.getByText(signedInText(account.slug, account.email))).toBeVisible();
-  await expect(other.getByText(signedInText(account.slug, account.email))).toBeVisible();
+  // Task 16 (F0b, carried from Task 15): `other` is a brand-new browser context — its first paint
+  // pays a cold V8-compile/JIT cost the `page` fixture's page never sees again after signup. One
+  // run of this exact assertion took 6.1s against the 5000ms default; every later local run (8+)
+  // was 1.2-1.5s. CI's first run of the day is always a cold start, so this is likelier to recur
+  // there than it ever did locally — an explicit, generous timeout on just this one assertion
+  // absorbs it without loosening the suite's default elsewhere.
+  await expect(other.getByText(signedInText(account.slug, account.email))).toBeVisible({ timeout: 15_000 });
   await expectAccessible(page);
   await expectAccessible(other);
   expect(otherCsp).toEqual([]);

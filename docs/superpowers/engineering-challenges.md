@@ -6994,3 +6994,47 @@ shape of the race the code comment described (an already-shared cookie, a tab th
 contended the lock, a held response released only after the second request is observed), because
 anything looser would have exercised the network, not the code path the fix (`withCookieLock`) actually
 guards.
+
+---
+
+## Challenge 107 — The standard fix for a YAML `!` gotcha silently defeats the guard test meant to catch it
+
+**Phase:** Implementation (F0b, Task 16 — wiring the `frontend` and `e2e` CI jobs and their workflow guard)
+
+### The problem
+
+The `Upload bundle report` step must run when the budget gate fails, but not when the job is
+cancelled — `if: !cancelled()`. GitHub Actions' own documentation warns that a condition starting with
+`!` can be misparsed as YAML tag notation and recommends wrapping it: `if: ${{ !cancelled() }}`. That is
+exactly what the brief's draft workflow wrote. `FrontendWorkflowTest.onlyUploadsAreConditional` asserts
+the parsed condition equals the literal string `!cancelled()` — and against the `${{ }}`-wrapped form,
+that assertion failed, not because the workflow was wrong, but because the fix for one gotcha collided
+with a different one.
+
+### Why it's hard
+
+Both forms are "correct" by a different standard. `${{ !cancelled() }}` is valid, idiomatic GitHub
+Actions and is what GitHub's own docs recommend — it would run correctly. But the guard test reads
+`ci.yml` through SnakeYAML, which parses YAML, not GitHub Actions expressions: `${{ ... }}` is opaque
+delimiter syntax to YAML, so the parsed value is the literal seven-character-longer string
+`${{ !cancelled() }}`, not `!cancelled()`. The test's `assertEquals` then fails on a workflow that is
+functionally fine — the two tools (a YAML parser checking structure, a GHA runtime evaluating
+expressions) disagree about where the meaningful boundary of the string is, and only one of them is
+what the test actually invokes.
+
+### Solution
+
+Used the *other* documented escape: quote the bare condition, `if: '!cancelled()'`. Single-quoting
+prevents YAML from reading the leading `!` as a tag indicator, so SnakeYAML parses it to the plain
+string `!cancelled()` — matching what the guard test asserts — while GitHub Actions evaluates the exact
+same string as the expression it always was. Verified empirically both ways before choosing: confirmed
+`${{ !cancelled() }}` parses to the wrapped literal (a one-line `yaml.safe_load` check), then confirmed
+the quoted form round-trips to the bare string and the test goes green.
+
+### Lesson
+
+A workflow YAML file is read by two different parsers with two different opinions about where a string
+starts — the config-file parser (YAML) and the expression runtime (GitHub Actions) — and a fix aimed at
+satisfying one can silently fail the other's test without the workflow itself being wrong. When a guard
+test reads the raw parsed structure (as this one must, to catch a step being softened), pick the syntax
+whose parsed form is also the form worth asserting on, not just the syntax a style guide recommends.

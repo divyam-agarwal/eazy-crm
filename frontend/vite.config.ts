@@ -45,5 +45,11 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
     restoreMocks: true,
     testTimeout: 10_000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/api/schema.d.ts', 'src/test/**', 'src/**/*.test.{ts,tsx}', 'src/**/*.typecheck.ts', 'src/main.tsx', 'src/components/ui/**'],
+    },
   },
 });

@@ -42,3 +42,31 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: ci
+
+  # The SPA. pnpm projects use the npm ecosystem; Dependabot reads frontend/pnpm-lock.yaml.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      lint-and-build:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "typescript-eslint"
+          - "vite"
+          - "@vitejs/*"
+          - "vitest"
+          - "@vitest/*"
+    commit-message:
+      prefix: build

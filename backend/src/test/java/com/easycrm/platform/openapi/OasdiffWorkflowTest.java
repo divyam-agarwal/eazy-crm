@@ -125,8 +125,8 @@ class OasdiffWorkflowTest {
         assertEquals(
                 "true",
                 String.valueOf(stepNamed("API changelog").get("continue-on-error")),
-                "flipping this to blocking is a deliberate policy change tied to the frontend"
-                        + " existing — see the comment in ci.yml — not something to drift into");
+                "flipping this to blocking is a deliberate policy change tied to branch protection"
+                        + " (roadmap item 8) — see the comment in ci.yml — not something to drift into");
     }
 
     // --- behaviour: run the real shell body against git fixtures ----------------------------

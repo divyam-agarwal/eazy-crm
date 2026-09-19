@@ -74,12 +74,13 @@ jobs:
       # The API changelog, reported and not enforced. CI here is a post-merge smoke alarm
       # (push: [main], and this repo has never opened a pull request), so a blocking gate would
       # fail after the breaking change had already landed -- a notification with extra steps.
-      # There is also no consumer yet: members management, cursor pagination and the frontend's
-      # own needs will all legitimately change endpoints, so a blocking gate would fire
-      # regularly, at nobody, on correct work. That is how gates get ignored.
+      # The frontend now consumes this spec, and its "Generated client matches the contract" step
+      # (job `frontend`) already fails on any contract change the client has not followed. What a
+      # blocking breaking-change gate adds is stopping the change BEFORE it merges, which post-merge
+      # CI cannot do.
       #
-      # Flip continue-on-error to false when the frontend exists and consumes this spec. At
-      # that point there is a real party to break.
+      # Flip continue-on-error to false at branch protection (roadmap item 8), when a red gate can
+      # hold a pull request instead of reporting on main (spec 2026-09-14-f0 F0-12).
       - name: API changelog (oasdiff)
         continue-on-error: true
         working-directory: .
@@ -292,4 +293,143 @@ jobs:
         with:
           name: dependency-check-report
           path: backend/build/reports/dependency-check-report.*
+          retention-days: 7
+
+  # The SPA (spec 2026-09-14-f0 §6.5). Blocking in the same sense as `check`: CI runs post-merge on main,
+  # so red is an alarm, not a stop, until branch protection (roadmap item 8). FrontendWorkflowTest fails
+  # ./gradlew check if a gate here is removed, conditioned or softened.
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # schema.d.ts is generated from docs/api/openapi.yaml. A contract change the client has not
+      # followed, or a hand edit to the generated file, fails here.
+      - name: Generated client matches the contract
+        run: |
+          pnpm gen:api
+          git diff --exit-code -- src/api/schema.d.ts
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit and component tests
+        run: pnpm test:coverage
+
+      - name: Build
+        env:
+          ANALYZE: 'true'
+        run: pnpm build
+
+      - name: Route JS budget
+        run: pnpm budget
+
+      - name: Upload bundle report
+        # Performance-3: also upload when the budget gate FAILED — that is the run whose treemap
+        # someone needs. !cancelled() keeps it out of cancelled runs only.
+        if: '!cancelled()'
+        uses: actions/upload-artifact@v7
+        with:
+          name: bundle-report
+          path: frontend/reports/
+          retention-days: 7
+
+  # Real backends, real Postgres, Chromium (spec §6.4). Two backend processes from one boot jar
+  # (plan P10): e2e-main with default TTLs, e2e-refresh with a 5 s access token.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.15-alpine
+        env:
+          POSTGRES_DB: easycrm
+          POSTGRES_USER: easycrm_owner
+          POSTGRES_PASSWORD: easycrm_owner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U easycrm_owner -d easycrm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build the backend jar
+        working-directory: backend
+        run: ./gradlew bootJar --no-daemon --console=plain
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build the frontend
+        working-directory: frontend
+        run: pnpm build
+
+      # The flaky summary must run whether or not the tests pass, without an `if:` that could also skip
+      # the tests; so the step captures the status, writes the summary, and exits with the test status.
+      - name: End-to-end tests
+        working-directory: frontend
+        run: |
+          set +e
+          pnpm e2e
+          status=$?
+          node e2e/scripts/flaky-summary.mjs test-results/e2e-results.json >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
           retention-days: 7
