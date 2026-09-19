@@ -6739,3 +6739,129 @@ that was okay. The fix is never "make the gate stricter"; it's adding a second, 
 (a diff against a deliberately-checkpointed baseline, not against whatever the last run happened to
 be) whose entire job is attribution — surfacing *which* change moved the number, at the commit that
 moved it, while leaving the gate itself as the only thing with the authority to fail a build.
+
+---
+
+## Challenge 103 — A tab already showing the P14 blocking screen could never leave it, because the very guard that protects `login` also silently ate `logout`
+
+**Phase:** Implementation (F0b, Task 14 — first real-backend, real-two-tab E2E run)
+
+### The problem
+
+`cross-tab-logout.spec.ts`'s first test (verbatim from the task brief) signs out in one tab and
+expects a second, real tab to land on the login page. Against two real Spring Boot backends and a
+real Chromium `BroadcastChannel`, it failed every time: the second tab stayed stuck on "Sign-out did
+not complete — retrying" — the P14/Security-1 blocking screen normally reserved for a sign-out whose
+POST never lands — even though the trace showed the server had answered the logout `204` and cleared
+the cookie. No unit test caught this: the closest one delivered a `signing-out` message and asserted
+the tab blocked (correct), and a different one delivered a bare `login` after `signing-out` and
+asserted the tab stayed blocked (also correct, and deliberately so — Challenge #90 hardened that
+exact path against a forged message). Nothing delivered the *confirming* `logout` broadcast that is
+supposed to follow `signing-out` in the real, successful case.
+
+### Why it's hard
+
+`session.ts`'s channel handler read, in order: handle `signing-out` (clears `me`, sets status
+`signing-out`); then `if (!me) return;`; then handle `logout`. That guard exists for a real security
+reason (Challenge #90): a bare `login` broadcast is same-origin `postMessage`, forgeable by any
+script on the page, and must not by itself clear a pending sign-out — settling that requires
+verifying against the server first (`logout.ts`'s `onLoginBroadcast`). But the guard sat in front of
+*both* remaining message types, not just `login`, and `logout` needs nothing from `me` to act on —
+it carries no principal to compare, unlike `login`. Once `signing-out` has already nulled `me` (which
+it always has, for exactly the tab this matters to), `logout` can never reach its own handler below
+the guard. The bug is invisible to a single 'logout' delivered on its own (`me` is still set, from
+`establishSession`), and invisible to 'signing-out' delivered on its own — it only exists on the
+*sequence* `signing-out` → `logout` on the same tab, which is precisely the two-message handshake a
+real successful remote sign-out produces and no existing unit test assembled.
+
+### Solution
+
+Move the `logout` branch ahead of the `if (!me) return` guard and give it its own, narrower gate:
+`if (!me && status !== 'signing-out') return;`. A tab that was never told to block (still `booting`,
+or already `anonymous`) still no-ops on a stray `logout` — nothing to end. A tab currently showing
+the blocking screen (`me` null, status `signing-out`) now ends the session regardless of `me`, because
+`logout`'s own payload needs none. The `login` principal-comparison below is untouched and still
+requires `me` — that branch's security property (Challenge #90) doesn't change at all. Two unit tests
+close the gap directly: deliver `signing-out` then `logout` and assert the tab reaches `anonymous`
+(the regression this challenge fixes); deliver a stray `logout` with no prior `signing-out` and assert
+nothing changes (the guard's other half still holds).
+
+### Lesson
+
+A guard written to stop one dangerous message from doing something (`login` forging a settlement) can
+end up silently gating an *adjacent, harmless* message too, if both are handled by the same
+`if (!me) return` sitting above both branches — the guard's *placement* inherited a stronger claim
+than its *reasoning* ever justified. The fix is not "loosen the guard" (which would have reintroduced
+the forgery risk) but separating the two messages' gates precisely along the line their actual
+security requirements diverge: `login` needs `me` because it compares principals; `logout` doesn't,
+because it has nothing to compare and nothing to prove. And the reason no unit test found it first
+is the same reason two-tab E2E exists at all: a fake channel driven by hand-picked, individually
+plausible messages will not spontaneously assemble the exact two-message sequence a real second tab,
+listening to a real `BroadcastChannel`, actually produces.
+
+---
+
+## Challenge 104 — `playwright install`'s own Happy-Eyeballs fallback aborts itself on a sandbox that silently drops outbound IPv6, and "fixing" it broke `vite preview` a different way
+
+**Phase:** Implementation (F0b, Task 14 — E2E harness bring-up, before any spec ran)
+
+### The problem
+
+`pnpm exec playwright install chromium` failed every attempt with `Request to
+https://cdn.playwright.dev/... timed out after 30000ms`, even though `curl` fetched the same 190 MB
+file in 13 seconds and a plain Node `https.get` reached the same host instantly. The dev sandbox
+turned out to silently black-hole outbound IPv6 TCP connections (not refuse them — a raw
+`net.createConnection` over IPv6 to a real external host just hung, forever, with no error). DNS
+resolution for the AAAA record was fast and correct; only the *connection* over that address hung.
+
+### Why it's hard
+
+Playwright-core's own downloader uses a hand-rolled Happy-Eyeballs `lookup()` (RFC 8305: try IPv6 and
+IPv4 in parallel, prefer whichever answers) passed to `https.request` alongside `autoSelectFamily:
+true`. Node's `autoSelectFamily` implementation, on losing the IPv6 race, emits a `'timeout'` event on
+the *request* object as part of its own internal fallback bookkeeping — not a real request timeout.
+Playwright's downloader treats any `'timeout'` event as fatal and aborts the whole request right then,
+which cancels the fallback before IPv4 ever gets a turn. Three layers had to be separated to see this:
+(1) DNS resolves fine — `dns.promises.lookup` for both families returned in 16ms; (2) a raw
+`net.connect` with the *same* Happy-Eyeballs `lookup` genuinely falls back and connects over IPv4 in
+~5s, proving the fallback mechanism itself works; (3) only wrapping that exact logic in `https.request`
+and using its own `.setTimeout()` handler reproduced the abort — the bug is in how the *caller*
+reacts to Node's internal timeout signal, not in DNS or in Happy Eyeballs itself.
+
+The first fix — patch the vendored `dualStackLookup` in `node_modules` to return only the IPv4
+address, so the race never starts — did get the browser downloaded. But it applied to *every* network
+operation in that playwright-core copy, not just the one-time download, and later broke bringing up
+the actual E2E harness: `vite preview` (Task 2's given command, no `--host` flag) bound only to the
+IPv6 loopback address `::1` on this machine, while Playwright's own `webServer` availability check,
+now patched to IPv4-only, polled `127.0.0.1` and got `ECONNREFUSED` for 60 seconds straight — a
+process that was actually up and serving, on an address nothing was checking. Blanket-disabling IPv6
+"fixed" a hang against a blackholed *external* host by breaking a working connection to a *local*
+one — loopback IPv6 was never blackholed in this sandbox; only routed IPv6 was.
+
+### Solution
+
+Patch `dualStackLookup` only for the duration of `playwright install chromium` (a one-time,
+throwaway edit to the local `node_modules` copy — nothing committed, nothing that ships), then revert
+it immediately afterward so the E2E run itself uses Node's original, unmodified Happy-Eyeballs
+behavior — which handles loopback correctly (IPv6 loopback isn't blocked, so it wins the race
+normally) and never touches an external host again once Chromium is already on disk. The permanent,
+committed fix lives in `run-backend.sh` instead, solving an unrelated but adjacent problem the same
+investigation surfaced: `java` on `PATH` (Java 21) couldn't load the boot jar's Java 25 bytecode
+(`UnsupportedClassVersionError`) even though `./gradlew bootJar` succeeded, because Gradle's toolchain
+resolution finds a matching JDK independently of `PATH` — a green Gradle build proves nothing about
+what `java -jar` will find. The launcher now resolves Java 25 explicitly via `/usr/libexec/java_home
+-v 25`, falling back to `$JAVA_HOME` and then plain `java`, rather than trusting the invoking shell's
+default.
+
+### Lesson
+
+A fix scoped wider than the bug it targets can trade one failure for a different one that only shows
+up later, in a system the original bug never touched — patching a *shared* network utility to solve a
+problem specific to *one* caller (a one-time download from an external CDN) is exactly that trap, and
+the tell was that the second failure (`vite preview` unreachable) produced a symptom — `ECONNREFUSED`,
+not a hang — that looked unrelated enough to investigate from scratch rather than connect back to the
+same patch. The general habit: when a fix touches a shared/vendored utility instead of the one call
+site that actually has the problem, ask what *else* routes through that utility before trusting the
+fix is free, and prefer scoping the change as narrowly as the actual root cause (this one was "IPv6 to
+a specific class of unreachable host," not "IPv6, ever") — or, failing that, reverting it the moment
+the narrow job it was needed for is done.

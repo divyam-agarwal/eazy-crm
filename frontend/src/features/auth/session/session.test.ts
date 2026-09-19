@@ -133,6 +133,34 @@ describe('subscribeToAuthChannel', () => {
     expect(getAccessToken()).toBeNull(); // local state is cleared either way
   });
 
+  // Challenge #103: found only by a real two-tab E2E run (cross-tab-logout.spec.ts), never by this
+  // unit suite, because no test here delivered `logout` AFTER `signing-out` had already cleared
+  // `me`. The old code gated `logout` behind `if (!me) return`, so the confirming broadcast that is
+  // supposed to release the P14/Security-1 blocking screen was silently dropped for exactly the tab
+  // that needed it — that tab could never leave `signing-out`.
+  it('ends signing-out on the confirming logout broadcast, even though me is already null', () => {
+    const { deliver } = fakeRuntime();
+    subscribeToAuthChannel();
+    establishSession(ownerSession);
+    deliver({ type: 'signing-out' });
+    expect(useSessionStore.getState().status).toBe('signing-out');
+
+    deliver({ type: 'logout' });
+
+    expect(useSessionStore.getState()).toMatchObject({ status: 'anonymous', me: null });
+  });
+
+  it('ignores a stray logout broadcast when this tab was never told to block', () => {
+    const { deliver } = fakeRuntime();
+    subscribeToAuthChannel(); // no establishSession(): this tab is still 'booting', never signing-out
+
+    deliver({ type: 'logout' });
+
+    // Unchanged from before this fix: `me` is null and status isn't 'signing-out', so this is a
+    // no-op — a booting tab settles through boot.ts's own refresh, not a channel message.
+    expect(useSessionStore.getState().status).toBe('booting');
+  });
+
   // Fix round 1, item 2 (Critical, security): a bare `login` broadcast used to clear a signing-out
   // tab straight to 'anonymous' — trusting a same-origin postMessage that any script can forge, with
   // no server round trip. That is the Critical fix this replaces: subscribeToAuthChannel() ALONE

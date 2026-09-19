@@ -85,6 +85,19 @@ export function subscribeToAuthChannel(): () => void {
       return;
     }
 
+    // Challenge #103: `logout` must end this tab's blocking screen even though `me` is already null
+    // here — the `signing-out` branch above just cleared it. `logout` carries no principal to check,
+    // so unlike `login` it needs nothing from `me`; gating it on `me` first meant a tab that had
+    // already received `signing-out` (blocking screen up, `me` cleared) could never leave that screen
+    // when the confirming `logout` broadcast arrived — the exact real-sign-out case P14/Security-1
+    // exists for, not just the forged-message case. `status !== 'signing-out'` still makes it a no-op
+    // for a tab that was never told to block (nothing to end).
+    if (message.type === 'logout') {
+      if (!me && status !== 'signing-out') return;
+      endSession('remote-logout');
+      return;
+    }
+
     // Fix round 1, item 2 (Critical, security): this used to clear the durable marker and drop the
     // blocking screen on the mere WORD of a `login` broadcast. `easycrm-auth` is same-origin
     // `postMessage` — any script on the page can forge one — so treating it as proof the server
@@ -96,10 +109,6 @@ export function subscribeToAuthChannel(): () => void {
     // now requires verifying the claim against the server under the refresh lock — see
     // `logout.ts`'s `onLoginBroadcast()`, wired from `start.ts`. Challenge #90.
     if (!me) return;
-    if (message.type === 'logout') {
-      endSession('remote-logout');
-      return;
-    }
     if (me.userId !== message.userId || me.tenantId !== message.tenantId) {
       endSession('principal-changed');
       sessionRuntime().reload();
