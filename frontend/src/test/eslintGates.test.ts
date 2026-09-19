@@ -182,6 +182,34 @@ describe('AR-1: sessionStore is reachable only from useMe.ts and features/auth/s
     );
     expect(twoLevels.ids).toContain('import-x/no-restricted-paths');
   });
+
+  // Fix round 2 (Important #1): the round-1 fix, `./src/session/**/!(useMe).{ts,tsx}`, over-
+  // corrected — '!(useMe)' there negates on BASENAME AT ANY DEPTH, not on the top-level path, so an
+  // impostor 'src/session/something/useMe.ts' was exempted right along with the real top-level
+  // 'src/session/useMe.ts'. A plausible file to add ('a helper that reads me too') would have
+  // silently defeated AR-1 again. This is the third iteration on this one glob; the missing piece
+  // every time was a test on the ALLOW side that nothing would turn red if the pattern re-widened —
+  // this case is exactly that: it must reject, not pass.
+  it('rejects an impostor useMe.ts nested under src/session (round 2: basename exemption must not apply below depth 0)', async () => {
+    const { ids } = await lintOnce(
+      'src/session/something/useMe.ts',
+      "import { useSessionStore } from '@/session/sessionStore';\nexport const s = useSessionStore;\n",
+    );
+    expect(ids).toContain('import-x/no-restricted-paths');
+  });
+
+  // Paired with the impostor case above: the fix must not over-correct into banning the REAL
+  // top-level useMe.ts (already asserted in the "allows ... session/useMe.ts" test above; restated
+  // here, explicitly next to the impostor case, so the two can't silently drift apart in a future
+  // edit to either test).
+  it('still allows the real top-level src/session/useMe.ts (paired non-vacuity for the round-2 fix)', async () => {
+    const { ids, fatal } = await lintOnce(
+      'src/session/useMe.ts',
+      "import { useSessionStore } from './sessionStore';\nexport const s = useSessionStore;\n",
+    );
+    expect(fatal).toEqual([]);
+    expect(ids).not.toContain('import-x/no-restricted-paths');
+  });
 });
 
 // R24: nothing today stops noopLocks (a deliberately non-exclusive LockProvider kept only for
@@ -216,12 +244,20 @@ describe('R24: bootstrap.ts never imports noopLocks', () => {
 // exists to close. Every banned spelling gets its own reject case below, and 'zod/v4/mini' gets an
 // explicit allow case so a future regression to a broad glob (e.g. banning all of 'zod/v4/**') would
 // be caught here instead of silently blocking the light variant too.
+//
+// Fix round 2 (Minor): 'zod/compile' looked excluded on API-shape grounds (no schema-authoring API),
+// but it imports directly from the same v4/core internals 'zod/v4/core' was banned for, and measures
+// 10.2 KB gzip as a bare side-effect import — "measure it, don't infer from the name" applied to
+// v4/core and then abandoned for compile was inconsistent. Added as a fifth banned spelling. Also
+// added an explicit allow-case for 'zod/v4-mini' (present but untested before this round, unlike its
+// two siblings 'zod/mini' and 'zod/v4/mini').
 describe("R67: only zod's mini entry points may be imported, never a full-runtime one", () => {
   it.each([
     ['zod', 'zod'],
     ['zod/v3', 'zod/v3'],
     ['zod/v4', 'zod/v4'],
     ['zod/v4/core', 'zod/v4/core'],
+    ['zod/compile', 'zod/compile'],
   ])('rejects %s in a feature', async (_label, specifier) => {
     const { ids } = await lintOnce('src/features/auth/x.ts', `import { z } from '${specifier}';\nexport const s = z;\n`);
     expect(ids).toContain('no-restricted-imports');
@@ -242,6 +278,15 @@ describe("R67: only zod's mini entry points may be imported, never a full-runtim
     const { ids, fatal } = await lintOnce(
       'src/features/auth/x.ts',
       "import { object, string } from 'zod/v4/mini';\nexport const s = object({ a: string() });\n",
+    );
+    expect(fatal).toEqual([]);
+    expect(ids).not.toContain('no-restricted-imports');
+  });
+
+  it('allows zod/v4-mini (non-vacuity — symmetry with zod/mini and zod/v4/mini)', async () => {
+    const { ids, fatal } = await lintOnce(
+      'src/features/auth/x.ts',
+      "import { object, string } from 'zod/v4-mini';\nexport const s = object({ a: string() });\n",
     );
     expect(fatal).toEqual([]);
     expect(ids).not.toContain('no-restricted-imports');

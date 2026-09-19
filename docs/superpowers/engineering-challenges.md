@@ -6301,17 +6301,28 @@ written against.
 Read zod's `package.json` `exports` map directly rather than guessing which subpaths exist, then
 measured each one with the same bundle-and-gzip methodology as the original finding (not assumed from
 the name alone — `zod/v4/core` looked like an internals-only import unlikely to be reached for hand,
-but measured heavy anyway, and `zod/compile`/`zod/locales` looked plausible to ban by pattern-matching
-on "has a `/`" but measured/reasoned as legitimately excluded: `compile` is a schema-to-function
-codegen utility with no schema-authoring API to attract an implementer, and `locales` are
-error-message catalogs the project's own i18n work may need later). Expanded the `no-restricted-imports`
-`paths` list from one entry to four (`zod`, `zod/v3`, `zod/v4`, `zod/v4/core`), keeping the exact-match
-form (not a glob) specifically *because* a glob broad enough to catch every heavy spelling
-(`zod/v4/**`) would also have caught `zod/v4/mini` — the light entry point the rule exists to permit.
-Added a reject-case fixture per banned spelling and an explicit allow-case for `zod/v4/mini`, each
-verified against the pre-fix config first (all five: zero messages) and the post-fix config second
-(all five: fires or passes as intended) — not inferred from the rule id changing, actually re-run both
-ways.
+but measured heavy anyway). Expanded the `no-restricted-imports` `paths` list from one entry to four
+(`zod`, `zod/v3`, `zod/v4`, `zod/v4/core`), keeping the exact-match form (not a glob) specifically
+*because* a glob broad enough to catch every heavy spelling (`zod/v4/**`) would also have caught
+`zod/v4/mini` — the light entry point the rule exists to permit. Added a reject-case fixture per
+banned spelling and an explicit allow-case for `zod/v4/mini`, each verified against the pre-fix config
+first (all five: zero messages) and the post-fix config second (all five: fires or passes as intended)
+— not inferred from the rule id changing, actually re-run both ways.
+
+**Update (fix round 2):** the paragraph above originally also excluded `zod/compile`, reasoned — not
+measured — as safe: "a schema-to-function codegen utility with no schema-authoring API to attract an
+implementer." A second review caught the inconsistency this entry's own title warns against: applying
+"measure, don't infer" to `zod/v4/core` and then reasoning from API shape for `zod/compile` one
+paragraph later is exactly the gap this challenge is about, reproduced inside its own fix. Measured
+directly: `zod/compile` is a bare *side-effect* import (`import 'zod/compile'` — no schema API to even
+call) that pulls in `./v4/core/compile.js` and `./v4/core/index.js` and bundles to **10.2 KB gzip**
+regardless. Added as a fifth banned spelling; `zod/locales` was re-checked the same way and genuinely
+holds on API-shape grounds this time — it is pure re-exported string catalogs, no schema builder
+anywhere in it, confirmed by reading the module rather than asserted from the name. The general lesson
+stands but sharpens: "measure, don't infer" has to apply to *every* candidate the same way, including
+the ones a plausible-sounding reason would let you wave through without measuring — an inconsistently
+applied methodology is not a safer default than no methodology, because it still produces a
+confident-sounding "excluded" entry next to the measured ones.
 
 ### Lesson
 

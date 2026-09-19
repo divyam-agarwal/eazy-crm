@@ -22,27 +22,32 @@ const ZOD_MSG =
   "Import from 'zod/mini', not 'zod'. Fix round 1: `no-restricted-imports` matches the literal " +
   "specifier string, so banning only 'zod' left 'zod/v3', 'zod/v4' and 'zod/v4/core' as unblocked " +
   'escape hatches to the exact same heavy runtime — zod 4.6.5 ships them as separate export map ' +
-  "entries, and zod's own v4 migration docs point an implementer straight at 'zod/v4'. Measured " +
-  '(two-field schema, esbuild --bundle --minify, gzip): zod 93.1 KB, zod/v4 93.1 KB (identical — ' +
-  "it's the same code), zod/v3 14.3 KB, zod/v4/core 80.2 KB, zod/mini (== zod/v4-mini == " +
-  '`zod/v4/mini`) 4.56 KB. One wrong import can put the entry chunk over budget.';
+  "entries, and zod's own v4 migration docs point an implementer straight at 'zod/v4'. Fix round 2: " +
+  "'zod/compile' joined the list too — it looks like a schema-to-function codegen utility with no " +
+  'schema-authoring API, but it imports directly from the same v4/core internals as the full runtime ' +
+  '(`./v4/core/compile.js`, `./v4/core/index.js`) and measures accordingly. Measured (esbuild --bundle ' +
+  '--minify, gzip): zod 93.1 KB and zod/v4 93.1 KB (two-field schema; identical — same code), ' +
+  "zod/v3 14.3 KB (two-field schema), zod/v4/core 80.2 KB (bare namespace import), zod/compile " +
+  '10.2 KB (bare side-effect import), zod/mini (== zod/v4-mini == `zod/v4/mini`) 4.56 KB (two-field ' +
+  'schema). One wrong import can put the entry chunk over budget.';
 const NOOP_LOCKS_MSG =
   'noopLocks is a deliberately non-exclusive LockProvider kept only for a recorded red run (Task 15). ' +
   'Production must go through createSessionRuntime, which picks webLocks/createInMemoryLocks.';
 
 // Every zod entry point that resolves to the full (non-mini) runtime, per zod 4.6.5's own `exports`
-// map (checked directly — see ZOD_MSG). Deliberately NOT included: `zod/mini`, `zod/v4-mini` and
-// `zod/v4/mini` (all measured identical to zod/mini — the whole point), `zod/compile` (a schema-to-
-// function codegen utility, not a schema-definition API — 35.2 KB raw importing the whole namespace
-// via `import *`, but no realistic path leads an implementer there to build a schema) and
-// `zod/locales`/`zod/v4/locales(/*)` (error-message catalogs; the project's own i18n plans may need
-// these later and they don't retain the validation engine on their own).
+// map (checked directly — see ZOD_MSG) and measured, not inferred from the name or the shape of its
+// public API — 'zod/compile' looked safe by API-shape reasoning alone (fix round 1) and turned out
+// not to be (fix round 2: measured 10.2 KB gzip, same v4/core internals as 'zod/v4/core'). Deliberately
+// NOT included: `zod/mini`, `zod/v4-mini` and `zod/v4/mini` (all measured identical to zod/mini — the
+// whole point) and `zod/locales`/`zod/v4/locales(/*)` (pure re-exported string catalogs, no schema
+// builder in their API at all — confirmed by reading the module, not assumed; the project's own i18n
+// plans may need these later and they don't retain the validation engine on their own).
 //
 // Note for a future reader of package.json: 'zod' (not 'zod/mini') is the correct dependencies entry
 // even though only the 'zod/mini' subpath may be imported — 'zod/mini' ships inside the same 'zod'
 // npm package (see its exports map), it is not a separate package to swap in. Don't "tidy up" the
 // dependency to something named zod-mini; it doesn't exist.
-const ZOD_HEAVY_PATHS = ['zod', 'zod/v3', 'zod/v4', 'zod/v4/core'].map((name) => ({ name, message: ZOD_MSG }));
+const ZOD_HEAVY_PATHS = ['zod', 'zod/v3', 'zod/v4', 'zod/v4/core', 'zod/compile'].map((name) => ({ name, message: ZOD_MSG }));
 const OPENAPI_FETCH_PATH = { name: 'openapi-fetch', message: BYPASS };
 const NOOP_LOCKS_PATH = {
   name: '@/features/auth/session/lockProvider',
@@ -150,17 +155,26 @@ export default tseslint.config(
             //
             // Fix round 1: './src/session/!(useMe).{ts,tsx}' only matched DIRECT children of
             // src/session — it has no '**', so it silently stopped applying the moment a file moved
-            // one level deeper (e.g. a future src/session/hooks/ or src/session/internal/). Verified
-            // empirically against minimatch before and after: 'src/session/sub/x.ts' was unmatched
-            // (zero messages) under the old pattern, matched under this one. './**/' spans any depth
-            // (including zero) before the final filename check, so the top-level useMe.ts exemption
-            // still holds exactly as before.
+            // one level deeper (e.g. a future src/session/hooks/ or src/session/internal/).
+            //
+            // Fix round 2: the round-1 replacement, './src/session/**/!(useMe).{ts,tsx}', over-
+            // corrected — '!(useMe)' there negates on BASENAME AT ANY DEPTH, not on the top-level
+            // path, so an impostor 'src/session/something/useMe.ts' was exempted right along with the
+            // real top-level 'src/session/useMe.ts', silently defeating AR-1 again for any nested file
+            // that happens to share the name. The exemption has to be anchored to the literal depth-0
+            // path, not to a basename pattern that repeats at every depth: one entry exempts ONLY
+            // direct children other than useMe.ts (depth 0), a second entry unconditionally bans
+            // everything nested one level or deeper regardless of name (no basename exemption there
+            // at all). Verified against minimatch directly before wiring in: 'src/session/useMe.ts'
+            // (real, depth 0) stays exempt; 'src/session/something/useMe.ts' (impostor, depth 1),
+            // 'src/session/sub/x.ts' and 'src/session/sub/deeper/y.ts' are all blocked.
             {
               target: [
                 './src/app',
                 './src/lib',
                 './src/components',
-                './src/session/**/!(useMe).{ts,tsx}',
+                './src/session/!(useMe).{ts,tsx}',
+                './src/session/*/**',
                 './src/features/auth/*.{ts,tsx}',
                 './src/features/auth/!(session)/**',
                 ...features.filter((name) => name !== 'auth').map((name) => `./src/features/${name}`),
