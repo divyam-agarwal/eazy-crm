@@ -18,12 +18,17 @@ function harness(outcomes: LogoutResult[]) {
     endSession: vi.fn(() => calls.push('endSession')),
     broadcastLogout: vi.fn((_m: AuthMessage) => calls.push('broadcast')),
     // P14: the durable half of the state. `mark` before the POST, `clear` only on 204.
-    markPending: vi.fn(() => calls.push('mark')),
+    markPending: vi.fn((_p: { userId: string; tenantId: string } | null) => calls.push('mark')),
     clearPending: vi.fn(() => calls.push('clear')),
-    // Fix round 1, item 2: defaults model "nothing pending, owner unknown, can't verify" — each
-    // onLoginBroadcast test below overrides what it needs.
+    // Fix round 1, item 2 / fix round 2: defaults model "nothing pending, owner unknown, can't
+    // verify" — each onLoginBroadcast test below overrides what it needs. `pendingPrincipal` is the
+    // DURABLE read onLoginBroadcast actually consults; `currentPrincipal` only feeds `markPending`
+    // at logout()-call time, so it can differ from `pendingPrincipal` on purpose (that's exactly
+    // what a boot-resumed retry looks like: currentPrincipal() null, pendingPrincipal() populated by
+    // whichever earlier call over the same marker had a real one).
     isPending: vi.fn(() => false),
     currentPrincipal: vi.fn((): { userId: string; tenantId: string } | null => null),
+    pendingPrincipal: vi.fn((): { userId: string; tenantId: string } | null => null),
     verifyPrincipal: vi.fn(async (): Promise<RefreshCallResult> => ({ kind: 'unavailable' })),
     log: vi.fn(),
     setStatus: vi.fn((s: SessionStatus) => {
@@ -90,7 +95,7 @@ describe('logout', () => {
     const h = harness([]);
     h.deps.callLogout.mockImplementationOnce(async () => deferred);
     h.deps.isPending.mockReturnValue(true);
-    h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+    h.deps.pendingPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
 
     const logoutPromise = h.logout.logout(); // POST in flight, not yet resolved
     h.deps.verifyPrincipal.mockResolvedValue({ kind: 'unauthorized' });
@@ -117,8 +122,8 @@ describe('logout', () => {
     it('settles (clears + stops + anonymous) when verification proves a DIFFERENT principal', async () => {
       const h = harness([{ kind: 'failed' }]);
       h.deps.isPending.mockReturnValue(true);
-      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
-      await h.logout.logout(); // arms the retry loop and captures the owner
+      h.deps.pendingPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      await h.logout.logout(); // arms the retry loop
       h.deps.verifyPrincipal.mockResolvedValue({
         kind: 'ok',
         body: { ...ownerSession, userId: 'someone-else', tenantId: ownerSession.tenantId },
@@ -135,10 +140,34 @@ describe('logout', () => {
       expect(h.deps.callLogout).toHaveBeenCalledTimes(1);
     });
 
+    // Fix round 2 (rulings.md R59, reversed): this is the case the fix exists for. Boot resumed the
+    // logout on a fresh tab — currentPrincipal() is null, nothing established here — but the
+    // DURABLE principal persisted by whichever earlier tab actually knew who it was signing out is
+    // still there, so a real different-principal login still settles and stops the zombie retry
+    // before it can POST staff B's freshly-issued cookie.
+    it('settles a boot-resumed logout (no local session) using the DURABLE principal, not an in-memory one', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      h.deps.currentPrincipal.mockReturnValue(null); // no local session in this tab at all
+      h.deps.pendingPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      await h.logout.logout();
+      h.deps.verifyPrincipal.mockResolvedValue({
+        kind: 'ok',
+        body: { ...ownerSession, userId: 'staff-b', tenantId: ownerSession.tenantId },
+      });
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.clearPending).toHaveBeenCalled();
+      expect(h.deps.setStatus).toHaveBeenLastCalledWith('anonymous');
+      h.timers[0]?.fn();
+      expect(h.deps.callLogout).toHaveBeenCalledTimes(1); // no second POST against staff B's cookie
+    });
+
     it('keeps retrying when verification shows the SAME principal (forged or stale broadcast)', async () => {
       const h = harness([{ kind: 'failed' }]);
       h.deps.isPending.mockReturnValue(true);
-      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      h.deps.pendingPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
       await h.logout.logout();
       h.deps.verifyPrincipal.mockResolvedValue({
         kind: 'ok',
@@ -149,6 +178,24 @@ describe('logout', () => {
 
       expect(h.deps.clearPending).not.toHaveBeenCalled();
       expect(h.deps.setStatus).not.toHaveBeenCalledWith('anonymous');
+    });
+
+    // Also keeps working for a boot-resumed tab: a forged claim must still fail to settle even when
+    // the only principal available is the durable one, not an in-memory capture.
+    it('a boot-resumed logout still rejects a forged claim that disagrees with the durable principal', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      h.deps.currentPrincipal.mockReturnValue(null);
+      h.deps.pendingPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      await h.logout.logout();
+      h.deps.verifyPrincipal.mockResolvedValue({
+        kind: 'ok',
+        body: { ...ownerSession, userId: ownerSession.userId, tenantId: ownerSession.tenantId }, // truth: unchanged
+      });
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.clearPending).not.toHaveBeenCalled();
     });
 
     it('settles on a verified 401 — no cookie at all means the sign-out already succeeded', async () => {
@@ -163,10 +210,12 @@ describe('logout', () => {
       expect(h.deps.setStatus).toHaveBeenLastCalledWith('anonymous');
     });
 
-    it('stays pending when the owner is unknown even on a verified 200 — fails toward signed-out', async () => {
+    // Now reachable only when the durable read itself fails (a storage problem — Challenge #89 —
+    // not the normal boot-resumed shape, which fix round 2 gives a real principal to instead).
+    it('stays pending when no principal is persisted at all even on a verified 200', async () => {
       const h = harness([{ kind: 'failed' }]);
       h.deps.isPending.mockReturnValue(true);
-      h.deps.currentPrincipal.mockReturnValue(null); // e.g. boot resumed a marker, no local session
+      h.deps.pendingPrincipal.mockReturnValue(null);
       await h.logout.logout();
       h.deps.verifyPrincipal.mockResolvedValue({ kind: 'ok', body: { ...ownerSession, userId: 'anyone' } });
 
@@ -178,7 +227,7 @@ describe('logout', () => {
     it('stays pending when verification itself is undetermined (403/network)', async () => {
       const h = harness([{ kind: 'failed' }]);
       h.deps.isPending.mockReturnValue(true);
-      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      h.deps.pendingPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
       await h.logout.logout();
       h.deps.verifyPrincipal.mockResolvedValue({ kind: 'forbidden' });
 
@@ -192,12 +241,23 @@ describe('logout', () => {
     it('always asks the server before doing anything — a broadcast alone never suffices', async () => {
       const h = harness([{ kind: 'failed' }]);
       h.deps.isPending.mockReturnValue(true);
-      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      h.deps.pendingPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
       await h.logout.logout();
 
       await h.logout.onLoginBroadcast();
 
       expect(h.deps.verifyPrincipal).toHaveBeenCalledTimes(1);
+    });
+
+    // Fix round 2: markPending must be given whatever currentPrincipal() supplies, so the durable
+    // side actually gets a principal to persist on the ordinary (non-boot-resumed) path.
+    it('logout() passes currentPrincipal() straight through to markPending', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+
+      await h.logout.logout();
+
+      expect(h.deps.markPending).toHaveBeenCalledWith({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
     });
   });
 

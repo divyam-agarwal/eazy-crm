@@ -5,8 +5,7 @@ import { holdCookieLock } from '@/test/locks';
 import { inviteeSession, ownerSession } from '@/test/fixtures';
 import { establishSession } from './session';
 import { createInMemoryLocks, type LockProvider } from './lockProvider';
-import { LOGOUT_RETRY_MS } from './logout';
-import { isLogoutPending } from './logoutPending';
+import { isLogoutPending, markLogoutPending } from './logoutPending';
 import { startSession, stopSession } from './start';
 import type { AuthChannel, AuthMessage } from './authChannel';
 import type { SessionRuntime } from './runtime';
@@ -142,6 +141,63 @@ describe('startSession wiring: real AuthMessages through a fake channel', () => 
     expect(isLogoutPending()).toBe(true);
     expect(useSessionStore.getState().status).toBe('signing-out');
     expect(logoutCalls).toBe(1); // no premature settle, no spurious extra POST either
+  });
+
+  // Fix round 2 (rulings.md R59, reversed): the case that motivated persisting the principal.
+  // Nothing in THIS tab ever established a session — it simulates a fresh boot resuming a marker a
+  // discarded tab left behind (Challenge #89's own scenario), then a genuinely different person
+  // signs in for real. Before this fix, an owner-unknown boot-resumed retry could not tell that
+  // apart from a forged claim and stayed pending — so its next tick would have POSTed logout
+  // carrying the new person's freshly-issued cookie, ending their brand-new session.
+  it('a boot-resumed logout (no local session) settles on a real different-principal login, using the persisted owner', async () => {
+    // What an earlier tab already did before this one exists: started sign-out for ownerSession and
+    // persisted both the marker and its principal.
+    markLogoutPending({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+    let logoutCalls = 0;
+    server.use(
+      http.post(LOGOUT_URL, () => {
+        logoutCalls += 1;
+        return new Response(null, { status: 409 });
+      }),
+      http.post(REFRESH_URL, () => jsonResponse(inviteeSession)),
+    );
+    const { runtime, channel } = fakeRuntime();
+    const controls = startSession(runtime, { autoBoot: false }); // no establishSession(): me stays null
+
+    await controls.logout(); // the boot-resumed shape: re-marks, no local session, first POST fails
+    expect(logoutCalls).toBe(1);
+
+    channel.deliver({ type: 'login', userId: inviteeSession.userId, tenantId: inviteeSession.tenantId });
+    await vi.waitFor(() => expect(useSessionStore.getState().status).toBe('anonymous'));
+    expect(isLogoutPending()).toBe(false);
+
+    window.dispatchEvent(new Event('online'));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(logoutCalls).toBe(1); // no second POST carrying the new person's cookie
+  });
+
+  // The forged case must still stay pending even when the only principal available is the durable
+  // one a discarded tab left behind, not an in-memory capture from this tab's own logout() call.
+  it('a boot-resumed logout still rejects a forged claim that disagrees with the persisted owner', async () => {
+    markLogoutPending({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+    let logoutCalls = 0;
+    server.use(
+      http.post(LOGOUT_URL, () => {
+        logoutCalls += 1;
+        return new Response(null, { status: 409 });
+      }),
+      http.post(REFRESH_URL, () => jsonResponse(ownerSession)), // truth: still the same owner's cookie
+    );
+    const { runtime, channel } = fakeRuntime();
+    const controls = startSession(runtime, { autoBoot: false });
+
+    await controls.logout();
+    channel.deliver({ type: 'login', userId: 'attacker-claimed-id', tenantId: 'attacker-claimed-tenant' });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(isLogoutPending()).toBe(true);
+    expect(useSessionStore.getState().status).toBe('signing-out');
+    expect(logoutCalls).toBe(1);
   });
 
   it('a login broadcast verified as 401 (no cookie at all) settles the pending logout', async () => {

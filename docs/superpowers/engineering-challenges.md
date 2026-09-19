@@ -5865,6 +5865,15 @@ and decides from the server's actual answer, not the broadcast's claim:
   too — a real cost, deliberately paid, because the alternative (settling on an unverifiable claim)
   is the exact hole this closes.
 
+  ***Amendment (fix round 2, Challenge #91):*** the owner-unknown sub-case of this bullet was wrong,
+  not merely a documented cost — a second review found that "stays pending" there doesn't fail
+  toward the *departing* user being signed out, it fails toward *whoever logs in next* having their
+  brand-new session silently ended by the zombie retry. The fix persists the principal alongside the
+  durable marker (`logoutPendingPrincipal()`) so `onLoginBroadcast` reads a DURABLE owner instead of
+  the in-memory `signingOutPrincipal` described above; the owner-unknown branch is now reachable only
+  on a storage failure, not on every boot-resumed retry. See Challenge #91 for the full story — it is
+  the more useful read for this specific bullet now.
+
 `session.ts`'s `subscribeToAuthChannel` lost its matching direct-clear branch entirely
 (`if (message.type === 'login' && status === 'signing-out') { clearLogoutPending(); transition(…) }`)
 — a signing-out tab now falls through to `if (!me) return;` on a bare `login` message (`me` is
@@ -5893,3 +5902,106 @@ getting one wrong just costs an extra retry or a redundant local update; anythin
 changes what the client believes about its own authentication state needs the durable claim
 corroborated by the party that actually owns the truth, which in this system is the server, reachable
 here for free via the refresh endpoint every other privileged call already goes through.
+
+## Challenge 91 — Closing a forgery hole reopened a different one, because the fix's evidence had a narrower domain than the state it was gating
+
+**Phase:** Implementation (F0b, Task 6, fix round 2)
+
+### The problem
+
+Challenge #90 replaced blind trust in a `login` broadcast with verification: `onLoginBroadcast` asks
+the server (a locked refresh) whether the departing principal it captured in memory
+(`signingOutPrincipal`, read from `useSessionStore`'s `me` at the top of `logout()`) still owns the
+cookie. That fix shipped with a documented fallback for the one case it couldn't resolve — a
+boot-resumed logout has no local `me` to capture, so `signingOutPrincipal` is `null` — and the
+fallback chosen was "stay pending," framed and accepted (rulings.md R59) as an instance of P14's
+already-accepted "fails toward signed-out" trade-off.
+
+That framing was wrong, and a second review round (the security lens, on a re-review requested for
+an unrelated reason) found it with a probe test rather than an argument. The actual sequence: staff A
+signs out on the shared counter phone; Android discards the tab mid-retry (Challenge #89's own named
+scenario); a fresh tab boots and resumes the marker via `finishPendingLogout()` with no local `me`;
+staff B, next on shift, logs in for real. The genuine `login` broadcast this produces is followed by
+`verifyPrincipal` genuinely, correctly, server-confirmedly returning B's session. With no
+`signingOutPrincipal` to compare it against, `onLoginBroadcast` cannot classify that 200 either way,
+so it "stays pending" — and the *pending* retry loop's next tick fires `POST /api/v1/auth/logout`
+carrying B's freshly-issued cookie. The server revokes whatever token it's given and the client
+broadcasts `{type:'logout'}`, ending B's brand-new session in their own open tabs. No attacker is
+involved anywhere in this sequence.
+
+### Why it's hard
+
+"Fails toward signed-out" is a real, previously-validated principle in this same fix — it correctly
+describes the *same-principal* branch (the departing user's own later, genuine re-login loses a race
+against their own stale retry, and that is an acceptable cost because the person harmed is the one
+who asked to sign out). The owner-unknown branch was pattern-matched onto that same principle because
+it produces the same code path (stay pending) and reads, at a glance, like the same kind of caution.
+It isn't: "fails toward signed-out" is only benign when the person the retry eventually harms is the
+same person the retry was always entitled to log out. The owner-unknown branch has no such guarantee
+— by construction, it is precisely the branch reached when the system does NOT know who the retry
+would hit next — so labeling it with a phrase that presumes containment was the error, not the code.
+The bug is invisible to reasoning about the *branch in isolation* (staying pending looks conservative
+from where that one `if` sits) and only appears when you trace what "pending" *causes* one retry tick
+later, at a call site (`retry()` → `deps.callLogout()`) that the fix under review never touched or
+re-examined, because it already had its own tests (Challenge #90's) that were all written with
+`signingOutPrincipal` populated — none of them modeled the tab-discard-then-reopen sequence Challenge
+#89 exists to name, on the module Challenge #89 didn't touch this round.
+
+### The solution
+
+Persist `{userId, tenantId}` alongside the durable `easycrm.logoutPending` marker
+(`logoutPendingPrincipal()` / `markLogoutPending(principal)`, `logoutPending.ts`), written every time
+`logout()` marks pending and cleared whenever the marker is cleared. `onLoginBroadcast` now reads
+this DURABLE principal (`deps.pendingPrincipal()`) instead of an in-memory capture, so the
+owner-unknown branch — reachable before this fix on every boot-resumed retry, by construction —
+becomes reachable only when the persisted read itself fails (the already-documented, already-accepted
+storage-degradation case from Challenge #89's fix-round-1 amendment, a materially different and much
+narrower risk than "every single tab-discard-then-reopen").
+
+The one subtlety the fix has to get right: `markLogoutPending()` runs again on every resumed retry,
+including boot-resumed ones that have no local principal to give it. If that call unconditionally
+overwrote the persisted principal, a boot-resumed `logout()` call would erase the real value an
+earlier tab recorded with its own `null` — silently recreating the exact bug this fix closes, one
+layer up. `markLogoutPending(principal)` therefore only writes the principal when one is given;
+`null`/omitted leaves whatever is already persisted untouched. A mutation test that removes this
+guard (always overwrite, even with `null`) reproduces the bug immediately and is caught at both the
+unit level (`logoutPending.test.ts`) and the integration level (`start.test.ts`'s boot-resumed
+scenario) — confirming the guard is load-bearing, not defensive dead code.
+
+This is a deliberate, narrow exception to the global constraint that the durable marker is "a flag,
+never tenant data": a user id and tenant id are not the tenant/business data that constraint exists
+to keep out of `localStorage` — they are transient (cleared the instant the marker itself is) and
+exist for exactly one purpose, this comparison. Recorded here, in the module doc comment, and in the
+Task 6 report so it is not mistaken for drift by a later reader who only sees "identity data in
+localStorage" out of context.
+
+Two related effects recorded, not treated as bugs: (1) `verifyPrincipal` reuses `POST /auth/refresh`,
+which rotates the cookie on success — so every `login` broadcast received while a logout is pending
+extends the doomed cookie's expiry by one rotation before the retry catches up to it. Harmless to the
+eventual outcome (the retry still ends it), a side effect of using refresh as a verification oracle
+rather than a dedicated check. (2) The alternative the security lens also considered — settle on ANY
+verified 200, identity comparison or not — was rejected: with no identity to compare, a 200 cannot
+distinguish "B logged in" from "A's own cookie is still live," and settling on the latter restores
+the exact P14 bug Challenge #89 exists to prevent. The fix had to add information (the persisted
+principal), not remove a check.
+
+### Lesson
+
+A named, previously-validated trade-off ("fails toward signed-out") is a description of one specific
+code path's *consequence*, not a property of the function it lives in — reusing its label for a
+different branch that merely *looks* similarly cautious, without re-deriving who actually bears the
+cost of that branch, is exactly how an accepted risk gets silently miscategorized. The concrete
+question that would have caught this before a second review had to: "if this branch is taken and
+nothing else happens for one more retry interval, who does the next scheduled action affect, and is
+that still the person the trade-off was written about?" Tracing one step past the branch under review
+— into the retry loop's next tick, a call site the current diff didn't touch — is what surfaces the
+gap; reviewing the branch's own five lines does not, because those five lines are locally correct
+under the assumption baked into their comment. Separately, and more generally: fixing a forgery hole
+by adding a verification step does not automatically preserve every property the pre-fix (blind
+trust) code accidentally had. Here, unconditionally trusting the broadcast had one virtue by
+accident: it stopped the zombie retry in every case, including the owner-unknown one, because it
+never needed to know who was who. Replacing trust with verification is strictly more correct only if
+the verification's evidence covers every case the trust it replaces used to — a narrower evidence
+domain (in-memory identity, which does not survive the exact tab-discard scenario the whole feature
+targets) than the state being gated (a durable marker, which does) is a gap the removed code never
+had, and the fix has to close it explicitly rather than inherit the old code's incidental coverage.

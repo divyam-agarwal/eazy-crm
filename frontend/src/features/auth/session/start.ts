@@ -3,7 +3,7 @@ import { getAccessToken } from './accessToken';
 import { createBoot, type Boot } from './boot';
 import { createSessionAuthBridge } from './bridge';
 import { REFRESH_LOCK } from './lockProvider';
-import { clearLogoutPending, isLogoutPending, markLogoutPending } from './logoutPending';
+import { clearLogoutPending, isLogoutPending, logoutPendingPrincipal, markLogoutPending } from './logoutPending';
 import { callLogout, createLogout } from './logout';
 import { callRefresh } from './refreshCall';
 import { createRefreshCoordinator } from './refreshCoordinator';
@@ -67,14 +67,19 @@ export function startSession(runtime: SessionRuntime, options: { autoBoot?: bool
     broadcastLogout: (message) => runtime.channel.post(message),
     markPending: markLogoutPending,
     clearPending: clearLogoutPending,
-    // Fix round 1, item 2: gates and feeds the verified settlement path — see logout.ts's
-    // onLoginBroadcast(). isPending/currentPrincipal are cheap local reads; verifyPrincipal is the
-    // one that actually asks the server, under the same lock as every other cookie-writing call.
+    // Fix round 1, item 2 / fix round 2: gates and feeds the verified settlement path — see
+    // logout.ts's onLoginBroadcast(). isPending/currentPrincipal/pendingPrincipal are cheap local
+    // reads; verifyPrincipal is the one that actually asks the server, under the same lock as every
+    // other cookie-writing call.
     isPending: isLogoutPending,
     currentPrincipal: () => {
       const { me } = useSessionStore.getState();
       return me ? { userId: me.userId, tenantId: me.tenantId } : null;
     },
+    // Fix round 2: the DURABLE principal, not an in-memory one — populated even when THIS tab
+    // never established a session (a boot-resumed retry), because whichever tab first had a real
+    // `me` persisted it alongside the marker.
+    pendingPrincipal: logoutPendingPrincipal,
     verifyPrincipal: () => withCookieLock(() => callRefresh()),
     setStatus,
     onOnline: (fn) => {

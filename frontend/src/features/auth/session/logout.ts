@@ -31,12 +31,20 @@ export async function callLogout(
   }
 }
 
+type Principal = { userId: string; tenantId: string };
+
 export interface LogoutDeps {
   callLogout(): Promise<LogoutResult>;
   endSession(reason: EndReason): void;
   broadcastLogout(message: AuthMessage): void;
-  /** P14 — the durable marker. `mark` before the POST, `clear` only once the server confirms. */
-  markPending(): void;
+  /**
+   * P14 — the durable marker. `mark` before the POST, `clear` only once the server confirms.
+   * Fix round 2: also persists `principal` alongside the marker (a deliberate, narrow exception to
+   * "the marker is a flag, never data" — see the report). Pass `null`/omit when this call has no
+   * local session to read one from (a boot-resumed retry): the durable store must not let that
+   * overwrite a real principal an earlier call over this same marker already recorded.
+   */
+  markPending(principal: Principal | null): void;
   clearPending(): void;
   /**
    * Fix round 1, item 2: the durable marker's CURRENT value, read fresh each time — gates
@@ -44,13 +52,18 @@ export interface LogoutDeps {
    * `login` message it sees.
    */
   isPending(): boolean;
+  /** Who THIS tab currently believes is signed in, read before `endSession` clears it — fed into
+   * `markPending` at the top of `logout()`. Not consulted by `onLoginBroadcast`; see
+   * `pendingPrincipal` below for that. */
+  currentPrincipal(): Principal | null;
   /**
-   * Fix round 1, item 2: who this tab was signing out, captured BEFORE `endSession` clears `me`.
-   * `null` when this `logout()` call has no local session to read — e.g. boot resumed a marker a
-   * discarded tab left behind, with no `me` of its own yet. See the report's residual-limitation
-   * note: an unknown owner cannot be proven "different", so `onLoginBroadcast` stays conservative.
+   * Fix round 2: the DURABLE principal `markPending` persisted — read fresh, not captured once in a
+   * closure. Unlike an in-memory capture, this is populated even when THIS tab never called
+   * `logout()` with a real `me` of its own (boot resumed a marker a discarded tab left behind): the
+   * marker and the principal that made it are always written together, by whichever tab first had
+   * one to give. `null` only when nothing was ever persisted or the persisted value doesn't parse.
    */
-  currentPrincipal(): { userId: string; tenantId: string } | null;
+  pendingPrincipal(): Principal | null;
   /**
    * Fix round 1, item 2: a LOCKED refresh (P15), used ONLY to verify a `login` broadcast's claim
    * against the server — never to establish a session in this tab. A same-origin `postMessage` is
@@ -80,8 +93,6 @@ export function createLogout(deps: LogoutDeps) {
   let stopRetrying: (() => void) | null = null;
   let inFlight: Promise<void> | null = null;
   let settled = false;
-  // Fix round 1, item 2: who this tab was signing out, captured before endSession() clears `me`.
-  let signingOutPrincipal: { userId: string; tenantId: string } | null = null;
 
   function scheduleRetry(retryAfterSeconds?: number) {
     const cleanup = () => {
@@ -137,12 +148,12 @@ export function createLogout(deps: LogoutDeps) {
     async logout(): Promise<void> {
       if (inFlight) return inFlight; // Minor-1: a double tap must not start a second loop
       inFlight = (async () => {
-        // Captured before endSession() clears `me` — this is the only chance to know who we're
-        // signing out (null when boot resumes a marker with no local session of its own).
-        signingOutPrincipal = deps.currentPrincipal();
+        // Read before endSession() clears `me` — this is the only chance THIS call has to supply a
+        // principal (null on a boot-resumed retry with no local session; markPending() then leaves
+        // whatever was already persisted untouched rather than erasing it).
         // Local state goes FIRST (Security-3): on 4G the POST can take up to 15 s, and the
         // previous user's screen must not stay readable for that long.
-        deps.markPending();
+        deps.markPending(deps.currentPrincipal());
         deps.endSession('logout');
         deps.setStatus('signing-out');
         deps.broadcastLogout({ type: 'signing-out' });
@@ -158,14 +169,21 @@ export function createLogout(deps: LogoutDeps) {
      * revoked this device's stale cookie. Ask the server directly, under the same lock every
      * cookie-writing call uses (`deps.verifyPrincipal`, P15), and decide from what it says:
      *  - 401 (no cookie at all): the sign-out is effectively done — settle.
-     *  - 200 for a principal DIFFERENT from the one we're signing out: a real login genuinely
+     *  - 200 for a principal DIFFERENT from `deps.pendingPrincipal()`: a real login genuinely
      *    happened (the server's own login/signup/accept revokes whatever cookie was presented), so
      *    our stale cookie is already gone — settle.
-     *  - 200 for the SAME principal we're signing out: nothing has actually changed — the
-     *    broadcast was forged or stale — keep retrying.
-     *  - 200 with no known `signingOutPrincipal`, or 403/network: can't prove anything either way —
-     *    stay pending. This is P14's accepted "fails toward signed-out" bias, not a bug: the
-     *    alternative (settling on an unverifiable claim) is exactly the hole this fixes.
+     *  - 200 for the SAME principal: nothing has actually changed — the broadcast was forged or
+     *    stale — keep retrying.
+     *  - 200 with no `pendingPrincipal()` at all (both the mark and the read failed — a storage
+     *    problem, not a design gap; see Challenge #89), or 403/network: can't prove anything either
+     *    way — stay pending. Fix round 2 (rulings.md R59, reversed): this branch used to fire on
+     *    every boot-resumed retry, because the only principal available was an in-memory capture
+     *    that a freshly loaded tab never has. That was reported as "fails toward signed-out" and
+     *    the framing was wrong — the security lens showed it actually terminates a DIFFERENT,
+     *    legitimate, just-authenticated user's brand-new session (the zombie retry POSTs their
+     *    cookie next). `deps.pendingPrincipal()` reads the DURABLE principal instead of an
+     *    in-memory one, so it survives exactly the tab discard this whole feature is built around
+     *    and this branch is now reachable only when storage itself failed.
      */
     async onLoginBroadcast(): Promise<void> {
       if (settled || !deps.isPending()) return;
@@ -175,10 +193,8 @@ export function createLogout(deps: LogoutDeps) {
         return;
       }
       if (result.kind === 'ok') {
-        const sameAsOwner =
-          signingOutPrincipal !== null &&
-          result.body.userId === signingOutPrincipal.userId &&
-          result.body.tenantId === signingOutPrincipal.tenantId;
+        const owner = deps.pendingPrincipal();
+        const sameAsOwner = owner !== null && result.body.userId === owner.userId && result.body.tenantId === owner.tenantId;
         if (sameAsOwner) {
           deps.log(
             'a login broadcast arrived while a sign-out was pending, but the server-verified cookie ' +
@@ -186,10 +202,10 @@ export function createLogout(deps: LogoutDeps) {
           );
           return;
         }
-        if (signingOutPrincipal === null) {
+        if (owner === null) {
           deps.log(
-            'a login broadcast arrived while a sign-out was pending, but this device has no record ' +
-              'of who it was signing out — cannot verify, staying pending',
+            'a login broadcast arrived while a sign-out was pending, but no principal is persisted ' +
+              'for it (a storage failure, not the normal case) — cannot verify, staying pending',
           );
           return;
         }
