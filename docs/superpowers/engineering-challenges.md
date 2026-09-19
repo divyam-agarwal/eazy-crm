@@ -5539,3 +5539,68 @@ the kind of file most likely to want to *talk about* them in nearby prose) is at
 collision. The general rule: never start a comment line with the literal text `@ts-expect-error` or
 `@ts-ignore` unless you mean it as a real directive on the following statement — rephrase, or break the
 token up (e.g. "expect-error directive") when writing about the mechanism itself.
+
+## Challenge 87 — In-tab dedup and cross-tab rotation grace defend against the same race, but neither test can substitute for the other
+
+**Phase:** Implementation (F0b, Task 5)
+
+### The problem
+
+`refreshCoordinator.ts` has to stop one specific failure from ever reaching users: two tabs sharing
+one refresh cookie both believing they're the one refreshing it, one of them rotating the cookie out
+from under the other, and the loser getting logged out even though nothing was actually wrong. The
+coordinator defends against this with two *different* mechanisms operating at two *different* scopes,
+and it took writing the tests the plan didn't already have (per R44) to see that they don't overlap:
+
+1. **In-tab single-flight** — `inFlight ??= deps.locks.withLock(...)`. Every caller in one tab
+   that races into `refresh()` while a refresh is already outstanding gets handed the *same* promise.
+   This is pure JS-realm state; it works even with `noopLocks` and needs no lock at all.
+2. **Cross-tab serialization + grace window** — `REFRESH_LOCK` (`navigator.locks`), backed by the
+   backend's 30 s single-use grace on a just-rotated refresh token. Web Locks serializes *when
+   supported*; the grace window is what saves the case where it *isn't* (or where two realms simply
+   don't share a lock manager) and two tabs genuinely dispatch `POST /refresh` with the same cookie
+   at once.
+
+The brief's own coordinator test suite proves (1) with two callers, and separately proves that
+*shared* in-memory locks serialize two "tabs" down to `maxInFlight === 1` — but that second test
+uses one shared `LockProvider` instance for both tabs, which is exactly the case where the grace
+window is never exercised (the lock already prevented the race). Scaling caller count in (1) to N
+callers doesn't touch (2) either — every one of those N calls looked up the coordinator's *own*
+module-scoped `inFlight`, so they were never truly racing the network, only racing local state.
+Neither test says anything about what happens when two tabs *don't* share serialization and *do*
+hit the backend concurrently — which is the actual scenario the grace window exists for.
+
+### Why it's hard
+
+The two mechanisms look redundant from the coordinator's code alone (both are "don't let two
+refreshes collide") but they cover disjoint failure surfaces: (1) is a pure-JS optimization that
+would still be correct with zero backend support (it just avoids redundant network calls); (2) is
+the only thing standing between "Web Locks unsupported" and "two tabs occasionally log each other
+out for no visible reason" — a bug that would reproduce only on specific browsers, only under timing
+pressure, and would look from the outside like session flakiness with no repro steps. A reviewer
+skimming `createRefreshCoordinator` and seeing `deps.locks.withLock(...)` could reasonably conclude
+the lock alone is sufficient and the backend's grace window is defense-in-depth nobody will ever
+observe — until the one user on a browser without Web Locks hits it.
+
+### The solution
+
+Added two tests neither in the brief nor implied by scaling its existing ones (`refreshCoordinator.test.ts`):
+`N parallel 401s in one tab produce exactly ONE refresh() call` generalizes single-flight dedup from
+2 to N callers sharing one `inFlight` promise, matching the real trigger (several TanStack queries
+firing on one page mount, all racing the same stale token). `two tabs refreshing near-simultaneously
+both end up refreshed, not logged out` gives each "tab" its **own** `createInMemoryLocks()` instance
+— deliberately *not* shared, modelling the no-shared-lock case — and races them against one shared
+fake backend that tolerates exactly one extra concurrent use of a token before rejecting it, mirroring
+the real 30 s single-use grace. Both tabs still resolve `'refreshed'`; `onUnauthorized` is never
+called on either. This is the mechanism the docstring on `createRefreshCoordinator` already asserted
+in prose ("two concurrent refreshes of one cookie both succeed... through the grace window") — it was
+simply untested before this task.
+
+### Lesson
+
+When a design layers two defenses against one race, write a test that defeats the *first* defense to
+prove the second one carries the case alone — a test that keeps both mechanisms engaged only proves
+the outer one works, and silently assumes the inner one would too. Concretely: to test a grace-window
+fallback, don't share the lock between the two racing actors in the test: sharing it is exactly the
+condition under which the fallback is never reached, so a passing test that shares the lock is
+evidence for the wrong claim.

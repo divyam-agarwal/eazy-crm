@@ -13,6 +13,7 @@ dependency adds a row here in the same change.**
 | i18next | 25.10.10 | entry | ~20.3 KB¹ | i18n core; `common` and `auth` namespaces preload at boot, others load lazily per route (Task 4) |
 | react-i18next | 16.6.6 | entry | ~20.3 KB¹ | React bindings for i18next (Task 4) |
 | i18next-resources-to-backend | 1.2.3 | entry | ~20.3 KB¹ | Dynamic `import()` loader so each locale/namespace is its own chunk (Task 4) |
+| zustand | 5.0.15 | entry | | Session store (`src/session/sessionStore.ts`) — `me`/`status`, read by every feature via `useMe`/`useSessionStatus` (Task 5). Not yet wired into an entry point (bootstrap lands in Task 6); gzipped-measured column is Task 13's job like the other entry deps above |
 
 ¹ The three i18n packages were measured together, not per-package, by the frontend-review-performance
 lens during Task 4 fix round 1: bundled with esbuild (`--bundle --minify` against a module importing
