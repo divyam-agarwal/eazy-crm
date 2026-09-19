@@ -67,6 +67,15 @@ export function startSession(runtime: SessionRuntime, options: { autoBoot?: bool
     broadcastLogout: (message) => runtime.channel.post(message),
     markPending: markLogoutPending,
     clearPending: clearLogoutPending,
+    // Fix round 1, item 2: gates and feeds the verified settlement path — see logout.ts's
+    // onLoginBroadcast(). isPending/currentPrincipal are cheap local reads; verifyPrincipal is the
+    // one that actually asks the server, under the same lock as every other cookie-writing call.
+    isPending: isLogoutPending,
+    currentPrincipal: () => {
+      const { me } = useSessionStore.getState();
+      return me ? { userId: me.userId, tenantId: me.tenantId } : null;
+    },
+    verifyPrincipal: () => withCookieLock(() => callRefresh()),
     setStatus,
     onOnline: (fn) => {
       window.addEventListener('online', fn);
@@ -90,11 +99,12 @@ export function startSession(runtime: SessionRuntime, options: { autoBoot?: bool
     finishPendingLogout: () => logout.logout(),
   });
 
-  // Architecture-2 / Security-1: a `login` anywhere means the server revoked the pending cookie
-  // (AuthController.login/signup → auth::logout), so this tab must stop retrying BEFORE its next
-  // POST logs the new user out. session.ts flips the status; this stops the loop.
+  // Fix round 1, item 2: a `login` anywhere COULD mean the server revoked our pending cookie
+  // (AuthController.login/signup → auth::logout) — but the broadcast itself is same-origin
+  // postMessage, not proof. onLoginBroadcast() verifies the claim against the server (under the
+  // refresh lock) before deciding whether to stop retrying and clear the durable marker.
   const unsubscribeSettled = runtime.channel.subscribe((message) => {
-    if (message.type === 'login') logout.settledElsewhere();
+    if (message.type === 'login') void logout.onLoginBroadcast();
   });
 
   // Performance-6: retry boot the moment the phone is back, instead of waiting out a 30 s step.

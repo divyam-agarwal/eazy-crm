@@ -5763,8 +5763,19 @@ stopping condition is therefore "the thing it was retrying for is no longer true
 Both directions are covered by tests that fail for the intended reason under mutation: deleting
 boot's `logoutPending()` branch turns "finishes a pending logout instead of refreshing" red
 (`deps.refresh` gets called when it must not); dropping the `if (settled) return` guard from
-`retry()` turns "stops retrying when any tab signs in, without another POST" red (`callLogout` fires
-a second time against the new user's cookie).
+`retry()` turns "keeps retrying when verification shows the SAME principal" and the settle-path tests
+in `onLoginBroadcast` red (`callLogout` fires again against whatever cookie is now in the jar). *Fix
+round 1 update:* the original cross-tab stop signal here — a bare `login` broadcast trusted at face
+value — turned out to be forgeable; see Challenge #90 for why blind trust in that signal was itself
+a Critical hole, and what replaced it.
+
+**Fix round 1, item 4 (documented, accepted residual risk):** `logoutPending.ts` swallows every
+`localStorage` error in all three functions. On quota exhaustion, private-mode storage denial, or
+eviction between `markLogoutPending()` and the POST, P14 silently degrades to the pre-fix in-memory
+`signing-out` behaviour — correct as long as the tab survives to see the response, wrong (in exactly
+the way this challenge describes) if it doesn't. This is deliberately NOT made blocking — failing
+sign-out outright in private mode would be strictly worse — so the residual risk is accepted and
+recorded here (and belongs in the spec's §4.9 residual-risk list) rather than engineered away.
 
 ### Lesson
 
@@ -5779,3 +5790,106 @@ is trying to reach ("no logout is owed" / "the cookie already changed hands"), n
 request finally succeeded" — the two diverge exactly when another actor (a different tab, a different
 user) can independently make the original goal moot, and reusing an existing cross-tab signal
 (`login` on the auth channel) is cheaper and more reliable than inventing a parallel one.
+
+## Challenge 90 — The cross-tab stop signal for P14's retry loop was itself forgeable, and the ruling that designed it never checked the direction that mattered
+
+**Phase:** Implementation (F0b, Task 6, fix round 1)
+
+### The problem
+
+Challenge #89 closed the reload gap in P14 (a durable `localStorage` marker, checked before any
+refresh) and gave the retry loop a cross-tab stop signal: when a `login` broadcast arrived on the
+shared `easycrm-auth` channel, both `session.ts`'s `subscribeToAuthChannel` (for a signing-out tab's
+own status) and `start.ts`'s wiring (for the retry loop itself, via `logout.settledElsewhere()`)
+trusted it unconditionally — clearing the durable marker, dropping the blocking screen to `/login`,
+and stopping the retry, all on the word of one `postMessage`.
+
+That message is same-origin `postMessage` on a `BroadcastChannel`. Any script running on the page —
+not a network attacker, not cross-origin, just anything with JS execution on `app.` — can construct
+and post `{ type: 'login', userId: '…', tenantId: '…' }` with no credentials, no server round trip,
+and no correlation to anything real. One forged message while a real logout was retrying produced
+exactly the failure P14 exists to prevent: the marker gone, the UI showing `/login` (inviting the
+user to believe they're signed out and it's safe to hand the device back), and the `easycrm_rt`
+cookie **never revoked** — live for up to 30 more days. The very next boot, on that same stale
+cookie, would refresh successfully and silently restore the previous user's session. Unlike the
+in-memory-token XSS risk the spec already records (§4.9, F0-13 — total compromise if it happens, but
+gone the moment the page reloads), this one is worse in one specific way: the damage (an unrevoked
+cookie, a corrupted local belief that sign-out succeeded) **persists after the injecting script is
+gone.** A single message, fired once, outlives the session that fired it.
+
+The security review that specified the durable marker (rulings.md R53) had already asked exactly this
+question — for the *write* side. It confirmed a forged `signing-out` broadcast cannot write the
+marker (the handler only touches in-memory state) and accepted the residual same-origin-`postMessage`
+risk on that basis. It never asked the same question about the *clear* side — whether a forged
+`login` broadcast could remove a marker that was already there. It could, trivially, and did.
+
+### Why it's hard
+
+The write-side check and the clear-side gap look, at a glance, like the same property verified twice:
+"can a forged broadcast corrupt the durable state?" But they are opposite directions through the same
+mechanism, and a security property that holds in one direction says nothing about the other. Writing
+the marker is what a *forged* `signing-out` would attempt — and that path was never wired to
+`markLogoutPending()` at all, so there was nothing to exploit. Clearing the marker is what a
+*legitimate* `login` is supposed to do — Architecture-2's own reasoning (any real sign-in revokes the
+stale cookie server-side, so a retry loop that doesn't know that will eventually log the new user
+out) is correct and the stop signal it motivated was necessary. The bug is not in wanting a stop
+signal; it's in implementing it as "trust the message" instead of "trust what the message causes you
+to go verify." Nothing in the existing test suite could catch this: every `subscribeToAuthChannel`
+and `settledElsewhere` test used a synchronous, hand-constructed `AuthMessage` and asserted the
+handler's reaction to it — which is precisely testing "does the code trust the message," the same
+question the vulnerability answers wrong. A test built on that premise cannot fail from it.
+
+### The solution
+
+Replaced blind trust with verification. `logout.ts`'s `settledElsewhere()` (synchronous, no server
+contact) became `onLoginBroadcast()` (async): on a `login` message, if a logout is actually pending
+(`deps.isPending()`, the durable marker read fresh — a cheap local gate so a tab with nothing pending
+doesn't pay for a round trip on every login it observes), it performs a **locked refresh**
+(`deps.verifyPrincipal`, the same `easycrm-refresh` Web Lock every cookie-writing call uses — P15)
+and decides from the server's actual answer, not the broadcast's claim:
+
+- **401** — no cookie at all right now — the sign-out is effectively done: settle (clear the marker,
+  stop retrying, go `anonymous`).
+- **200 for a principal DIFFERENT from the one this tab captured as `signingOutPrincipal`** (read
+  from `useSessionStore`'s `me` *before* `endSession()` clears it, at the top of `logout()`) — a
+  real login genuinely happened, and the server's own login/signup/accept endpoints already revoke
+  whatever cookie was presented as a side effect — so the stale cookie is already gone: settle.
+- **200 for the SAME principal** — nothing has actually changed; the broadcast was forged or stale
+  — keep retrying.
+- **200 with no known `signingOutPrincipal`** (this tab's `logout()` never captured one — the
+  scenario Challenge #89's boot-resumed retry produces, where a freshly loaded tab finds the durable
+  marker set but has no local session to read an owner from), or an undetermined verification result
+  (403/network) — cannot prove either direction: stay pending. This is the accepted trade-off
+  ("fails toward signed-out") stated for this fix: if the *same* user legitimately signs back in
+  while their own logout is still retrying, the marker survives and the retry ends their new session
+  too — a real cost, deliberately paid, because the alternative (settling on an unverifiable claim)
+  is the exact hole this closes.
+
+`session.ts`'s `subscribeToAuthChannel` lost its matching direct-clear branch entirely
+(`if (message.type === 'login' && status === 'signing-out') { clearLogoutPending(); transition(…) }`)
+— a signing-out tab now falls through to `if (!me) return;` on a bare `login` message (`me` is
+already `null` from the earlier `signing-out` broadcast) and does nothing until the verified path
+in `start.ts` decides otherwise. Two subscriptions had independently implemented the same trust
+assumption; removing only one would have left the other as a live bypass of the fix.
+
+Also fixed in the same round: `finish()` in `logout.ts` now checks `if (settled) return;` before
+scheduling a retry, so a POST that was already in flight when `onLoginBroadcast` verifies and settles
+doesn't arm an orphan timer when it resolves late.
+
+### Lesson
+
+A security review question phrased as "can this input corrupt state X" is direction-specific even
+when state X is a single boolean-ish marker: *writing* it and *clearing* it are different code paths
+with different attack surfaces, and confirming one is safe establishes nothing about the other. When
+a ruling motivates a fix by naming the mechanism an attacker would use ("a forged broadcast"), the
+review that follows should ask that same question against **every** operation the fix performs on
+the protected state, not just the one the original finding happened to describe — here, "does the
+write path trust the message" was asked and answered; "does the clear path trust the message" was
+the same shape of question, sitting one field over, and went unasked until a second review pass
+found it. Separately: a same-origin broadcast channel used as a *coordination* signal (this tab
+should stop retrying) is a fundamentally different trust level from the same channel used as a
+*command* (do this to durable state) — coordination hints are fine to accept at face value because
+getting one wrong just costs an extra retry or a redundant local update; anything that durably
+changes what the client believes about its own authentication state needs the durable claim
+corroborated by the party that actually owns the truth, which in this system is the server, reachable
+here for free via the refresh endpoint every other privileged call already goes through.

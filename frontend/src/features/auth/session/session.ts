@@ -85,16 +85,16 @@ export function subscribeToAuthChannel(): () => void {
       return;
     }
 
-    // Architecture-2: any successful sign-in revokes the pending cookie server-side
-    // (AuthController.login/signup and PublicInvitationController.accept call auth::logout),
-    // so a tab stuck in signing-out is done — and must stop retrying before its next POST
-    // logs the NEW user out.
-    if (message.type === 'login' && status === 'signing-out') {
-      clearLogoutPending();
-      transition('anonymous', null);
-      return;
-    }
-
+    // Fix round 1, item 2 (Critical, security): this used to clear the durable marker and drop the
+    // blocking screen on the mere WORD of a `login` broadcast. `easycrm-auth` is same-origin
+    // `postMessage` — any script on the page can forge one — so treating it as proof the server
+    // revoked this device's stale cookie let a forged message leave the marker gone, the UI on
+    // /login, and the easycrm_rt cookie never revoked (the next boot would then silently restore
+    // the previous user). A `login` message is no longer trusted here at all: while `me` is null
+    // (this branch's `signing-out` case already cleared it), falling through to `if (!me) return;`
+    // below makes a bare `login` broadcast a no-op for a signing-out tab. Settling a pending logout
+    // now requires verifying the claim against the server under the refresh lock — see
+    // `logout.ts`'s `onLoginBroadcast()`, wired from `start.ts`. Challenge #90.
     if (!me) return;
     if (message.type === 'logout') {
       endSession('remote-logout');

@@ -133,10 +133,14 @@ describe('subscribeToAuthChannel', () => {
     expect(getAccessToken()).toBeNull(); // local state is cleared either way
   });
 
-  // Architecture-2: a tab already showing signing-out has me === null. If it ignored broadcasts on
-  // that basis, a later sign-in elsewhere would leave it stuck, and its retry loop would log the
-  // NEW user out. A login means the server has revoked the old cookie: the sign-out is complete.
-  it('a signing-out tab returns to anonymous when any tab signs in', () => {
+  // Fix round 1, item 2 (Critical, security): a bare `login` broadcast used to clear a signing-out
+  // tab straight to 'anonymous' — trusting a same-origin postMessage that any script can forge, with
+  // no server round trip. That is the Critical fix this replaces: subscribeToAuthChannel() ALONE
+  // (no verification wiring) must now leave a signing-out tab exactly as it was. Settling a pending
+  // logout on a `login` broadcast requires verifying the claim against the server first — that
+  // decision now lives in logout.ts's onLoginBroadcast(), wired from start.ts and covered by
+  // start.test.ts (the different-principal / same-principal / 401 / forged-claim cases).
+  it('does NOT leave signing-out on a bare login broadcast — verification lives in start.ts', () => {
     const { deliver } = fakeRuntime();
     subscribeToAuthChannel();
     establishSession(ownerSession);
@@ -144,7 +148,7 @@ describe('subscribeToAuthChannel', () => {
 
     deliver({ type: 'login', userId: inviteeSession.userId, tenantId: inviteeSession.tenantId });
 
-    expect(useSessionStore.getState().status).toBe('anonymous');
+    expect(useSessionStore.getState().status).toBe('signing-out');
   });
 });
 

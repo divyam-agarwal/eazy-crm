@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createBareClient } from '@/api/client';
+import { ownerSession } from '@/test/fixtures';
 import { callLogout, createLogout, LOGOUT_RETRY_MS, type LogoutResult } from './logout';
 import type { AuthMessage } from './authChannel';
+import type { RefreshCallResult } from './refreshCall';
 import type { SessionStatus } from '@/session/types';
 
 function harness(outcomes: LogoutResult[]) {
@@ -18,6 +20,11 @@ function harness(outcomes: LogoutResult[]) {
     // P14: the durable half of the state. `mark` before the POST, `clear` only on 204.
     markPending: vi.fn(() => calls.push('mark')),
     clearPending: vi.fn(() => calls.push('clear')),
+    // Fix round 1, item 2: defaults model "nothing pending, owner unknown, can't verify" — each
+    // onLoginBroadcast test below overrides what it needs.
+    isPending: vi.fn(() => false),
+    currentPrincipal: vi.fn((): { userId: string; tenantId: string } | null => null),
+    verifyPrincipal: vi.fn(async (): Promise<RefreshCallResult> => ({ kind: 'unavailable' })),
     log: vi.fn(),
     setStatus: vi.fn((s: SessionStatus) => {
       if (s === 'signing-out') calls.push('signing-out');
@@ -75,17 +82,123 @@ describe('logout', () => {
     expect(h.timers).toHaveLength(1);
   });
 
-  it('stops retrying when any tab signs in, without another POST', async () => {
-    // Architecture-2: the retry POSTs whatever cookie is in the jar NOW. After someone else signs
-    // in, that is THEIR cookie, and the server would happily revoke it.
-    const h = harness([{ kind: 'failed' }]);
-    await h.logout.logout();
+  // Fix round 1, item 5: a late 'failed' resolution after something else already settled this
+  // (onLoginBroadcast, below) must not arm an orphan retry timer nobody will ever cancel.
+  it('a late failed resolution after settlement does not arm a fresh retry timer', async () => {
+    let resolveFirst!: (r: LogoutResult) => void;
+    const deferred = new Promise<LogoutResult>((r) => (resolveFirst = r));
+    const h = harness([]);
+    h.deps.callLogout.mockImplementationOnce(async () => deferred);
+    h.deps.isPending.mockReturnValue(true);
+    h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
 
-    h.logout.settledElsewhere(); // start.ts calls this on a `login` broadcast
+    const logoutPromise = h.logout.logout(); // POST in flight, not yet resolved
+    h.deps.verifyPrincipal.mockResolvedValue({ kind: 'unauthorized' });
+    await h.logout.onLoginBroadcast(); // settles first: clears pending, stops retrying, sets anonymous
+    expect(h.deps.clearPending).toHaveBeenCalledTimes(1);
 
-    h.timers[0]?.fn();
-    expect(h.deps.callLogout).toHaveBeenCalledTimes(1);
-    expect(h.deps.clearPending).toHaveBeenCalled();
+    resolveFirst({ kind: 'failed' }); // the original POST finally resolves, late
+    await logoutPromise;
+
+    expect(h.timers).toHaveLength(0); // no retry timer was armed by the late resolution
+    expect(h.deps.clearPending).toHaveBeenCalledTimes(1); // not called again either
+  });
+
+  describe('onLoginBroadcast (fix round 1, item 2 — verified settlement, never a bare trust)', () => {
+    it('does nothing when no logout is pending — no network round trip', async () => {
+      const h = harness([]);
+      h.deps.isPending.mockReturnValue(false);
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.verifyPrincipal).not.toHaveBeenCalled();
+    });
+
+    it('settles (clears + stops + anonymous) when verification proves a DIFFERENT principal', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      await h.logout.logout(); // arms the retry loop and captures the owner
+      h.deps.verifyPrincipal.mockResolvedValue({
+        kind: 'ok',
+        body: { ...ownerSession, userId: 'someone-else', tenantId: ownerSession.tenantId },
+      });
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.clearPending).toHaveBeenCalled();
+      expect(h.deps.setStatus).toHaveBeenLastCalledWith('anonymous');
+      expect(h.timers[0]?.cancel).toHaveBeenCalled(); // the armed retry timer was torn down
+
+      // A subsequent retry tick must not POST again — settled means settled.
+      h.timers[0]?.fn();
+      expect(h.deps.callLogout).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps retrying when verification shows the SAME principal (forged or stale broadcast)', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      await h.logout.logout();
+      h.deps.verifyPrincipal.mockResolvedValue({
+        kind: 'ok',
+        body: { ...ownerSession, userId: ownerSession.userId, tenantId: ownerSession.tenantId },
+      });
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.clearPending).not.toHaveBeenCalled();
+      expect(h.deps.setStatus).not.toHaveBeenCalledWith('anonymous');
+    });
+
+    it('settles on a verified 401 — no cookie at all means the sign-out already succeeded', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      await h.logout.logout();
+      h.deps.verifyPrincipal.mockResolvedValue({ kind: 'unauthorized' });
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.clearPending).toHaveBeenCalled();
+      expect(h.deps.setStatus).toHaveBeenLastCalledWith('anonymous');
+    });
+
+    it('stays pending when the owner is unknown even on a verified 200 — fails toward signed-out', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      h.deps.currentPrincipal.mockReturnValue(null); // e.g. boot resumed a marker, no local session
+      await h.logout.logout();
+      h.deps.verifyPrincipal.mockResolvedValue({ kind: 'ok', body: { ...ownerSession, userId: 'anyone' } });
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.clearPending).not.toHaveBeenCalled();
+    });
+
+    it('stays pending when verification itself is undetermined (403/network)', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      await h.logout.logout();
+      h.deps.verifyPrincipal.mockResolvedValue({ kind: 'forbidden' });
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.clearPending).not.toHaveBeenCalled();
+      expect(h.deps.log).toHaveBeenCalled();
+    });
+
+    // The regression test for the vulnerability itself: a forged claim, on its own, proves nothing.
+    it('always asks the server before doing anything — a broadcast alone never suffices', async () => {
+      const h = harness([{ kind: 'failed' }]);
+      h.deps.isPending.mockReturnValue(true);
+      h.deps.currentPrincipal.mockReturnValue({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+      await h.logout.logout();
+
+      await h.logout.onLoginBroadcast();
+
+      expect(h.deps.verifyPrincipal).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('does not auto-retry a 403, and honours Retry-After on a 429', async () => {

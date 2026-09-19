@@ -9,7 +9,12 @@ export function markLogoutPending(): void {
   try {
     localStorage.setItem(KEY, '1');
   } catch {
-    /* private mode / storage disabled: fall back to in-memory `signing-out` only */
+    // Fix round 1, item 4 (documented, accepted degradation — do not make this blocking, that
+    // would break sign-out entirely in private mode, which is worse). On quota exhaustion, private
+    // browsing storage denial, or eviction between this call and the POST, P14 silently degrades to
+    // the pre-fix in-memory `signing-out` behaviour: correct as long as the tab survives to see the
+    // response, but the exact trigger Challenge #89 names — Android discarding a backgrounded tab —
+    // is also the scenario most likely to coincide with storage pressure. See Challenge #89.
   }
 }
 
@@ -17,7 +22,8 @@ export function clearLogoutPending(): void {
   try {
     localStorage.removeItem(KEY);
   } catch {
-    /* ignore */
+    // Fix round 1, item 4: same degradation as markLogoutPending's catch — if storage rejected the
+    // write in the first place, this is a no-op either way. See Challenge #89.
   }
 }
 
@@ -25,6 +31,8 @@ export function isLogoutPending(): boolean {
   try {
     return localStorage.getItem(KEY) === '1';
   } catch {
+    // Fix round 1, item 4: reading fails the same way writing does. Returning `false` here means
+    // boot proceeds straight to a refresh, exactly as it did before P14 existed — see Challenge #89.
     return false;
   }
 }
