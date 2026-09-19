@@ -43,12 +43,20 @@ factory), and `caseInput` (`/login`, `/signup`).
 | void-elements | 3.1.0 | /login, /signup, /invite/:token | 0.24 KB | html-parse-stringify (→ react-i18next) | Void-tag table used by the parser above |
 | clsx | 2.1.1 | /login, /signup, /invite/:token | 0.35 KB | class-variance-authority | `cva()`'s internal class-name joiner |
 
-¹ **Re-measured for Task 13, still accurate.** Standalone `esbuild --bundle --minify` (external
-`react`/`react-dom`) against a module importing only what this app uses:
-`createBrowserRouter`/`RouterProvider` bundles to **31.4 KB gzip**, versus **14.2 KB** for the
-declarative equivalent (`BrowserRouter`/`Routes`/`Route`) — a **17.2 KB** gap (previously recorded
-as 32.42 KB / 14.75 KB / 17.7 KB; same `react-router` version, 8.4.0, so the ~1 KB drift either way
-is esbuild-version noise, not a real change). **Kept anyway**: `errorElement` and route-level
+¹ **Re-measured for Task 13.** Standalone `esbuild --bundle --minify` (external `react`/`react-dom`)
+against a module importing only what this app uses: `createBrowserRouter`/`RouterProvider` bundles
+to **31.4 KB gzip**, versus **14.2 KB** for the declarative equivalent (`BrowserRouter`/`Routes`/
+`Route`) — a **17.2 KB** gap (previously recorded as 32.42 KB / 14.75 KB / 17.7 KB). **The cause of
+that ~0.5 KB per-side difference is not established.** What was ruled out: version drift
+(`react-router@8.4.0` and `esbuild@0.28.2` are pinned identically in `pnpm-lock.yaml` at both the
+Task 8 commit, `f62a503`, and here — neither moved) and gzip level (`-9` vs `-6` differs by tens of
+bytes, not ~500). What was tried and did not reproduce the original 32.42/14.75: the same command
+in `--format=esm` (default here), plus `--format=iife`, `--format=cjs`, and adding an explicit
+`--define:process.env.NODE_ENV=\"production\"` — all four landed in the 31.4–31.7 KB /
+14.2–14.5 KB range, none at the original figures. The original footnote never recorded its exact
+command (only a prose description), so a true verbatim re-run isn't possible; rather than guess
+further, this is left as: two isolated measurements of the same library version, ~0.5 KB apart,
+constructed somehow differently, cause unknown. **Kept anyway**: `errorElement` and route-level
 `lazy:` (`router.tsx`) are real wins the declarative API would make us hand-roll, worse and
 untested. This is a genuine, standing lever — not an irreducible cost — if a future slice needs to
 reclaim ~17 KB and can live without those two features. The 51.22 KB figure in the table above is
@@ -87,10 +95,13 @@ change; `pnpm budget` was re-run twice back-to-back to confirm it settles here).
 also reports each route's delta against the committed
 `budget-baseline.json` — see that file and `scripts/check-budget.mjs` (R87). Absolute-only
 reporting had let `/login` drift 168.8 → 172.2 → 172.6 KB across three tasks that never touched
-`/login` (the shared entry chunk grew under it each time); the delta makes that erosion visible at
-the commit that causes it, not months later when some unrelated change finally trips 200 KB.
-`budget-baseline.json` is updated only by an explicit `pnpm budget --update` — nothing implicit
-rewrites it.
+`/login` (the shared entry chunk grew under it each time). **The mechanism is forward-only**:
+`budget-baseline.json` was seeded in this task from these already-drifted numbers (`/login` at
+172.7 KB, after the historical growth above, not before it), so it cannot retroactively attribute
+that 168.8 → 172.6 KB drift — a human did that, by reading the three prior tasks' own reports. What
+it does going forward is make the *next* route to erode visible at the commit that causes it,
+instead of months later when some unrelated change finally trips 200 KB. `budget-baseline.json` is
+updated only by an explicit `pnpm budget --update` — nothing implicit rewrites it.
 
 Dev-only dependencies are not listed: they never reach a user.
 

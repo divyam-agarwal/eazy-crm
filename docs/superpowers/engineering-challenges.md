@@ -6719,6 +6719,15 @@ exists to reveal. A label absent from the baseline (a brand-new route, or the fi
 anyone has ever called `--update`) prints `(no baseline)` rather than treating `undefined - x` as a
 number, which would have silently produced `NaN KB` or a nonsensical negative delta.
 
+**The mechanism is forward-only, not retroactive.** `budget-baseline.json` was seeded in this same
+task from the numbers above *after* the 168.8 → 172.2 → 172.6 KB drift had already happened —
+`/login`'s committed baseline is 172.7 KB, not 168.8 KB. The tool cannot attribute the historical
+erosion described in "The problem" above; a human did that, by reading three prior tasks' own
+reports and noticing the number kept moving. What the baseline buys is attribution for the *next*
+regression: the first commit that grows a shared chunk from here on shows up as a non-zero delta on
+every route that chunk touches, at that commit, instead of accumulating silently the same way this
+one did.
+
 ### Lesson
 
 A single scalar threshold conflates two questions that need separate answers: "is this acceptable
