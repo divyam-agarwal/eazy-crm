@@ -6010,7 +6010,7 @@ had, and the fix has to close it explicitly rather than inherit the old code's i
 
 ## Challenge 92 — Measuring WCAG contrast for an OKLCH token pair with no browser to sample
 
-**Phase:** Implementation (F0b, Task 7)
+**Phase:** Implementation (F0b, Task 7; corrected in fix round 1)
 
 ### The problem
 
@@ -6022,41 +6022,114 @@ into: the tokens are defined as Tailwind v4 `@theme` OKLCH values (`oklch(L C H)
 contrast formula wants linear-light sRGB relative luminance, not the OKLCH numbers themselves. Getting
 this wrong silently ships a decision the ruling explicitly said not to assume.
 
-Two things make the conversion easy to get subtly wrong, not just tedious:
-- OKLCH's chroma at `--destructive`'s lightness (`oklch(0.577 0.245 27.325)`) is **out of the sRGB
-  gamut** — converting it to linear RGB yields a negative blue channel. Clamping each channel
-  independently to `[0,1]` (a per-channel clip) is *not* what a browser's CSS Color 4 gamut-mapping
-  algorithm does (it preserves lightness/hue and reduces chroma instead), so a hand-rolled conversion
-  will disagree with a real browser's rendered pixel by a few points of contrast — enough to matter
-  right at a 4.5:1 boundary, though not enough to flip a comfortable pass/fail.
-- WCAG's relative-luminance formula (`0.2126 R + 0.7152 G + 0.0722 B`) wants **linear-light** RGB.
-  The standard OKLab→linear-sRGB matrices already produce linear values — re-applying the sRGB gamma
-  companding curve on top (the step needed if you started from 8-bit sRGB instead) double-transforms
-  the numbers and produces a plausible-looking but wrong ratio.
+### The solution (round 1 — wrong in one specific, findable way)
 
-### The solution
+Wrote a Node script implementing the published OKLab↔linear-sRGB matrices (Björn Ottosson's
+coefficients) to convert both tokens to linear RGB, **alpha-composited `--destructive` at 10% over
+white in that same linear space**, computed relative luminance from the blended linear values, and
+applied the WCAG ratio formula. Result: `--destructive-strong` measured ~7.53:1 against the tint, and
+the *old* `--destructive`-on-tint pairing came out at ~4.39:1 — close to, but not matching, the
+browser-measured ~3.99:1 the plan cites. That gap was wrongly attributed to gamut-mapping
+approximation (per-channel clamping vs. a browser's perceptual gamut reduction) and accepted as "close
+enough," reasoning that the pass had enough margin (7.53 vs 4.5) not to matter.
 
-Wrote a small Node script implementing the published OKLab↔linear-sRGB matrices (Björn Ottosson's
-coefficients) to convert both tokens to linear RGB, alpha-composited `--destructive` at 10% over
-white (the FormAlert tint over the page background) as the background half of the pair, computed
-relative luminance directly from the *linear* values (no extra gamma step), and applied the WCAG
-ratio formula `(L_light + 0.05) / (L_dark + 0.05)`. Per-channel clamping to `[0,1]` was used for the
-out-of-gamut `--destructive` channel — an approximation of, not identical to, browser gamut mapping.
+**Two independent reviews (general + a11y/i18n lens) each reimplemented the conversion and found the
+actual cause: CSS composites `rgba()`/`bg-*/10` in gamma-encoded sRGB, not in linear light.**
+Alpha-compositing is not colour-space-agnostic — blending 10% of a saturated red into white produces
+a visibly different, and numerically different, result depending on whether the 0.10/0.90 mix happens
+before or after the sRGB transfer function is applied. Blending in linear space (round 1's bug)
+systematically *overstates* how much the tint darkens the background, which understates the true
+contrast the tint would need to clear — and, in the other direction here, overstated how favourable
+the resulting ratio looked. The gamut-mapping explanation was a plausible-sounding wrong diagnosis
+that happened to point at a real, adjacent source of imprecision (per-channel clamping genuinely isn't
+identical to a browser's actual gamut reduction) without being *the* bug.
 
-Result: `--destructive-strong: oklch(0.45 0.18 27)` measures **~7.53:1** against the composited tint
-(and ~8.18:1 against plain white) — comfortably clear of 4.5:1, and in the same neighbourhood as the
-~3.99:1 the plan cites for the token it replaces (the script's per-channel-clamp approximation put the
-*old* pairing at ~4.39:1 against the same tint, close enough to confirm the method is measuring the
-right thing, not exactly reproducing a browser's specific gamut-mapping algorithm). Recorded the
-script and both figures in the task-7 report rather than asserting the number without showing the
-derivation.
+### The fix
+
+Composite in gamma-encoded space, matching what the browser actually does: convert `--destructive`'s
+linear RGB to encoded sRGB (`linear ≤ 0.0031308 ? 12.92·linear : 1.055·linear^(1/2.4) − 0.055`), blend
+the encoded values with encoded white (`[1,1,1]` — white's encoded and linear values coincide) at
+0.10/0.90, then convert the *blended* result back to linear (the inverse transfer function) before
+applying the WCAG relative-luminance formula. `--destructive-strong` itself needs no compositing step
+(it's opaque text, already correctly linear from the OKLab matrices) — only the tinted background half
+of the pair was ever miscomputed.
+
+Corrected results: the old `--destructive`-on-tint pairing now measures **3.987:1**, matching the
+browser-measured ~3.99:1 to three decimal places — the cross-check round 1 was already using, now
+actually confirming the method rather than merely gesturing at "close enough." `--destructive-strong`
+against the same, correctly-composited tint measures **≈6.84:1** (not ~7.53:1) — still comfortably
+clear of the 4.5:1 AA minimum, so **no token value changes**; only the recorded evidence for the
+decision was wrong.
 
 ### Lesson
 
-"Measured, not assumed" for a color token doesn't require a browser if the color space's conversion
-math is public — but the measurement is only as trustworthy as getting two easy-to-conflate steps
-right: gamut mapping (which changes the *input* to the luminance formula) and gamma linearity (which
-the luminance formula's own definition already assumes, so applying it twice is invisible in the
-code but wrong in the number). Landing several points away from a 4.5:1 cliff edge, rather than
-skating just over it, is what makes an approximate gamut-mapping method acceptable here — the same
-script would not be good enough evidence for a ratio measured at 4.6:1.
+Round 1's own closing lesson — "the same script would not be good enough evidence for a ratio measured
+at 4.6:1" — was correct, but shallower than it needed to be: it named *margin* as the safety net for an
+*approximate* method, without checking whether the method's remaining inaccuracy was actually bounded
+to "approximate" rather than "wrong in a specific step." A cross-check that lands close to a target
+value is not confirmation of a method — it's a prompt to ask whether "close" is explained by a named,
+bounded approximation (gamut clamping, which is real and small) or by an unnamed, unbounded one
+(compositing in the wrong colour space, which is neither small nor consistent in direction). The
+distinction matters because the first kind of error degrades gracefully as you move away from a
+threshold; the second kind doesn't have a known bound at all until someone identifies it. Two
+reviewers reimplementing the same calculation independently, rather than reviewing the shipped number,
+is what surfaced this — a fresh derivation catches a wrong assumption that reading the derivation's
+prose conclusion does not.
+
+---
+
+## Challenge 93 — A live region keyed on message text goes silent on the exact retry a screen-reader user needs it most
+
+**Phase:** Implementation (F0b, Task 7, fix round 1)
+
+### The problem
+
+`FormAlert` announces form-level failures via a persistent `role="alert"` region: on a new message it
+moves focus to the region and scrolls it into view, so a screen reader announces the live-region text
+change and a sighted keyboard user isn't stranded off-screen. The effect that does this was keyed on
+`[message]` — the one value that seemed to matter, since the whole point is "announce when the message
+changes."
+
+That's exactly backwards for this app's actual failure mode. EasyCRM's target users are on patchy
+tier-2/3 4G. The routine sequence is: submit, get a network error, submit again, get the *same*
+network error. React's own update model makes `[message]` the wrong dependency for that sequence in
+two compounding ways: setting state to a value equal to the current one is itself a no-op that skips
+the re-render, and even where a re-render does happen for other reasons, an unchanged dependency array
+value means the effect simply does not re-run. Either way, the second identical failure produces no
+DOM mutation in the live region, no refocus, and no rescroll — a screen reader announces nothing, and
+a keyboard user's focus, if it had drifted, is never recovered. The user has no signal that their
+second tap did anything, on the one flaky-network retry path this component exists to cover. The
+component's own doc comment stated the opposite intent ("takes focus... whenever the message changes")
+without noticing that "changes" was silently doing double duty as both "differs from last time" and
+"a new thing worth announcing happened" — the second submit satisfies the second reading and fails the
+first.
+
+### The solution
+
+Added a required `attempt: number` prop — a caller-supplied counter that increments on every submit
+regardless of whether the resulting failure text repeats (RHF's `formState.submitCount` is the natural
+source for every consumer) — and added it to the effect's dependency array alongside `message`. The
+prop is unused inside the effect body; it exists purely to force the effect to re-run on every attempt,
+which is what "announce this failure" actually means for this component, distinct from "the text
+changed." A test renders with the same message text across two attempts and asserts focus and
+`scrollIntoView` both fire a second time; removing `attempt` from the deps array reproduces the exact
+silence and fails only that test, for the right reason.
+
+Making the prop required (not optional with an internal fallback) was deliberate: nothing in the
+codebase consumed `FormAlert` yet, so there was no compatibility cost, and an optional prop would have
+let a future page author reintroduce the bug simply by not knowing to pass it. Requiring it makes the
+omission a compile error instead of a silent accessibility regression four tasks from now.
+
+### Lesson
+
+"Re-run this effect when the thing changes" is a claim about *what the effect is for*, not a
+description of the value that happens to be available. For a live-region announcement, the unit of
+"a new thing happened" is an *attempt* (a discrete user action with an outcome worth reporting), and a
+displayed *message string* is only a proxy for that unit — a proxy that happens to coincide with it
+whenever consecutive failures differ, and silently diverges from it whenever they don't. The
+divergence is invisible in code review (the effect looks correct; "announce when the message changes"
+reads as obviously right) and invisible in the one test the original implementation had (which only
+ever changed the message between renders, so it could not distinguish "keyed on the message" from
+"keyed on the attempt"). The generalizable check: when a UI element exists to signal "something
+happened," ask whether its trigger is keyed on the *event* or on a *value the event happens to produce*
+— and if those two are ever allowed to coincide (the same error, twice), the value is the wrong key.

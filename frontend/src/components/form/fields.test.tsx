@@ -52,9 +52,9 @@ describe('SelectField', () => {
 
 describe('FormAlert', () => {
   it('is always present as an alert region so screen readers announce changes', () => {
-    const { rerender } = render(<FormAlert message={null} />);
+    const { rerender } = render(<FormAlert message={null} attempt={0} />);
     expect(screen.getByRole('alert')).toBeEmptyDOMElement();
-    rerender(<FormAlert message="Workspace, email or password is incorrect." />);
+    rerender(<FormAlert message="Workspace, email or password is incorrect." attempt={1} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Workspace, email or password is incorrect.');
   });
 
@@ -64,16 +64,38 @@ describe('FormAlert', () => {
     // R27: vi.spyOn is undone by vite.config.ts's `restoreMocks: true`; a direct prototype
     // assignment is not and would leak into every later test file in this worker.
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
-    const { rerender } = render(<FormAlert message={null} />);
+    const { rerender } = render(<FormAlert message={null} attempt={0} />);
 
-    rerender(<FormAlert message="Can’t reach EasyCRM. Check your connection." />);
+    rerender(<FormAlert message="Can’t reach EasyCRM. Check your connection." attempt={1} />);
 
     expect(screen.getByRole('alert')).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
   it('does not steal focus while there is no message', () => {
-    render(<FormAlert message={null} />);
+    render(<FormAlert message={null} attempt={0} />);
     expect(screen.getByRole('alert')).not.toHaveFocus();
+  });
+
+  // Fix round 1 / Challenge #93: a second submit that fails with the *same* message must still
+  // announce — a live region whose text doesn't change, and an effect keyed only on that text,
+  // is silent on the routine "tap Submit again on patchy 4G" case. `attempt` (the submit count)
+  // changing is what re-triggers the announcement even when `message` itself repeats.
+  it('re-announces on a new attempt even when the message repeats', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+    const { rerender } = render(
+      <FormAlert message="Can’t reach EasyCRM. Check your connection." attempt={1} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    alert.blur();
+    expect(alert).not.toHaveFocus();
+
+    // Same message text, new attempt — the routine "same network error, submitted again" case.
+    rerender(<FormAlert message="Can’t reach EasyCRM. Check your connection." attempt={2} />);
+
+    expect(alert).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 });
