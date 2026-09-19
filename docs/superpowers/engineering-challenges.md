@@ -6926,3 +6926,71 @@ cleverer gate" but to document the accepted residual explicitly, in the exact pl
 contributor would reach for the naive fix, with the empirical result and the reason it's not safe to
 reintroduce — so the next person who has this same "looks free" idea inherits the answer instead of
 re-discovering the race the hard way, in production, on a shared phone.
+
+---
+
+## Challenge 106 — Thirteen green checks proved nothing about whether the concurrency tests could fail, until the mandated red runs were actually done
+
+**Phase:** Implementation (F0b, Task 15 — recorded red runs for cross-tab refresh serialization and the P15 login-vs-refresh race)
+
+### The problem
+
+Task 14 shipped `refresh-rotation.spec.ts`'s multi-tab test (P11: at most one `/auth/refresh` in
+flight across two tabs) and left the plan's own Step 4 undone: bind `noopLocks` in place of the real
+`LockProvider`, rebuild, and confirm the test goes red. A reviewer had tried and been blocked by the
+sandbox. Every check on the branch since had been green, including this one — which is exactly the
+condition under which a vacuous assertion hides: a test that would pass whether or not Web Locks work
+looks identical, from the outside, to one that actually depends on them. Separately, P15 (login, signup,
+accept and logout take the same lock as refresh, so an unlocked login racing a boot refresh can leave
+the shared cookie jar holding a dead, already-revoked token) had never been driven end-to-end at all —
+only asserted in code comments and covered by unit tests that fake the lock.
+
+### Why it's hard
+
+Proving a concurrency test is non-vacuous can't be done by reading it — the P11 test's design (measure
+`maxInFlight` from real `context.on('request'/'requestfinished')` events, no artificial delay) looks
+exactly like the kind of thing Testing-5's note warns about ("a broken no-op lock could pass and a real
+regression would be caught only sometimes"), because that critique was written against an *earlier*
+draft with a fixed 1.5s hold, not the shipped design. Only running it repeatedly against a genuinely
+broken dependency settles which case this actually is. The P15 race is harder still to observe: it's
+not enough to fire two raw `fetch()` calls at `/api/v1/auth/login` and `/api/v1/auth/refresh` — that
+bypasses `withCookieLock` entirely and would "prove" nothing about the code under test. The real
+`useLogin` hook has to run, through the UI, in a tab whose in-memory boot state is "unauthenticated"
+(so it doesn't source its own competing lock contention from a redundant boot refresh), while a
+*second* tab's fresh boot genuinely refreshes against the same shared cookie — and that cookie has to
+reach the browser's jar without either page having booted against it yet, which is exactly what the
+isolated `request` Playwright fixture does *not* give you (its cookie jar is unrelated to the
+`BrowserContext`'s).
+
+### Solution
+
+For P11: rebound `locks: noopLocks` in `bootstrap.ts` (a deliberately non-exclusive `LockProvider` that
+exists in `lockProvider.ts` only for this purpose, and is fenced out of production by an ESLint
+`no-restricted-imports` rule scoped to `bootstrap.ts` — irrelevant here since `pnpm build` doesn't lint,
+only `pnpm lint` does), rebuilt, and ran the existing test four times: reliably red every time
+(`Expected: <= 1, Received: 2`). No redesign was needed — the shipped design turned out to be robust
+purely because it measures overlap from real browser network events rather than hoping a fixed delay
+lands in the right window. For P15: removed the `withCookieLock(...)` wrapper from `useLogin.ts` and
+wrote a throwaway spec (never committed) that signs up an account through `context.request` — which
+shares the `BrowserContext`'s cookie jar with both pages, unlike the isolated `request` fixture — after
+a second tab has already loaded `/login` and resolved its own boot to "no session". A fresh tab then
+navigates (its boot genuinely refreshes, held open via route interception until the login `POST` is
+observed via `context.on('requestfinished')`), while the second tab submits the real login form. Ran
+three times with the lock removed: reliably `401` (`Expected: 200, Received: 401`) on a refresh call
+issued immediately afterward — the shared cookie jar really was left holding a dead token. Ran twice
+with `withCookieLock` restored: reliably `200`. Both bindings were reverted immediately after each
+recorded run; `git status` confirms only the intended `watchCsp(other)` addition to the committed spec
+remains.
+
+### Lesson
+
+A red run is not ceremony to check off — it's the only way to distinguish "this test happens to look
+like it should fail" from "this test actually does fail". The two cases in this task landed on opposite
+sides of that same critique (Testing-5) for different, non-obvious reasons: the P11 test survived
+because it measures real overlap rather than a timing window, which could only be confirmed by
+repeated real runs, not by comparing it against the wording of a prior draft's flaw. The P15 proof
+required going further than "call the two endpoints concurrently" — it required reproducing the exact
+shape of the race the code comment described (an already-shared cookie, a tab that never itself
+contended the lock, a held response released only after the second request is observed), because
+anything looser would have exercised the network, not the code path the fix (`withCookieLock`) actually
+guards.

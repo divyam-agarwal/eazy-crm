@@ -1,4 +1,4 @@
-import { expect, expectAccessible, test } from '../fixtures';
+import { expect, expectAccessible, test, watchCsp } from '../fixtures';
 import { newAccount } from '../support/api';
 import { signedInText, signUpThroughUi } from '../support/ui';
 
@@ -38,12 +38,16 @@ test('two tabs booting at once never send two /auth/refresh requests concurrentl
   // gone, so boot() re-enters 'booting' and unconditionally refreshes), `other` via first navigation
   // (same boot path). Both acquire the SAME named Web Lock before calling the network.
   const other = await context.newPage();
+  // `other` is a manually created page, not the `page` fixture, so the auto `cspGuard` fixture (which
+  // only wraps `page`) never watches it — without this it would be silently unchecked.
+  const otherCsp = watchCsp(other);
   await Promise.all([page.reload(), other.goto('/')]);
 
   await expect(page.getByText(signedInText(account.slug, account.email))).toBeVisible();
   await expect(other.getByText(signedInText(account.slug, account.email))).toBeVisible();
   await expectAccessible(page);
   await expectAccessible(other);
+  expect(otherCsp).toEqual([]);
 
   // Both tabs really did attempt to refresh (boot() has no same-tab short-circuit, unlike the 401
   // coordinator) — otherwise maxInFlight <= 1 would be true for the uninteresting reason that only
