@@ -119,8 +119,11 @@ describe('SignupPage', () => {
 
     await submit(user);
 
-    // Scoped to the hint: the page footer ("Already have a workspace? Sign in") has a link of the same name.
-    const hint = within(await screen.findByRole('status')).getByRole('link', { name: 'Sign in' });
+    // Scoped to the hint: the page footer ("Already have a workspace? Sign in") has a link of the
+    // same name, and (Task 12 fix round 1) RootLayout now has its own always-mounted role="status"
+    // announcer too (RootLayout.tsx), so scope to <main> first to land on this page's own region.
+    const status = within(screen.getByRole('main')).getByRole('status');
+    const hint = await within(status).findByRole('link', { name: 'Sign in' });
     expect(hint).toHaveAttribute('href', '/login');
     expect(screen.getByLabelText('Workspace name')).not.toHaveAttribute('aria-invalid');
   });

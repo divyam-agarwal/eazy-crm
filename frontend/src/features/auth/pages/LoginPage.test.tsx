@@ -1,5 +1,5 @@
 import { QueryClientProvider, onlineManager } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import i18next from 'i18next';
 import type { BackendModule } from 'i18next';
 import { HttpResponse, http as mswHttp } from 'msw';
@@ -314,7 +314,9 @@ describe('Task 10 fix round 1', () => {
     // Kept anyway as a true statement of the intended behavior, not as the regression's proof.
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).toHaveFocus();
-    expect(screen.getByRole('status')).toHaveTextContent('Signing in…');
+    // Scoped to <main>: Task 12 fix round 1 gave RootLayout its own always-mounted role="status"
+    // announcer (RootLayout.tsx), which makes an unscoped getByRole('status') ambiguous on any page.
+    expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent('Signing in…');
 
     // The button is `aria-disabled`, not `disabled` -- the browser still lets it be activated. What
     // actually stops a second tap from firing a second POST: `useLogin` (P15) holds the

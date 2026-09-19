@@ -6600,3 +6600,72 @@ pattern as Challenge 98: before adding local state to smooth over a transition, 
 container's own batching already guarantees about that transition's timing — here, two synchronous
 `setState` calls in the same tick meant the "intermediate flash" the local state was meant to prevent
 never actually existed as an observable render.
+
+---
+
+## Challenge 101 — Fixing one side channel into a page left a second one, from an unrelated system, still open
+
+**Phase:** Implementation (F0b, Task 12, review fix round 1)
+
+### The problem
+
+Challenge 100 fixed `RootLayout` reaching into `InvitePage` and unmounting it mid-"sign out and
+accept". The fix (exempt the route, let `InvitePage` own its own `'signing-out'` render branch) was
+reviewed and verified — and still shipped a second version of the identical class of bug, from a
+completely different mechanism, in the same page, in the same commit.
+
+`InvitePage`'s branch order checked `preview.isPending`/`preview.isError` (the invitation-preview
+query's state) *before* `status === 'signing-out'`. That looked safe: the query and the session status
+are two unrelated pieces of state, read from two unrelated hooks, with no code path connecting them —
+so nothing about clicking "Sign out and accept" should touch the query at all.
+
+Except `sessionControls().logout()` calls `endSession('logout')`, whose side effects include
+`sessionRuntime().clearQueryCache()` — a deliberate, load-bearing call (Challenge 84: it's what stops
+the next user on a shared counter phone from seeing the previous user's cached data) that clears
+`queryClient`'s *entire* cache, every query, indiscriminately. `useInvitationPreview`'s query is not
+exempt. `@tanstack/query-core`'s own reducer (`query.js`'s `fetchState()`) resets a query to
+`status: 'pending'` on any `fetch` action where `data` is `undefined` — which describes both "never
+fetched yet" and "previously errored, cache now cleared" identically, because the reducer looks at
+absence of data, not at fetch history. So the instant a user clicks "Sign out and accept", the SAME
+render that flips `status` to `'signing-out'` also silently resets `preview` to `isPending: true` —
+and the branch order picked `preview.isPending` over `status === 'signing-out'`, so the user saw a
+generic loading skeleton (or, on a flaky connection, "invalid or expired") instead of "Keep this page
+open" — while the actual sign-out retry loop ran invisibly behind it.
+
+### Why it's hard
+
+The two systems involved — TanStack Query's cache and the session's status machine — were each
+reasoned about correctly in isolation. `clearQueryCache()`'s job is exactly to nuke stale, per-user
+data on any session-ending event; that's correct and load-bearing on its own terms, and nothing about
+it name-checks `InvitePage` or invitation previews specifically. `InvitePage`'s branch order was
+written and reviewed against the OBVIOUS question — "what happens if `preview` is loading or errored
+while an inconsistent `status` also happens to be true?" — without the connecting fact (a query-cache
+side effect of `logout()`) being visible from either call site. A reviewer checking `InvitePage.tsx` in
+isolation has no reason to open `session.ts`; a reviewer checking `clearQueryCache()`'s call sites has
+no reason to open every page that happens to run a `useQuery` and also render conditionally on session
+status. The bug lives in the gap between two files that never import each other.
+
+### Solution
+
+Move the `status === 'signing-out'` check to the FRONT of the branch order — before `preview.isPending`
+and `preview.isError` are even consulted — so it wins regardless of what the cache-clear did to the
+query underneath it. This is a pure reorder, no new state, no new mechanism: `status` already carried
+enough information to be authoritative here, the branch order was just wrong about which of two truths
+to trust first. Proved with a test that holds the (cache-clear-triggered) preview refetch open — not
+just the logout POST — through the assertion window, so `preview.isPending` is genuinely `true` at the
+moment the assertions run, the same way it would be in production on a slow connection; the original
+test (Task 12's own) held only the logout POST open, so MSW resolved the refetch instantly and this
+exact bug shipped straight through it.
+
+### Lesson
+
+Challenge 100's lesson was "the fix belongs at the layer that owns the unmount." This one's lesson is
+one level upstream of that: before trusting that a fix closes an entire CLASS of bug, ask what ELSE
+reaches into the same page through a mechanism nobody thought to check — not just the one already
+found and fixed. `clearQueryCache()` is a cross-cutting side effect by design (every page with a
+`useQuery` is a potential target), and "does this session-ending action affect a query this specific
+page also renders on" is not a question either file's own code review naturally raises. The general
+habit: when a fix addresses "component X gets clobbered by parent action Y," explicitly ask what OTHER
+actions Y (or actions LIKE Y) are known to trigger, and whether X reads state any of THOSE touch too —
+a parent's `unmount` and a cache's `clear()` are both "make this component's next render start over,"
+just wearing different names, and a review pass for one won't automatically surface the other.

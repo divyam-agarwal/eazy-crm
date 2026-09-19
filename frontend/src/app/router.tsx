@@ -5,6 +5,7 @@ import { RequireSession } from './RequireSession';
 import { RootLayout } from './RootLayout';
 import { RouteErrorBoundary } from './RouteErrorBoundary';
 import { RouteSkeleton } from './RouteSkeleton';
+import type { RouteHandle } from './routeHandle';
 
 export const appRoutes: RouteObject[] = [
   {
@@ -45,6 +46,10 @@ export const appRoutes: RouteObject[] = [
         // R71: the same local-Suspense pattern as /login and /signup — this route's own boundary
         // catches an i18n-namespace suspend instead of bubbling to RootLayout's `fallback={null}`.
         path: 'invite/:token',
+        // Fix round 1, item 5: read by RootLayout via useMatches() to exempt this route from its
+        // 'signing-out' gate (R23) — a typed, route-declared contract instead of a hand-maintained
+        // pathname string match.
+        handle: { survivesSignOut: true } satisfies RouteHandle,
         lazy: () =>
           withImportRetry(() => import('@/features/auth/pages/InvitePage')).then((m) => ({
             Component: () => (

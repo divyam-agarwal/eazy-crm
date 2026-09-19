@@ -114,6 +114,27 @@ describe('RootLayout', () => {
     expect(await screen.findByRole('heading', { name: 'Sign-out did not complete — retrying' })).toBeInTheDocument();
   });
 
+  // Task 12 review, fix round 1, item 3: RootLayout's `role="status"` announcer must be mounted
+  // BEFORE the transition into 'signing-out', not created together with its text — otherwise many
+  // AT/browser pairs never announce it (the same anti-pattern InvitePage.tsx's own hoisted region,
+  // and SignOutPendingScreen.tsx, were fixed to avoid). `/nope` (NotFoundPage) has no role="status"
+  // of its own, so this stays unambiguous: exactly one such region exists, throughout.
+  it('mounts its signing-out announcer up front and only mutates its text, never recreating it', async () => {
+    renderApp('/nope', { session: { status: 'anonymous' } });
+    await screen.findByRole('heading', { name: 'Page not found' });
+    const region = screen.getByRole('status');
+    expect(region).toHaveTextContent('');
+
+    act(() => useSessionStore.setState({ status: 'signing-out', me: null }));
+
+    await waitFor(() =>
+      expect(region).toHaveTextContent('Keep this page open. This device is not signed out until this finishes.'),
+    );
+    // Still the SAME node (not a second one that appeared alongside it) — this call would throw on
+    // ambiguity if a fresh region had been created instead of the existing one mutating.
+    expect(screen.getByRole('status')).toBe(region);
+  });
+
   it('renders the not-found page for an unknown route', async () => {
     renderApp('/nope', { session: { status: 'anonymous' } });
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();

@@ -1,6 +1,7 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { delay, HttpResponse, http as mswHttp } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { useSessionStore } from '@/session/sessionStore';
 import { errorBody, inviteeSession, ownerMe } from '@/test/fixtures';
 import { holdCookieLock } from '@/test/locks';
 import { server } from '@/test/msw';
@@ -27,10 +28,13 @@ describe('InvitePage', () => {
     expect(await screen.findByText(paragraph('Join Ravi Traders as Sales executive'))).toBeInTheDocument();
   });
 
-  it('shows one invalid state for an unknown or expired token', async () => {
+  it('shows one invalid state for an unknown or expired token, with a way forward', async () => {
     server.use(validPreview);
     renderApp('/invite/bad-token', { session: { status: 'anonymous' } });
     expect(await screen.findByText('This invitation link is invalid or has expired.')).toBeInTheDocument();
+    // Fix round 1 (item 4, a11y): the most likely reach of this branch — a forwarded WhatsApp link
+    // hitting someone with no account — used to be a dead end with no link and no nav chrome.
+    expect(screen.getByRole('link', { name: 'sign in' })).toHaveAttribute('href', '/login');
   });
 
   it('accepts as an anonymous visitor and replaces the token URL with home', async () => {
@@ -139,10 +143,32 @@ describe('InvitePage', () => {
   // R23: proves the page is NOT unmounted by RootLayout's signing-out gate while "Sign out and
   // accept" is in flight — the whole point of exempting /invite/:token in RootLayout.tsx. Holds the
   // logout POST open so the mid-flight window is observable rather than inferred from timing.
-  it('R23: stays mounted (and shows its own signing-out state) instead of RootLayout blocking the page', async () => {
+  //
+  // Fix round 1 (item 1, security): ALSO holds the preview GET open past its first (page-load) call.
+  // sessionControls().logout() clears the whole query cache, so clicking "Sign out and accept"
+  // triggers a SECOND preview fetch (react-query rebuilding a pending Query the instant its cache
+  // entry disappears) at the same moment `status` becomes 'signing-out' — the original version of
+  // this test let MSW resolve that refetch instantly, so the bug (loading skeleton, or "invalid or
+  // expired", winning over "Keep this page open" because isPending/isError were checked first) never
+  // showed up in CI. Holding it open makes `preview.isPending` genuinely true throughout the
+  // mid-flight assertions, the same as it is in production on a slow connection.
+  it('R23: stays mounted and shows its own signing-out state, even while the cache-cleared preview refetch is still pending', async () => {
     let releaseLogout: (() => void) | undefined;
+    let releasePreviewRefetch: (() => void) | undefined;
+    let previewCalls = 0;
     server.use(
-      validPreview,
+      http.get('/api/v1/auth/invitations/{token}', async ({ params, response }) => {
+        if (params.token !== 'good-token') return response(404).json(errorBody('NOT_FOUND', 'not found'));
+        previewCalls += 1;
+        if (previewCalls > 1) {
+          // Only the cache-clear-triggered REFETCH is held open — the initial page load must still
+          // resolve, or the "Sign out and accept" button this test clicks would never appear.
+          await new Promise<void>((resolve) => {
+            releasePreviewRefetch = resolve;
+          });
+        }
+        return response(200).json(preview);
+      }),
       http.post('/api/v1/auth/logout', async ({ response }) => {
         await new Promise<void>((resolve) => {
           releaseLogout = resolve;
@@ -153,19 +179,103 @@ describe('InvitePage', () => {
     const { user } = renderApp('/invite/good-token', { session: { status: 'authenticated', me: ownerMe, accessToken: 't' } });
 
     await user.click(await screen.findByRole('button', { name: 'Sign out and accept' }));
+    await waitFor(() => expect(previewCalls).toBeGreaterThan(1)); // the cache-clear-triggered refetch has genuinely started, and is held pending
 
     // RootLayout's global blocking screen must never have taken over — that would be exactly the
     // unmount R23 forbids.
     expect(screen.queryByRole('heading', { name: 'Sign-out did not complete — retrying' })).not.toBeInTheDocument();
-    // The page itself is still rendering its own content (not blank), announcing the wait itself.
+    // The page itself is still rendering its own content (not blank), announcing the wait itself —
+    // and NOT the loading skeleton or the invalid-token message the now-pending/errorable preview
+    // refetch would otherwise win, were the branch order wrong (item 1).
     expect(screen.getByRole('heading', { name: 'Join a workspace' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Keep this page open. This device is not signed out until this finishes.');
+    expect(screen.queryByText('Loading invitation')).not.toBeInTheDocument();
+    expect(screen.queryByText('This invitation link is invalid or has expired.')).not.toBeInTheDocument();
+    // Scoped to <main>: RootLayout also renders its own (always-empty, for this exempt route)
+    // role="status" region as a sibling above the Outlet — see RootLayout.tsx's fix round 1, item 3.
+    expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent(
+      'Keep this page open. This device is not signed out until this finishes.',
+    );
 
+    releasePreviewRefetch?.();
     releaseLogout?.();
 
     // Once the server confirms, the very same mounted page moves on to the anonymous accept form —
     // never a redirect, never a remount.
     expect(await screen.findByLabelText('Choose a password')).toBeInTheDocument();
+  });
+
+  // Fix round 1 (item 6): both sibling pages (/login, /signup) have this exact regression test
+  // because this codebase already shipped and fixed a `disabled`-vs-`aria-disabled` bug once
+  // (Task 10 fix round 1) — the code here already uses `aria-disabled`, but without this test a
+  // regression to native `disabled` would be caught on two pages and pass silently on this third one.
+  it('stays focusable and announces "Joining…" while pending, and guards against a resubmit', async () => {
+    let requests = 0;
+    let releaseAccept: (() => void) | undefined;
+    server.use(
+      validPreview,
+      http.post('/api/v1/auth/invitations/{token}/accept', async ({ response }) => {
+        requests += 1;
+        await new Promise<void>((resolve) => {
+          releaseAccept = resolve;
+        });
+        return response(201).json(inviteeSession);
+      }),
+    );
+    const { user } = renderApp('/invite/good-token', { session: { status: 'anonymous' } });
+
+    await user.type(await screen.findByLabelText('Choose a password'), 'correct-horse-9');
+    await user.click(screen.getByRole('button', { name: 'Join workspace' }));
+
+    const button = await screen.findByRole('button', { name: 'Joining…' });
+    // Discriminating: reverting to `disabled={isSubmitting}` drops the `aria-disabled` attribute
+    // entirely and, in a real browser (jsdom does not model this), blurs the button — see
+    // LoginPage.test.tsx's identical caveat.
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveFocus();
+    // Scoped to <main> — see the R23 test's identical comment on why an unscoped getByRole('status')
+    // is ambiguous here (RootLayout's own hoisted region is also present, always empty on this route).
+    expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent('Joining…');
+
+    // A second activation does not fire a second POST: useAcceptInvitation (P15) holds the refresh
+    // lock for the whole call, so this queues behind the still-held lock rather than reaching the
+    // network again.
+    await user.click(button);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(requests).toBe(1);
+
+    releaseAccept?.();
+    await waitFor(() => expect(useSessionStore.getState().status).toBe('authenticated'));
+  });
+
+  // Fix round 1 (item 2, a11y/R80): a cold preview failure (the FIRST time the error branch renders,
+  // no user action yet) must not steal focus from PageHeading's own page-identity announcement — only
+  // a genuine retry attempt should re-focus the alert. Fails under the old `preview.errorUpdateCount`
+  // wiring: that counter is already >= 1 the first time isError becomes observable (react-query
+  // doesn't expose the pending retries in between — only the final settled state), so FormAlert's
+  // `attempt > 0` gate is satisfied immediately and the alert steals focus from the heading on cold
+  // arrival (verified: swapping `retryAttempt` back for `preview.errorUpdateCount` makes the first
+  // `expect(heading).toHaveFocus()` below fail). 429, not 500: queryClient.ts's `shouldRetryQuery`
+  // retries a real 5xx automatically (up to twice, with backoff) before ever exposing `isError` to
+  // the component at all — a real but slow, timer-dependent path this test doesn't need to exercise
+  // to prove the FOCUS-gating bug, which is about the FIRST observable error render either way.
+  it('R80: a cold preview failure does not steal focus from the page heading; a retry failure does re-focus the alert', async () => {
+    server.use(
+      mswHttp.get('*/api/v1/auth/invitations/good-token', () => HttpResponse.json(errorBody('RATE_LIMITED', 'too many requests'), { status: 429 })),
+    );
+    const { user } = renderApp('/invite/good-token', { session: { status: 'anonymous' } });
+
+    const heading = await screen.findByRole('heading', { name: 'Join a workspace' });
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(screen.getByRole('alert')).not.toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+    // Re-queried, not the pre-click reference: react-query resets an errored-with-no-data query to
+    // `status: 'pending'` for the duration of a refetch (query-core's `fetchState`), so this page
+    // genuinely passes back through its loading branch and remounts a fresh FormAlert once the retry
+    // also fails — that remount is real react-query behavior, not the bug under test, and the fresh
+    // instance's own mount-time effect (attempt already 1) is what does the re-focusing here.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus());
   });
 });
 
