@@ -129,7 +129,11 @@ export function LoginPage() {
         </Button>
       </form>
       <p className="text-sm">
-        <Trans t={t} i18nKey="login.noAccount" components={{ link: <Link to="/signup" className="underline" /> }} />
+        {/* Challenge #99: the Trans placeholder tag must not be `<link>` -- html-parse-stringify
+            (react-i18next's internal AST parser) treats it as the void HTML <link> element and
+            silently drops its children, leaving this control empty and unclickable. `<Link>`
+            (capitalized) skips that void-element lookup, which is case-sensitive on purpose. */}
+        <Trans t={t} i18nKey="login.noAccount" components={{ Link: <Link to="/signup" className="underline" /> }} />
       </p>
     </main>
   );

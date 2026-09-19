@@ -30,6 +30,18 @@ export const appRoutes: RouteObject[] = [
         errorElement: <RouteErrorBoundary />,
       },
       {
+        path: 'signup',
+        lazy: () =>
+          withImportRetry(() => import('@/features/auth/pages/SignupPage')).then((m) => ({
+            Component: () => (
+              <Suspense fallback={<RouteSkeleton />}>
+                <m.SignupPage />
+              </Suspense>
+            ),
+          })),
+        errorElement: <RouteErrorBoundary />,
+      },
+      {
         element: <RequireSession />,
         children: [
           {

@@ -24,6 +24,7 @@ const HTML_ENTRY = 'index.html';
 /** @type {Record<string, string>} */
 export const ROUTE_ENTRIES = {
   '/login': 'src/features/auth/pages/LoginPage.tsx',
+  '/signup': 'src/features/auth/pages/SignupPage.tsx',
 };
 
 /**

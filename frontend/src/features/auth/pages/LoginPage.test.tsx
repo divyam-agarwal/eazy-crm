@@ -108,6 +108,18 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Workspace')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByLabelText('Workspace')).toHaveFocus();
   });
+
+  // Challenge #99 (found and fixed during Task 11, which copies this exact Trans pattern): the
+  // placeholder tag in `login.noAccount` used to be `<link>`, which react-i18next's internal HTML
+  // parser treats as the void HTML <link> element -- it silently dropped the tag's children, leaving
+  // this control real but completely empty (no accessible name, nothing clickable) even though the
+  // page visually still showed the words "Create a workspace" as plain sibling text. `<Link>`
+  // (capitalized) sidesteps that void-element lookup, which is case-sensitive on purpose.
+  it('renders the "create a workspace" link with real content, not an empty anchor', async () => {
+    renderApp('/login', { session: anonymous });
+    const link = await screen.findByRole('link', { name: 'Create a workspace' });
+    expect(link).toHaveAttribute('href', '/signup');
+  });
 });
 
 // R14: proves P15 (every call that writes the refresh cookie holds the `easycrm-refresh` Web Lock)

@@ -6464,3 +6464,70 @@ general habit this argues for: before adding a guard against a race a change see
 race open on purpose (the same controllable-promise trick as `holdCookieLock` and Challenge 97's
 `createHeldBackend`) and check what — if anything — is *already* serializing it, rather than assuming
 the absence of an explicit guard means the absence of protection.
+
+---
+
+## Challenge 99 — A `<Trans>` placeholder tag named `<link>` silently produces an empty, unclickable control
+
+**Phase:** Implementation (F0b, Task 11)
+
+### The problem
+
+`/signup`'s three inline links ("Ask your business owner for an invitation, or *sign in*.",
+"Already have a workspace? *Sign in*", the lost-response hint) each use `react-i18next`'s `<Trans>`
+with a `components={{ link: <Link to="..." /> }}` map, mirroring `/login`'s existing `login.noAccount`
+string (`"New to EasyCRM? <link>Create a workspace</link>"`) — the standard, documented pattern for an
+inline link inside translated text. The brief's own test file writes exactly the assertions this
+pattern should satisfy: `screen.getByRole('link', { name: 'sign in' })`.
+
+Every one of those assertions failed, but not with a "can't find element" error that pointed anywhere
+useful — `getByRole('link', ...)` found *an* anchor, with the right `href`, but no accessible name, and
+the DOM showed the link text sitting as a **sibling** after an empty `<a/>`:
+```html
+<p>Ask your business owner for an invitation, or <a href="/login"/>sign in.</p>
+```
+The anchor was real, correctly attributed, and completely empty; "sign in" rendered as plain text next
+to it. Visually a user would still see the words "sign in", but nothing there is clickable — a real,
+shippable regression, not just a test-authoring mistake, and one `/login`'s own test suite never caught
+because no existing `/login` test queries that link by role/name.
+
+### The solution
+
+Instrumented `react-i18next`'s `TransWithoutContext.js` directly (temporary `console.log`s in both the
+CJS and ESM builds under `node_modules/.pnpm/...` — never committed) to see which branch of its
+tag-to-component matching actually ran for the `<link>` tag. The log showed `pushTranslatedJSX` being
+called with `inner: []` and `isVoid: true` for the anchor — i.e. react-i18next believed `<link>` was a
+**void (self-closing) element with no children**, and threw away everything between `<link>` and
+`</link>`.
+
+The reason: react-i18next parses the translated string's markup with `html-parse-stringify`, a real
+(if minimal) HTML parser, before matching tag names against the `components` map. That parser hard-codes
+the standard HTML5 void-element list — `area`, `base`, `br`, ..., **`link`**, `meta`, ... — and a tag
+named `link` collides with the real, void `<link>` HTML element (the one used in `<head>` for
+stylesheets), so `<link>Sign in</link>` parses as a self-closing `<link>` followed by stray text
+`Sign in</link>`, not as an element with children. Confirmed directly by reading
+`html-parse-stringify`'s source, which documents the fix in a code comment the library authors already
+anticipated: `voidElements` lookup is **case-sensitive on purpose**, "react-i18next relies on `<Br>`
+NOT being treated as a void `<br>`". Renaming the placeholder tag from `<link>` to `<Link>`
+(capitalized) — in the translation string *and* the matching `components` map key — sidesteps the
+void-element lookup entirely, since `voidElements['Link']` is `undefined`. Applied to all five affected
+strings in `auth.json` (`login.noAccount`, `signup.closedBody`, `signup.haveAccount`,
+`signup.maybeCreated`, and `invite.maybeAccepted` — the last not yet consumed by any component, since
+Task 12 hasn't landed, but carrying the same landmine forward unfixed would have cost Task 12 the same
+debugging session) and the two components that use them (`LoginPage.tsx`, `SignupPage.tsx`).
+
+### Lesson
+
+A translated string's inline-placeholder tag name is not a free-form identifier — it is parsed by a
+real (if tiny) HTML parser before your `components` map ever sees it, so it inherits that parser's
+opinions about HTML, including which tag names are void elements. `link`, `br`, `img`, `hr`, `meta` and
+the rest of the void-element list are exactly the short, natural-sounding names an implementer reaches
+for first when naming a Trans placeholder — `<link>` for a link, `<br>` for the one case that's
+actually meant to render a line break — and the void ones are precisely the ones this bug hits, while
+the DOM produced looks *almost* right (correct `href`, correct position) rather than obviously broken,
+so it is very easy to ship and very easy to review past without a role/name-scoped test. The general
+habit: when introducing a new Trans placeholder tag, either capitalize it (`<Link>`, `<Bold>`) to
+opt out of the void-element table on purpose, or pick a name that couldn't plausibly collide with an
+HTML5 tag at all — and add at least one `getByRole('link', { name: ... })`-shaped assertion per
+distinct Trans usage, since `toBeInTheDocument()` on the container element alone (or not testing the
+link at all, as `/login` shipped) will not catch this.
