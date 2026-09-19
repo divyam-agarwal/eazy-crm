@@ -21,7 +21,9 @@ const apiTarget = process.env.E2E_API_TARGET ?? 'http://localhost:8080';
 const proxy = { '/api': { target: apiTarget, changeOrigin: false } };
 
 // Step 6b (P18/Performance-2): `ANALYZE=true pnpm build` writes a treemap of the production
-// bundle so a task that pushes a route over budget can see why, not just that it did.
+// bundle so a task that pushes a route over budget can see why, not just that it did. Task 13
+// adds the `raw-data` sibling: `scripts/dependency-sizes.mjs` reads its per-module gzip sizes to
+// build the DEPENDENCIES.md ledger from the real production build, not from `pnpm add`-time sizes.
 const analyze = process.env.ANALYZE === 'true';
 
 export default defineConfig({
@@ -30,6 +32,8 @@ export default defineConfig({
     tailwindcss(),
     analyze &&
       visualizer({ filename: 'reports/bundle-stats.html', gzipSize: true, brotliSize: true }),
+    analyze &&
+      visualizer({ filename: 'reports/bundle.json', template: 'raw-data', gzipSize: true }),
   ],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: { proxy },

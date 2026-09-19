@@ -6669,3 +6669,64 @@ habit: when a fix addresses "component X gets clobbered by parent action Y," exp
 actions Y (or actions LIKE Y) are known to trigger, and whether X reads state any of THOSE touch too —
 a parent's `unmount` and a cache's `clear()` are both "make this component's next render start over,"
 just wearing different names, and a review pass for one won't automatically surface the other.
+
+---
+
+## Challenge 102 — An absolute per-route JS budget makes erosion invisible until an unrelated commit gets blamed for it
+
+**Phase:** Implementation (F0b, Task 13 — per-route budget final run and dependency ledger)
+
+### The problem
+
+`pnpm budget` (Task 2) already enforced a hard 200 KB gzipped ceiling per route and was genuinely
+useful — it never let a route cross 200 KB. But its own measured history, tracked commit to commit
+across Tasks 10-12, showed a second problem the ceiling alone couldn't see: `/login` moved
+**168.8 → 172.2 → 172.6 KB across three tasks that never touched `/login`'s own code at all** —
+Tasks 11 and 12 added `/signup` and `/invite/:token`, and each one grew the *shared entry chunk*
+(react-i18next's `Trans`, `@tanstack/react-query`'s machinery, shadcn primitives) that `/login`
+downloads too, purely as a side effect of code those tasks wrote for other routes. `pnpm budget`
+printed `172.6 KB — budget 200 KB` and exited 0 both times; nothing surfaced that `/login` had just
+absorbed 3.8 KB of somebody else's dependency. An absolute ceiling can only ever say "still under
+200 KB" or "just went over" — it has no concept of "grew," so 30 KB of accumulated cross-route
+erosion is fully invisible until the commit that happens to be the one crossing 200 KB, which is
+very unlikely to be the commit that caused most of the growth.
+
+### Why it's hard
+
+The naive fix — "just lower the budget so it's tighter" — doesn't address the actual failure mode:
+a tighter ceiling still only fires once, on whichever commit happens to be unlucky enough to cross
+it, and still says nothing about which of the (potentially many) preceding commits actually put the
+weight there. The real problem isn't the threshold's value, it's that "under budget" and "not
+growing" are two different properties being reported as one boolean. A route can be simultaneously
+well under budget AND accumulating debt every unrelated task lands, and a pass/fail gate has no
+vocabulary for that — attribution requires comparing against a *previous* measurement, not just
+against a fixed ceiling, and "previous" has to mean something more durable than "whatever the last
+CI run happened to measure," or the same erosion just becomes invisible one layer down (nobody
+diffs `pnpm budget`'s stdout between runs by hand).
+
+### Solution
+
+Add a second, independent signal that answers a different question than the hard gate: a committed
+`budget-baseline.json` (label → last-recorded gzip bytes) that `pnpm budget` diffs every result
+against and prints inline — `/login: 172.7 KB gzipped (+0.0 KB since baseline) — budget 200 KB`.
+Two design choices make this additive rather than a second gate in disguise: (1) the delta **never
+fails the build** — `overBudget` still comes only from `BUDGET_BYTES`, so a route that grows 5 KB in
+one commit is visible but not blocked, keeping the hard ceiling as the only thing that stops a
+merge; (2) the baseline only moves on an **explicit** `pnpm budget --update` — never implicitly on
+a normal run — so the file is a deliberately-set checkpoint ("this is the new normal, someone
+looked at it and agreed"), not a silently-resetting one that would erase exactly the erosion it
+exists to reveal. A label absent from the baseline (a brand-new route, or the first run before
+anyone has ever called `--update`) prints `(no baseline)` rather than treating `undefined - x` as a
+number, which would have silently produced `NaN KB` or a nonsensical negative delta.
+
+### Lesson
+
+A single scalar threshold conflates two questions that need separate answers: "is this acceptable
+right now" and "is this trending somewhere bad." A gate answers only the first one by design — that
+is what makes it a reliable, unambiguous pass/fail signal — but reporting *only* the gate's boolean
+throws away the information needed to answer the second question, and by the time the first question
+finally goes red, the second question's answer has been "yes, for a while" without anyone deciding
+that was okay. The fix is never "make the gate stricter"; it's adding a second, non-blocking signal
+(a diff against a deliberately-checkpointed baseline, not against whatever the last run happened to
+be) whose entire job is attribution — surfacing *which* change moved the number, at the commit that
+moved it, while leaving the gate itself as the only thing with the authority to fail a build.

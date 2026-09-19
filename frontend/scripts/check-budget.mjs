@@ -8,7 +8,7 @@
 // measure the HTML entry and its static imports, and must still fail if it resolves zero files —
 // so `measure()` takes the route map as a parameter (defaulting to ROUTE_ENTRIES) and the HTML
 // entry is always included, independent of the route map.
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { gzipSync } from 'node:zlib';
@@ -19,9 +19,21 @@ export const BUDGET_BYTES = 200 * 1024;
 const DIST_DIR = 'dist';
 const HTML_ENTRY = 'index.html';
 
+// R87: a committed baseline of each label's last-recorded gzip size, so `pnpm budget` can report
+// per-route drift ("+Y KB since baseline"), not just the absolute number. Absolute-only reporting
+// let /login drift 168.8 -> 172.2 -> 172.6 KB across three tasks that never touched /login — the
+// shared entry chunk grew under it each time — invisible until some later, unrelated commit trips
+// the 200 KB ceiling and gets blamed for months of accumulated erosion. The delta never fails the
+// build; BUDGET_BYTES (below) stays the only hard gate. `pnpm budget --update` is the only thing
+// that moves the baseline — nothing implicit rewrites it.
+export const BASELINE_PATH = 'budget-baseline.json';
+
 // Each page task adds its own entry — the missing-key throw in routeFiles() is what forces that.
-// Task 10 -> '/login', Task 11 -> '/signup', Task 12 -> '/invite/:token'.
-/** @type {Record<string, string>} */
+// Task 10 -> '/login', Task 11 -> '/signup', Task 12 -> '/invite/:token'. Typed with these three
+// literal keys (not a plain `Record<string, string>` index signature) so a consumer that indexes
+// `ROUTE_ENTRIES['/login']` gets `string` under `noUncheckedIndexedAccess`, not `string | undefined`
+// — this object's shape is fixed, not open-ended, so the precise type is also the honest one.
+/** @type {{ '/login': string; '/signup': string; '/invite/:token': string }} */
 export const ROUTE_ENTRIES = {
   '/login': 'src/features/auth/pages/LoginPage.tsx',
   '/signup': 'src/features/auth/pages/SignupPage.tsx',
@@ -126,19 +138,70 @@ export function summarize(results) {
   return { totalFiles, overBudget };
 }
 
-/** @param {MeasureResult[]} results */
+/**
+ * Read the committed baseline (label -> last-recorded gzip bytes). Missing file (first run, or a
+ * brand-new checkout before anyone has run `--update`) is not an error — it just means every label
+ * reports "no baseline" instead of a delta.
+ * @param {string} baselinePath
+ * @returns {Promise<Record<string, number>>}
+ */
+export async function loadBaseline(baselinePath = BASELINE_PATH) {
+  try {
+    return JSON.parse(await readFile(baselinePath, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Write the current measurement as the new baseline, keyed by label. The only caller is `--update`
+ * — nothing else rewrites this file, so a route's drift stays visible until someone deliberately
+ * decides "yes, this is the new normal."
+ * @param {MeasureResult[]} results
+ * @param {string} baselinePath
+ * @returns {Promise<Record<string, number>>}
+ */
+export async function writeBaseline(results, baselinePath = BASELINE_PATH) {
+  /** @type {Record<string, number>} */
+  const data = {};
+  for (const { label, bytes } of results) data[label] = bytes;
+  await writeFile(baselinePath, `${JSON.stringify(data, null, 2)}\n`);
+  return data;
+}
+
+/**
+ * Pure: attach each result's delta against the baseline. `deltaBytes` is `null` when the baseline
+ * has no entry for that label yet (a brand-new route, or no baseline file at all).
+ * @param {MeasureResult[]} results
+ * @param {Record<string, number>} baseline
+ * @returns {(MeasureResult & { deltaBytes: number | null })[]}
+ */
+export function withDelta(results, baseline) {
+  return results.map((r) => ({
+    ...r,
+    deltaBytes: Object.hasOwn(baseline, r.label) ? r.bytes - baseline[r.label] : null,
+  }));
+}
+
+/** @param {(MeasureResult & { deltaBytes: number | null })[]} results */
 function printReport(results) {
-  for (const { label, bytes, files } of results) {
+  for (const { label, bytes, files, deltaBytes } of results) {
     const kb = (bytes / 1024).toFixed(1);
     const budgetKb = (BUDGET_BYTES / 1024).toFixed(0);
     const over = bytes > BUDGET_BYTES;
+    const delta =
+      deltaBytes === null
+        ? '(no baseline)'
+        : `(${deltaBytes >= 0 ? '+' : ''}${(deltaBytes / 1024).toFixed(1)} KB since baseline)`;
     console.log(
-      `${over ? '✗' : '✓'} ${label}: ${kb} KB gzipped (${files.length} file${files.length === 1 ? '' : 's'}) — budget ${budgetKb} KB`,
+      `${over ? '✗' : '✓'} ${label}: ${kb} KB gzipped (${files.length} file${files.length === 1 ? '' : 's'}) ${delta} — budget ${budgetKb} KB`,
     );
   }
 }
 
 async function main() {
+  const update = process.argv.includes('--update');
+
   let results;
   try {
     results = await measure();
@@ -158,7 +221,13 @@ async function main() {
     return;
   }
 
-  printReport(results);
+  const baseline = await loadBaseline();
+  printReport(withDelta(results, baseline));
+
+  if (update) {
+    await writeBaseline(results);
+    console.log(`budget: wrote ${BASELINE_PATH} from this measurement.`);
+  }
 
   if (overBudget.length > 0) {
     console.error(`budget: ${overBudget.length} entr${overBudget.length === 1 ? 'y' : 'ies'} over budget.`);

@@ -1,10 +1,24 @@
 // @vitest-environment node
+import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BUDGET_BYTES, measure, ROUTE_ENTRIES, routeFiles, summarize } from './check-budget.mjs';
+import {
+  BASELINE_PATH,
+  BUDGET_BYTES,
+  loadBaseline,
+  measure,
+  ROUTE_ENTRIES,
+  routeFiles,
+  summarize,
+  withDelta,
+  writeBaseline,
+} from './check-budget.mjs';
+
+const script = fileURLToPath(new URL('./check-budget.mjs', import.meta.url));
 
 const dirsToClean: string[] = [];
 afterEach(async () => {
@@ -25,6 +39,27 @@ async function makeDist(
     await writeFile(path.join(dir, file), content);
   }
   return dir;
+}
+
+/**
+ * Write a synthetic project root — `<root>/dist/...` (manifest + files) — for CLI spawns that
+ * pass `cwd: root`, since the CLI always reads `dist/` and `budget-baseline.json` relative to
+ * `process.cwd()` (it takes no positional distDir argument).
+ */
+async function makeProjectRoot(
+  manifest: Record<string, unknown>,
+  files: Record<string, string | Buffer>,
+) {
+  const root = await mkdtemp(path.join(tmpdir(), 'budget-cli-'));
+  dirsToClean.push(root);
+  const dir = path.join(root, 'dist');
+  await mkdir(path.join(dir, '.vite'), { recursive: true });
+  await writeFile(path.join(dir, '.vite', 'manifest.json'), JSON.stringify(manifest));
+  for (const [file, content] of Object.entries(files)) {
+    await mkdir(path.join(dir, path.dirname(file)), { recursive: true });
+    await writeFile(path.join(dir, file), content);
+  }
+  return root;
 }
 
 describe('routeFiles (pure)', () => {
@@ -114,5 +149,121 @@ describe('measure', () => {
     const results = await measure({ '/heavy': '/heavy' }, dir);
     const { overBudget } = summarize(results);
     expect(overBudget.map((r) => r.label)).toEqual(['/heavy']);
+  });
+});
+
+// R87: absolute-only reporting hides erosion until some later, unrelated commit trips the 200 KB
+// ceiling and eats the blame for months of accumulated drift (measured: /login moved 168.8 -> 172.2
+// -> 172.6 KB across three tasks that never touched it — the shared entry chunk grew under it each
+// time). `withDelta` never fails the build; BUDGET_BYTES stays the only hard gate.
+describe('withDelta (pure)', () => {
+  it('computes a positive delta when a label grew since the baseline', () => {
+    const results = [{ label: '/login', files: ['a.js'], bytes: 2_000 }];
+    expect(withDelta(results, { '/login': 1_500 })).toEqual([{ ...results[0], deltaBytes: 500 }]);
+  });
+
+  it('computes a negative delta when a label shrank since the baseline', () => {
+    const results = [{ label: '/login', files: ['a.js'], bytes: 1_000 }];
+    expect(withDelta(results, { '/login': 1_500 })).toEqual([{ ...results[0], deltaBytes: -500 }]);
+  });
+
+  it('reports a null delta for a label the baseline has never seen (a brand-new route)', () => {
+    const results = [{ label: '/new-route', files: ['a.js'], bytes: 1_000 }];
+    expect(withDelta(results, {})).toEqual([{ ...results[0], deltaBytes: null }]);
+  });
+});
+
+describe('loadBaseline / writeBaseline', () => {
+  it('returns {} when the baseline file does not exist yet — first run is not an error', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'budget-nobaseline-'));
+    dirsToClean.push(dir);
+    await expect(loadBaseline(path.join(dir, BASELINE_PATH))).resolves.toEqual({});
+  });
+
+  it('round-trips what measure() reported, keyed by label', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'budget-writebaseline-'));
+    dirsToClean.push(dir);
+    const baselinePath = path.join(dir, BASELINE_PATH);
+    const results = [
+      { label: 'index.html', files: ['a.js'], bytes: 111 },
+      { label: '/login', files: ['b.js'], bytes: 222 },
+    ];
+    await writeBaseline(results, baselinePath);
+    await expect(loadBaseline(baselinePath)).resolves.toEqual({ 'index.html': 111, '/login': 222 });
+  });
+});
+
+// Task 2's fixtures used a synthetic `{ '/login': 'src/Login.tsx' }` route map because the real
+// pages (Tasks 10-12) did not exist yet. Now that they do, this exercises the CLI end-to-end with
+// no routes argument — i.e. the actual ROUTE_ENTRIES paths `main()` uses in production — which is
+// the one thing the synthetic-map tests above cannot catch: a real route path that's missing or
+// misspelled in ROUTE_ENTRIES, or a real over-budget route not being named in the CLI's output.
+describe('CLI — over budget on a real route (Task 13)', () => {
+  it('exits 1 and names /signup as OVER BUDGET while leaving /login and /invite alone', async () => {
+    const big = randomBytes(BUDGET_BYTES + 1024);
+    const manifest: Record<string, unknown> = {
+      'index.html': { file: 'assets/index.js', imports: [], css: [] },
+    };
+    manifest[ROUTE_ENTRIES['/login']] = { file: 'assets/login.js', imports: [] };
+    manifest[ROUTE_ENTRIES['/signup']] = { file: 'assets/signup.js', imports: [] };
+    manifest[ROUTE_ENTRIES['/invite/:token']] = { file: 'assets/invite.js', imports: [] };
+    const root = await makeProjectRoot(manifest, {
+      'assets/index.js': 'console.log(1)',
+      'assets/login.js': 'console.log(1)',
+      'assets/signup.js': big,
+      'assets/invite.js': 'console.log(1)',
+    });
+    const run = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toMatch(/✗ \/signup: .* — budget 200 KB/);
+    expect(run.stdout).toMatch(/✓ \/login: /);
+    expect(run.stdout).toMatch(/✓ \/invite\/:token: /);
+    expect(run.stderr).toMatch(/1 entry over budget/);
+  });
+});
+
+// The CLI always measures the HTML entry plus every real ROUTE_ENTRIES route (main() calls
+// measure() with no arguments), so every baseline-delta fixture below must give each of them a
+// manifest entry too — not just 'index.html' — or routeFiles() throws on the missing routes.
+const REAL_ROUTES_MANIFEST: Record<string, unknown> = {
+  'index.html': { file: 'assets/index.js', imports: [], css: [] },
+};
+REAL_ROUTES_MANIFEST[ROUTE_ENTRIES['/login']] = { file: 'assets/login.js', imports: [] };
+REAL_ROUTES_MANIFEST[ROUTE_ENTRIES['/signup']] = { file: 'assets/signup.js', imports: [] };
+REAL_ROUTES_MANIFEST[ROUTE_ENTRIES['/invite/:token']] = { file: 'assets/invite.js', imports: [] };
+const REAL_ROUTES_FILES = {
+  'assets/index.js': 'x'.repeat(2_000),
+  'assets/login.js': 'y',
+  'assets/signup.js': 'y',
+  'assets/invite.js': 'y',
+};
+
+describe('CLI — baseline delta (R87)', () => {
+  it('prints a delta against a committed baseline, and does not fail the build on drift alone', async () => {
+    const root = await makeProjectRoot(REAL_ROUTES_MANIFEST, REAL_ROUTES_FILES);
+    // Seed a baseline well below the current measurement so a clear positive delta shows up.
+    await writeFile(path.join(root, BASELINE_PATH), JSON.stringify({ 'index.html': 5 }));
+    const run = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toMatch(/index\.html: .* \(\+\d+(\.\d+)? KB since baseline\)/);
+  });
+
+  it('reports "no baseline" for a label absent from budget-baseline.json, without failing', async () => {
+    const root = await makeProjectRoot(REAL_ROUTES_MANIFEST, REAL_ROUTES_FILES);
+    const run = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toMatch(/index\.html: .* \(no baseline\)/);
+  });
+
+  it('--update writes the current measurement as the new baseline', async () => {
+    const root = await makeProjectRoot(REAL_ROUTES_MANIFEST, REAL_ROUTES_FILES);
+    const run = spawnSync(process.execPath, [script, '--update'], { cwd: root, encoding: 'utf8' });
+    expect(run.status).toBe(0);
+    const baseline = JSON.parse(await readFile(path.join(root, BASELINE_PATH), 'utf-8')) as Record<
+      string,
+      number
+    >;
+    expect(baseline['index.html']).toBeGreaterThan(0);
+    expect(baseline['/login']).toBeGreaterThan(0);
   });
 });
