@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouteError } from 'react-router';
 import { PageHeading } from '@/components/PageHeading';
-import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
+import { BASIC_BUTTON_CLASS } from './basicButtonClass';
 
 /**
  * R47(b): this `errorElement` is the boundary every route (and every route's local Suspense) sits
@@ -24,7 +24,9 @@ export function RouteErrorBoundary() {
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-10">
       <PageHeading>{t('routeError.heading')}</PageHeading>
       <p>{t('routeError.body')}</p>
-      <Button onClick={() => window.location.reload()}>{t('actions.reload')}</Button>
+      <button type="button" className={BASIC_BUTTON_CLASS} onClick={() => window.location.reload()}>
+        {t('actions.reload')}
+      </button>
     </main>
   );
 }

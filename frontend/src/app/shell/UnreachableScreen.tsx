@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeading } from '@/components/PageHeading';
-import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
+import { BASIC_BUTTON_CLASS } from '../basicButtonClass';
 
 export function UnreachableScreen({ onRetry }: { onRetry: () => Promise<void> }) {
   const { t } = useTranslation();
@@ -26,9 +26,9 @@ export function UnreachableScreen({ onRetry }: { onRetry: () => Promise<void> })
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-10">
       <PageHeading>{t('unreachable.heading')}</PageHeading>
       <p>{t('unreachable.body')}</p>
-      <Button onClick={() => void retry()} disabled={retrying}>
+      <button type="button" className={BASIC_BUTTON_CLASS} onClick={() => void retry()} disabled={retrying}>
         {retrying ? t('actions.retrying') : t('actions.retry')}
-      </Button>
+      </button>
       <p role="status">{failures > 0 && !retrying ? t('unreachable.stillFailing') : ''}</p>
     </main>
   );

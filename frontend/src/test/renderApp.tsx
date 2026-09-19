@@ -37,6 +37,12 @@ export function renderApp(path: string, options: RenderAppOptions = {}) {
   });
   const controls = startSession(runtime, { autoBoot: false });
   if (options.session) {
+    // Fix round 1, item 5: a raw `useSessionStore.setState` call, same as `resetSessionStoreForTests`
+    // in sessionStore.ts. `transition()` (session.ts) is the sole PRODUCTION writer and is
+    // module-private on purpose; `setSessionStatus()`, the exported writer, only ever moves `status`
+    // and reuses whatever `me` is already in the store. A test fixture needs to seed `status` and
+    // `me` together, atomically, as an arbitrary starting combination — there is no sanctioned writer
+    // for that, so this is a deliberate, test-only exception, not a pattern to copy into app code.
     useSessionStore.setState({ status: options.session.status, me: options.session.me ?? null });
     if (options.session.accessToken) setAccessToken(options.session.accessToken);
   }

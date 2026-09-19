@@ -8,17 +8,26 @@
  * route or a namespace into a dead end with no retry affordance — the opposite of boot's own retry
  * philosophy (spec §4.4). This wraps any `import()`-returning thunk with a few retries before
  * letting the failure through for real.
+ *
+ * <p>Fix round 1, item 3: the original schedule was three FLAT 500 ms waits — giving up after
+ * ~1 s total. The failures this exists for (a tunnel, a lift, a tower handoff) routinely last
+ * several seconds, and spec §4.4 already sets this app's bar for its own boot retry at "the first
+ * automatic retry happens within 5 s… later retries may back off further". A schedule that gives up
+ * in ~1 s is not a self-healing policy for that failure mode, it's a slightly-delayed manual Reload.
+ * `IMPORT_RETRY_SCHEDULE_MS` backs off toward that same ~5 s benchmark instead.
  */
+export const IMPORT_RETRY_SCHEDULE_MS = [500, 1_500, 3_000] as const;
+
 export function withImportRetry<T>(
   load: () => Promise<T>,
-  options: { attempts?: number; delayMs?: number } = {},
+  options: { schedule?: readonly number[] } = {},
 ): Promise<T> {
-  const attempts = options.attempts ?? 3;
-  const delayMs = options.delayMs ?? 500;
+  const schedule = options.schedule ?? IMPORT_RETRY_SCHEDULE_MS;
 
   const attempt = (n: number): Promise<T> =>
     load().catch((error: unknown) => {
-      if (n >= attempts) throw error;
+      const delayMs = schedule[n];
+      if (delayMs === undefined) throw error; // schedule exhausted — let the real rejection through
       return new Promise<T>((resolve, reject) => {
         setTimeout(() => {
           attempt(n + 1).then(resolve, reject);
@@ -26,5 +35,5 @@ export function withImportRetry<T>(
       });
     });
 
-  return attempt(1);
+  return attempt(0);
 }
