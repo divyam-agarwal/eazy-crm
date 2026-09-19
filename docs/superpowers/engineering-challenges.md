@@ -6264,3 +6264,64 @@ naming convention treated as an exemption, a mode flag that changes which AST no
 just what makes it fire. That check has to happen once per rule, by hand, the same way R21's `fatal`
 check had to be added by hand for the allow-case failure mode; no assertion shape catches every way a
 rule can go quiet before you've read what "quiet" actually means for that specific rule.
+
+---
+
+## Challenge 96 — Banning a package by its default specifier leaves every other entry point to the same code unblocked
+
+**Phase:** Implementation (F0b, Task 9, fix round 1)
+
+### The problem
+
+Task 9's R67 rule bans `import { z } from 'zod'` because the bare package entry point retains the
+whole validation runtime (measured: 92.2 KB gzip for a two-field schema, versus 5.05 KB through
+`zod/mini`), and the rule was proven red against exactly that one snippet. A follow-up review found
+the escape hatch: `no-restricted-imports`'s `paths` option matches the literal specifier string, and
+zod 4.6.5 exposes the *same* full-runtime code through several other `exports`-map entries —
+`zod/v3` (the legacy API), `zod/v4` (the current API, explicitly), and `zod/v4/core` (the shared
+internals both the full and mini builds are assembled from). Measuring each the same way as the
+original snippet: `zod/v4` bundles to **93.1 KB gzip — identical to bare `zod`**, because it is
+literally the same module reachable by a second name; `zod/v4/core` bundles to **80.2 KB** even
+importing nothing from it but the namespace object, because pulling in the shared internals pulls in
+nearly everything built on them; `zod/v3` is lighter at 14.3 KB but still 3x `zod/mini`'s footprint
+and a wholly separate legacy surface. What makes this more than a variant of the original hazard: the
+rule's own escape hatch reproduces the rule's own justification — zod's v4 migration documentation
+names `zod/v4` as *the* way to opt into the new API ahead of the next major, so the same "the
+library's own docs steer an implementer onto the 92 KB path" story that motivated banning bare `zod`
+in the first place applies, unchanged, to the path left open right next to it.
+
+The general shape: **a ban keyed to one string is a ban on one name for the code, not a ban on the
+code.** Any package that re-exports the same implementation under multiple subpaths — a mini/full
+split, a versioned API surface kept for migration, a public alias — has as many escape hatches as it
+has names for the thing being banned, and an exact-match rule only ever sees the one name it was
+written against.
+
+### The solution
+
+Read zod's `package.json` `exports` map directly rather than guessing which subpaths exist, then
+measured each one with the same bundle-and-gzip methodology as the original finding (not assumed from
+the name alone — `zod/v4/core` looked like an internals-only import unlikely to be reached for hand,
+but measured heavy anyway, and `zod/compile`/`zod/locales` looked plausible to ban by pattern-matching
+on "has a `/`" but measured/reasoned as legitimately excluded: `compile` is a schema-to-function
+codegen utility with no schema-authoring API to attract an implementer, and `locales` are
+error-message catalogs the project's own i18n work may need later). Expanded the `no-restricted-imports`
+`paths` list from one entry to four (`zod`, `zod/v3`, `zod/v4`, `zod/v4/core`), keeping the exact-match
+form (not a glob) specifically *because* a glob broad enough to catch every heavy spelling
+(`zod/v4/**`) would also have caught `zod/v4/mini` — the light entry point the rule exists to permit.
+Added a reject-case fixture per banned spelling and an explicit allow-case for `zod/v4/mini`, each
+verified against the pre-fix config first (all five: zero messages) and the post-fix config second
+(all five: fires or passes as intended) — not inferred from the rule id changing, actually re-run both
+ways.
+
+### Lesson
+
+A "ban this package" rule is only as complete as the package's own map of names for itself — checking
+that map (`exports` in `package.json`, or its docs' list of entry points) is not optional due
+diligence, it is the actual scope of the rule; testing one spelling and generalizing "the import" from
+it is how the gap here shipped in the first place, proven red on the one snippet everyone thought to
+write and silently permitting the next three. The secondary lesson is symmetric with Challenge 95: a
+security-shaped gate (this one keeps a bundle-size budget from being blown, not a boundary from being
+crossed) benefits from the same discipline — a rule that looks complete because its one fixture is red
+is exactly the shape that hides an unexercised gap, and the fix is the same "enumerate the real
+surface, don't infer it" move, just applied to a package's API instead of an ESLint plugin's rule
+semantics.

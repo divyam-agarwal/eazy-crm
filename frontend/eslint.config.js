@@ -19,14 +19,30 @@ const features = readdirSync(fileURLToPath(new URL('./src/features', import.meta
 const TESTS = ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/**/*.typecheck.ts'];
 const BYPASS = 'Requests go through src/api/client.ts, which adds auth, the CSRF header, the timeout and refresh (spec §4.3).';
 const ZOD_MSG =
-  "Import from 'zod/mini', not 'zod'. The bare 'zod' namespace retains the whole runtime " +
-  '(measured: a two-field schema is 92.2 KB gzip via `zod`, 5.05 KB via `zod/mini`) — one wrong ' +
-  'import can put the entry chunk over budget.';
+  "Import from 'zod/mini', not 'zod'. Fix round 1: `no-restricted-imports` matches the literal " +
+  "specifier string, so banning only 'zod' left 'zod/v3', 'zod/v4' and 'zod/v4/core' as unblocked " +
+  'escape hatches to the exact same heavy runtime — zod 4.6.5 ships them as separate export map ' +
+  "entries, and zod's own v4 migration docs point an implementer straight at 'zod/v4'. Measured " +
+  '(two-field schema, esbuild --bundle --minify, gzip): zod 93.1 KB, zod/v4 93.1 KB (identical — ' +
+  "it's the same code), zod/v3 14.3 KB, zod/v4/core 80.2 KB, zod/mini (== zod/v4-mini == " +
+  '`zod/v4/mini`) 4.56 KB. One wrong import can put the entry chunk over budget.';
 const NOOP_LOCKS_MSG =
   'noopLocks is a deliberately non-exclusive LockProvider kept only for a recorded red run (Task 15). ' +
   'Production must go through createSessionRuntime, which picks webLocks/createInMemoryLocks.';
 
-const ZOD_PATH = { name: 'zod', message: ZOD_MSG };
+// Every zod entry point that resolves to the full (non-mini) runtime, per zod 4.6.5's own `exports`
+// map (checked directly — see ZOD_MSG). Deliberately NOT included: `zod/mini`, `zod/v4-mini` and
+// `zod/v4/mini` (all measured identical to zod/mini — the whole point), `zod/compile` (a schema-to-
+// function codegen utility, not a schema-definition API — 35.2 KB raw importing the whole namespace
+// via `import *`, but no realistic path leads an implementer there to build a schema) and
+// `zod/locales`/`zod/v4/locales(/*)` (error-message catalogs; the project's own i18n plans may need
+// these later and they don't retain the validation engine on their own).
+//
+// Note for a future reader of package.json: 'zod' (not 'zod/mini') is the correct dependencies entry
+// even though only the 'zod/mini' subpath may be imported — 'zod/mini' ships inside the same 'zod'
+// npm package (see its exports map), it is not a separate package to swap in. Don't "tidy up" the
+// dependency to something named zod-mini; it doesn't exist.
+const ZOD_HEAVY_PATHS = ['zod', 'zod/v3', 'zod/v4', 'zod/v4/core'].map((name) => ({ name, message: ZOD_MSG }));
 const OPENAPI_FETCH_PATH = { name: 'openapi-fetch', message: BYPASS };
 const NOOP_LOCKS_PATH = {
   name: '@/features/auth/session/lockProvider',
@@ -65,7 +81,7 @@ export default tseslint.config(
     files: ['src/**/*.{ts,tsx}'],
     ignores: TESTS,
     rules: {
-      'no-restricted-imports': ['error', { paths: [ZOD_PATH] }],
+      'no-restricted-imports': ['error', { paths: ZOD_HEAVY_PATHS }],
     },
   },
   {
@@ -82,7 +98,7 @@ export default tseslint.config(
       // importing openapi-fetch directly. ESLint flat config resolves a repeated rule id per file by
       // taking the LAST matching config wholesale, not merging arrays, so every block that narrows
       // `no-restricted-imports` further must repeat the restrictions the narrower fileset still owes.
-      'no-restricted-imports': ['error', { paths: [ZOD_PATH, OPENAPI_FETCH_PATH] }],
+      'no-restricted-imports': ['error', { paths: [...ZOD_HEAVY_PATHS, OPENAPI_FETCH_PATH] }],
     },
   },
   // R24: bootstrap.ts is the one file allowed to choose which LockProvider production runs with.
@@ -91,7 +107,7 @@ export default tseslint.config(
   {
     files: ['src/app/bootstrap.ts'],
     rules: {
-      'no-restricted-imports': ['error', { paths: [ZOD_PATH, OPENAPI_FETCH_PATH, NOOP_LOCKS_PATH] }],
+      'no-restricted-imports': ['error', { paths: [...ZOD_HEAVY_PATHS, OPENAPI_FETCH_PATH, NOOP_LOCKS_PATH] }],
     },
   },
   {
@@ -131,12 +147,20 @@ export default tseslint.config(
             // store module directly; every other importer goes through @/session/useMe or the auth
             // feature's session boundary instead. The store can't simply move: useMe and the write
             // side need the same zustand instance, and session → features is a forbidden direction.
+            //
+            // Fix round 1: './src/session/!(useMe).{ts,tsx}' only matched DIRECT children of
+            // src/session — it has no '**', so it silently stopped applying the moment a file moved
+            // one level deeper (e.g. a future src/session/hooks/ or src/session/internal/). Verified
+            // empirically against minimatch before and after: 'src/session/sub/x.ts' was unmatched
+            // (zero messages) under the old pattern, matched under this one. './**/' spans any depth
+            // (including zero) before the final filename check, so the top-level useMe.ts exemption
+            // still holds exactly as before.
             {
               target: [
                 './src/app',
                 './src/lib',
                 './src/components',
-                './src/session/!(useMe).{ts,tsx}',
+                './src/session/**/!(useMe).{ts,tsx}',
                 './src/features/auth/*.{ts,tsx}',
                 './src/features/auth/!(session)/**',
                 ...features.filter((name) => name !== 'auth').map((name) => `./src/features/${name}`),
