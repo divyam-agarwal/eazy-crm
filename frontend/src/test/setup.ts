@@ -4,11 +4,15 @@ import { cleanup } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { resetAuthBridge } from '@/api/authBridge';
 import { clearAccessToken } from '@/features/auth/session/accessToken';
+import { stopSession } from '@/features/auth/session/start';
 import { resetSessionStoreForTests } from '@/session/sessionStore';
 import { server } from './msw';
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
+  // Task 6: a leaked boot/logout — its `online` listeners, its scheduled retry timer — from one
+  // test file's startSession() would otherwise run against the next file's fixtures.
+  stopSession();
   // R1: several test files opt into `// @vitest-environment node` (no DOM). cleanup() and
   // localStorage are jsdom/happy-dom-only and throw outside a document — guard both so this one
   // global setup file works for every environment.

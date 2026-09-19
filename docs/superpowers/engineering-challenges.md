@@ -5701,3 +5701,81 @@ and never checked *against each other* — each looks complete on its own terms.
 gated behind a not-yet-shipped roadmap item is real today, not deferred — the code path exists and is
 reachable by anything that can influence what `toMe()` receives (a role typo in a test fixture would
 have found this too), it simply hadn't been exercised yet.
+
+## Challenge 89 — A durable pending-logout marker: the refresh cookie outlives the tab that asked to kill it
+
+**Phase:** Implementation (F0b, Task 6)
+
+### The problem
+
+The refresh cookie is `httpOnly` by design (F0-13) — client JS can read a session's state but cannot
+delete the credential itself. `logout()` therefore cannot make the device "signed out"; it can only
+ask the server to, and wait. Between that ask and the server's 204, the cookie is still fully live.
+An in-memory `signing-out` status models that gap for as long as the tab stays open and running, but
+Android routinely discards a backgrounded tab well before a slow POST (up to 15 s on 4G, or never, on
+a dropped connection) resolves — and a discarded tab's `status: 'signing-out'` is gone with it.
+Reopen that tab (or open a fresh one) before the server ever saw the request, and boot's obvious
+first move — refresh — would re-authenticate using the very cookie the user asked to destroy, silently
+undoing the sign-out the UI never got to confirm.
+
+A second race sits underneath the first: the retry loop that resends the logout POST until it
+succeeds must stop the instant *any* tab signs in elsewhere, not just when its own request finally
+lands a 204. `AuthController.login`/`signup` and `PublicInvitationController.accept` each call
+`cookie.read(request).ifPresent(auth::logout)` — a successful sign-in already revokes whatever cookie
+was sitting in the jar as a side effect. If the retry loop doesn't know that, its next scheduled POST
+targets a cookie that now belongs to whoever just signed in, and the server happily revokes it too —
+logging out the *new* user because of a *previous* user's abandoned sign-out request.
+
+### Why it's hard
+
+Both races are invisible to a test (or a developer) that only drives one tab through one full
+`logout()` call to completion: the in-memory status is indistinguishable from a durable one as long
+as the tab never closes and the POST never needs a retry. The failure only appears at the seam
+between two independently-reasonable pieces — "the device believes it will finish this before
+reloading" and "the platform is free to discard backgrounded tabs whenever it wants" — and nothing in
+either piece's own code is wrong. The second race additionally requires *cross-tab* state: a single
+tab's retry loop has no way to observe "someone, somewhere, just signed in" except by being told, and
+the natural place to tell it (the existing `easycrm-auth` `BroadcastChannel`) already carries a
+`login` message for an unrelated reason (principal-change detection), so the fix has to reuse that
+signal rather than invent a second channel.
+
+### The solution
+
+Added a durable marker, `localStorage['easycrm.logoutPending']` (`logoutPending.ts`, Task 5), written
+by `markPending()` **before** the POST fires and cleared only by `clearPending()` on an actual 204 —
+never optimistically. `createBoot` (`boot.ts`) checks `deps.logoutPending()` as the very first thing
+it does on every run, *before* calling `deps.refresh()`: if a logout is owed, boot hands off to
+`deps.finishPendingLogout()` (wired to the same `logout.logout()` the sign-out button calls) and
+returns without ever touching the refresh endpoint. This closes the reload gap: whichever tab boots
+next — the same one reopened, or a brand new one — re-derives "a logout is owed" from storage, not
+from memory that Android may have discarded. Other tabs are told `signing-out`, never `logout`, until
+the 204 actually lands (`authChannel.ts`'s `AuthMessage` union), so a sibling tab shows the blocking
+screen instead of the login page — showing `/login` while the cookie is still live invites a reload
+that signs the same user back in.
+
+For the second race, `createLogout` tracks a local `settled` flag and exposes `settledElsewhere()`,
+called from `start.ts`'s subscription to the auth channel on any `login` message. `retry()` checks
+`settled` before its next `deps.callLogout()`; `settledElsewhere()` also clears the durable marker,
+since the server already revoked the stale cookie as a side effect of that sign-in. The retry loop's
+stopping condition is therefore "the thing it was retrying for is no longer true", not merely
+"stop after N attempts" or "stop when this tab's own request succeeds".
+
+Both directions are covered by tests that fail for the intended reason under mutation: deleting
+boot's `logoutPending()` branch turns "finishes a pending logout instead of refreshing" red
+(`deps.refresh` gets called when it must not); dropping the `if (settled) return` guard from
+`retry()` turns "stops retrying when any tab signs in, without another POST" red (`callLogout` fires
+a second time against the new user's cookie).
+
+### Lesson
+
+A status flag that lives only in a JS closure is a *belief*, not a *fact* — it is only as durable as
+the runtime that holds it, and a mobile browser's tab lifecycle is explicitly allowed to be shorter
+than a slow network request. Whenever a piece of UI state exists to track an action against a
+credential the client cannot directly revoke (an httpOnly cookie, a server-side session, anything the
+client can only *ask* to be undone), the "I asked for this" fact needs to survive at least as long as
+the asking can take — which means storage, checked *before* the next privileged action, not a status
+enum alone. Separately: a retry loop's stopping condition should be phrased in terms of the state it
+is trying to reach ("no logout is owed" / "the cookie already changed hands"), not just "my own
+request finally succeeded" — the two diverge exactly when another actor (a different tab, a different
+user) can independently make the original goal moot, and reusing an existing cross-tab signal
+(`login` on the auth channel) is cheaper and more reliable than inventing a parallel one.

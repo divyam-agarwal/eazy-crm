@@ -4,7 +4,7 @@ import { getAccessToken } from './accessToken';
 import type { AuthChannel, AuthMessage } from './authChannel';
 import { createInMemoryLocks } from './lockProvider';
 import { configureSession, type SessionRuntime } from './runtime';
-import { endSession, establishSession, subscribeToAuthChannel } from './session';
+import { endSession, establishSession, setSessionStatus, subscribeToAuthChannel } from './session';
 import { useSessionStore } from '@/session/sessionStore';
 
 // R-ruling on the brief's defect: the brief's `describe('establishSession')` block called
@@ -145,5 +145,21 @@ describe('subscribeToAuthChannel', () => {
     deliver({ type: 'login', userId: inviteeSession.userId, tenantId: inviteeSession.tenantId });
 
     expect(useSessionStore.getState().status).toBe('anonymous');
+  });
+});
+
+// Task 6: boot.ts and logout.ts move `status` through this export instead of reaching for
+// useSessionStore.setState directly (Task 5's transition() discipline).
+describe('setSessionStatus', () => {
+  it('writes status without disturbing the current me', () => {
+    fakeRuntime();
+    establishSession(ownerSession);
+
+    setSessionStatus('unreachable');
+
+    expect(useSessionStore.getState()).toMatchObject({
+      status: 'unreachable',
+      me: { userId: ownerSession.userId },
+    });
   });
 });

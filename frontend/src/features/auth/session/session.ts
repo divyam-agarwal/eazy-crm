@@ -31,6 +31,18 @@ function clearSession(reason: EndReason): void {
   sessionRuntime().clearQueryCache();
 }
 
+/**
+ * Task 6: boot.ts and logout.ts move `status` on their own (a 403 to `unreachable`, a retry loop to
+ * `signing-out`) without the rest of establishSession/endSession's side effects — e.g. logout's local
+ * `signing-out` write happens right after endSession has already cleared `me`. This is the "small
+ * named export" the Task 5 refactor asks for, so neither module reaches for `useSessionStore`
+ * directly: it still goes through the sole writer, `transition`, and still passes `me` explicitly
+ * (the current value, unchanged) rather than letting a bare `{ status }` merge risk a stale `me`.
+ */
+export function setSessionStatus(status: SessionStatus): void {
+  transition(status, useSessionStore.getState().me);
+}
+
 /** Boot, login, signup, accept and every refresh go through here (spec §4.4). */
 export function establishSession(response: AuthResponse): EstablishResult {
   const next = toMe(response);
