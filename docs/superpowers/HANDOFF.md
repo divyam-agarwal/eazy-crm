@@ -1,13 +1,41 @@
 # EasyCRM — Handoff
 
-## 2026-09-19 — START HERE: the F0b plan is reviewed and revised; build is next
+## 2026-09-19 — START HERE: the F0b plan is reviewed and revised, Node 24 is installed; **build F0b next**
 
 **State.** No application code changed. All five frontend specialist reviewers reviewed
 [`plans/2026-09-16-f0b-frontend-foundation.md`](plans/2026-09-16-f0b-frontend-foundation.md); **all five
-returned "Ready with fixes"**, and the fixes are applied at **`7e24783`** (docs only; `main` is otherwise
-`2d9a2aa`, green in CI). They were **still not callable by `subagent_type`** — the fallback (a
-`general-purpose` agent told to read `.claude/agents/frontend-review-<lens>.md` and follow it verbatim)
-worked again.
+returned "Ready with fixes"**, and the fixes are applied. **`main` is pushed at `2b8c23e`**
+(`7e24783` = the plan revision, `2b8c23e` = this handoff + roadmap; both docs-only). Reviewers were
+**still not callable by `subagent_type`** — the fallback (a `general-purpose` agent told to read
+`.claude/agents/frontend-review-<lens>.md` and follow it verbatim) worked again.
+
+Verify (separate invocations):
+```
+git rev-parse --short main           # 2b8c23e, or later
+git rev-parse --short origin/main
+git rev-list --count origin/main..main   # 0
+```
+**CI on `2b8c23e` was not checked before this was written** — it is docs-only, but confirm the run is green
+before assuming it.
+
+### Node 24 is installed — but an agent shell does NOT get it automatically
+
+Installed 2026-09-19 at the owner's request: **fnm 1.39.0** (Homebrew) and **Node v24.21.0**, which is fnm's
+`default`. `eval "$(fnm env --use-on-cd --shell zsh)"` was appended to `~/.zshrc` (backup:
+`~/.zshrc.bak-2026-09-19`), so the owner's **interactive** shells now get v24.21.0 and `--use-on-cd` picks up
+`frontend/.nvmrc`.
+
+**The catch for the build agent:** the Bash tool's shell is non-interactive, so it does **not** source
+`~/.zshrc` — `node --version` there still prints the system **v25.2.1** (Homebrew node at
+`/opt/homebrew/bin/node`). The plan pins `engines.node >=24 <25` with `engine-strict=true`, so every
+`pnpm` command would fail. Both of these were verified to work:
+
+```bash
+eval "$(fnm env)" && fnm use 24 && node --version   # v24.21.0 — do this once per shell, or
+fnm exec --using=24 -- pnpm install                 # per command
+```
+`pnpm` is 10.33.0 (Homebrew) and works under both, so `packageManager` stays `pnpm@10.33.0` as Task 2 assumes.
+**Do not change the owner's global Node further without asking.**
 
 **What the review changed — new plan decisions P14–P19, each named in the plan with its finding id:**
 
@@ -39,13 +67,26 @@ rule with a frozen legacy baseline; E2E for the principal switch and the failed 
 of a fixed 1.5 s wait in the cross-tab refresh test. **Challenge #86** (durable pending logout) is drafted
 in Task 17 alongside #84 and #85.
 
-### Next, in order
+### Next: build F0b
 
-1. **Install Node 24** — the Mac still has v25.2.1 and no version manager; Task 2 stops on it. Suggested:
-   `brew install fnm && fnm install 24`. Do not change the owner's global Node without asking.
-2. **Build F0b**: worktree `f0b-frontend` + `superpowers:subagent-driven-development`, as F0a ran. Do not
-   push; that is the owner's call.
-3. Optionally push `7e24783` first (docs only) so the build branches from a CI-checked tree.
+1. **Cut the worktree** with `superpowers:using-git-worktrees`: branch `f0b-frontend` off `main`
+   (`2b8c23e`). Task 1 Step 1 confirms the backend baseline is **677 tests, 0 failures** before anything else.
+2. **Run the plan with `superpowers:subagent-driven-development`**, task by task, the way F0a ran. Give each
+   subagent the Node-24 activation line above — a subagent that skips it will hit `engine-strict` and may
+   "fix" it by loosening `engines`, which is the wrong fix.
+3. **Do not push the branch**; pushing is the owner's call.
+
+**Read the plan's decision table first (P1–P19).** P14–P19 came out of the specialist review and change
+behaviour the earlier tasks describe; a subagent that implements only the code blocks without the reasoning
+will reintroduce what the review caught. The three highest-risk tasks are **6** (boot and logout — P14/P15),
+**8** (now test-first, Testing-2/4) and **15** (the E2E red runs).
+
+**Known stopping points, each with a fallback written into its step:** the jsdom `AbortSignal` /
+`AbortSignal.any` probe (Task 2, fallback happy-dom); springdoc ignoring type-level `requiredProperties`
+(Task 1, fallback per-component `requiredMode`); why the contract drops the already-annotated **400**
+(Task 1 Step 4b — diagnose before writing the customizer); `zod/mini` with `@hookform/resolvers` 5;
+Playwright exposing the `Cookie` header in Task 15's test 7 (**stop and report, do not delete the
+assertion**); `onlineManager` behaviour for P17's offline test.
 
 Everything in the section below still holds, except that "not yet reviewed" is now done.
 

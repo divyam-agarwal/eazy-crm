@@ -3,13 +3,16 @@
 **Date:** 2026-09-03 · **last updated 2026-09-19**
 **Status:** Living document. Supersedes no design doc; sequences all of them.
 
-**2026-09-19 — latest.** **The F0b plan is reviewed and revised** (`7e24783`, docs only). All five frontend
-specialist reviewers returned "Ready with fixes"; the fixes are plan decisions **P14–P19**. The one Critical
-finding: a failed sign-out could sign the previous user back in, because the "signing out" state lived only
-in one tab's memory while the refresh cookie is durable and shared — P14 makes it durable and settles it at
-boot. P15 puts login/signup/accept/logout under the same Web Lock as refresh (verified against
-`AuthController` and `RefreshTokenService.revoke`). **Next: install Node 24, then build F0b in a worktree.**
-No application code moved; the 677-test baseline stands.
+**2026-09-19 — latest.** **The F0b plan is reviewed and revised, and `main` is pushed at `2b8c23e`** (two
+docs-only commits; CI on them not yet checked). All five frontend specialist reviewers returned "Ready with
+fixes"; the fixes are plan decisions **P14–P19**. The one Critical finding: a failed sign-out could sign the
+previous user back in, because the "signing out" state lived only in one tab's memory while the refresh
+cookie is durable and shared — P14 makes it durable and settles it at boot. P15 puts
+login/signup/accept/logout under the same Web Lock as refresh (verified against `AuthController` and
+`RefreshTokenService.revoke`). **Node 24 is installed** (fnm 1.39.0 + Node v24.21.0, `~/.zshrc` hook added),
+but an agent's non-interactive shell still starts on the system v25.2.1 — HANDOFF's top section has the
+one-line activation. **Next: cut the `f0b-frontend` worktree and build the plan.** No application code
+moved; the 677-test baseline stands.
 
 **2026-09-16 (later) — latest.** **`main` is pushed (`2d9a2aa`), and CI run `35014714570` is green on all
 three jobs.** The "33 commits unpushed, CI has run on none" caveat below is **discharged**. **The F0b plan is
@@ -433,7 +436,7 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 | Track | Have | Left |
 |---|---|---|
 | **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 677 tests (F0a, unpushed) | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
-| **Frontend** | No frontend code yet. F0 spec approved and reviewed; **F0a backend prep merged and pushed**: cookie auth, `application/json` contract, `fieldCodes`. **F0b plan written (2026-09-16), not yet reviewed** | F0b (plan reviewed 2026-09-19, P14-P19 applied; next: Node 24, then build -- scaffold, client, login/signup/invite, shell, CI) → F1–F3. `/invite/{token}` first |
+| **Frontend** | No frontend code yet. F0 spec approved and reviewed; **F0a backend prep merged and pushed**: cookie auth, `application/json` contract, `fieldCodes`. **F0b plan written (2026-09-16), not yet reviewed** | F0b (plan reviewed and revised 2026-09-19, P14-P19 applied; Node 24 installed; next: build -- scaffold, client, login/signup/invite, shell, CI) → F1–F3. `/invite/{token}` first |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
 | **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, Wave 1.5 supply chain (green in CI since 2026-09-13), **Wave 1.6 module boundaries — four hand-written boundary gates plus Modulith, C4 docs drift-guarded**, specialist reviewer registry drift guard (2026-09-14) | Blocking oasdiff, branch protection, 32 SpotBugs findings |
 | **Local dev** | Gradle + Testcontainers + ngrok | Dockerfile, compose stack, seed data |
@@ -482,8 +485,8 @@ are done and pushed; D-g's name and hostname are settled (`easycustomerrelations
 1. **Item 4, the frontend — F0b next. Its plan is WRITTEN and REVIEWED (2026-09-19):**
    [`plans/2026-09-16-f0b-frontend-foundation.md`](superpowers/plans/2026-09-16-f0b-frontend-foundation.md).
    All five frontend specialist reviewers ran on the plan and their fixes are applied (P14-P19; HANDOFF's
-   top section has the reasoning). Next: install Node 24 on the owner's Mac, then build in a
-   worktree with subagent-driven development. The instruction below to "write the F0b plan" is complete. D-d (the decomposition) is settled: F0 foundation
+   top section has the reasoning), and Node 24 is installed. Next: build it in a `f0b-frontend`
+   worktree with subagent-driven development, giving each subagent the Node-24 activation line. The instruction below to "write the F0b plan" is complete. D-d (the decomposition) is settled: F0 foundation
    + auth + invite page → F1 master data → F2 the wedge → F3 daily work + team, with the import wizard
    and owner analytics deferred because no backend exists for them. **F0's spec is approved and
    reviewed; F0a (its backend half) is merged. Write the F0b plan** (spec Parts 4–6) against the
