@@ -22,7 +22,9 @@ const HTML_ENTRY = 'index.html';
 // Each page task adds its own entry — the missing-key throw in routeFiles() is what forces that.
 // Task 10 -> '/login', Task 11 -> '/signup', Task 12 -> '/invite/:token'.
 /** @type {Record<string, string>} */
-export const ROUTE_ENTRIES = {};
+export const ROUTE_ENTRIES = {
+  '/login': 'src/features/auth/pages/LoginPage.tsx',
+};
 
 /**
  * @typedef {{ file?: string; css?: string[]; imports?: string[]; dynamicImports?: string[] }} ManifestChunk

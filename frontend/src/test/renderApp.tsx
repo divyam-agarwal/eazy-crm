@@ -8,7 +8,7 @@ import { createQueryClient } from '@/app/queryClient';
 import { appRoutes } from '@/app/router';
 import { setAccessToken } from '@/features/auth/session/accessToken';
 import { createNoopChannel } from '@/features/auth/session/authChannel';
-import { createInMemoryLocks } from '@/features/auth/session/lockProvider';
+import { createInMemoryLocks, type LockProvider } from '@/features/auth/session/lockProvider';
 import { startSession } from '@/features/auth/session/start';
 import { useSessionStore } from '@/session/sessionStore';
 import type { Me, SessionStatus } from '@/session/types';
@@ -16,6 +16,8 @@ import type { Me, SessionStatus } from '@/session/types';
 export interface RenderAppOptions {
   session?: { status: SessionStatus; me?: Me | null; accessToken?: string };
   boot?: boolean;
+  /** R14: pass `holdCookieLock().locks` to prove a hook waits for the cookie lock before it POSTs. */
+  locks?: LockProvider;
 }
 
 /**
@@ -31,7 +33,7 @@ export function renderApp(path: string, options: RenderAppOptions = {}) {
   const queryClient = createQueryClient();
   const runtime = createSessionRuntime(queryClient, {
     channel: createNoopChannel(),
-    locks: createInMemoryLocks(),
+    locks: options.locks ?? createInMemoryLocks(),
     reload: vi.fn(),
     log: vi.fn(),
   });

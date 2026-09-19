@@ -6336,3 +6336,73 @@ crossed) benefits from the same discipline — a rule that looks complete becaus
 is exactly the shape that hides an unexercised gap, and the fix is the same "enumerate the real
 surface, don't infer it" move, just applied to a package's API instead of an ESLint plugin's rule
 semantics.
+
+---
+
+## Challenge 97 — Proving a Suspense fallback and a rejected `import()` reach the right boundary, without racing real timing
+
+**Phase:** Implementation (F0b, Task 10)
+
+### The problem
+
+Challenge 94 (Task 8) put the fix in place: `/login` and its siblings nest their own local
+`<Suspense fallback={<RouteSkeleton />}>` so an i18n-namespace suspend shows that route's skeleton
+instead of blanking the whole app via `RootLayout`'s outer `fallback={null}`, and `withImportRetry`
+turns a rejected chunk load into a real error an `errorElement` can catch. R71 asked Task 10 — the
+first task with an actual consumer route — to *prove* both halves with a test, not just carry the
+design forward by construction. Both proofs are harder to write honestly than they look:
+
+1. **The suspend.** In this codebase's real boot path, `startApp()` calls `void initI18n()` and never
+   awaits it before the router renders — so `/login`'s `useTranslation('auth')` suspends only in the
+   narrow, real window before that namespace's dynamic `import()` settles. Reproducing that window in a
+   test by using the *real* `initI18n()` and a *real* dynamic import is racy in exactly the way that
+   window is inherently racy: Vitest resolves an already-graphed local module in one or two microtasks,
+   so a test asserting "the skeleton is on screen" can lose the race against its own assertion — by the
+   time `screen.findByRole` performs its check, the import may have already resolved and the real
+   `LoginPage` heading may have already replaced it. A flaky assertion on a real timing window is not a
+   proof; it is a coin flip that happens to land right most runs.
+2. **The rejection.** `withImportRetry`'s real schedule (`IMPORT_RETRY_SCHEDULE_MS`) backs off across
+   roughly 5 seconds by design (Challenge 94) — appropriate for a real dropped connection, useless as a
+   test fixture. Driving a real `/login` chunk load to genuine, repeated rejection and waiting out that
+   schedule to observe `RouteErrorBoundary` would make the single assertion the slowest thing in the
+   suite, for a fact the schedule constant itself already establishes independently.
+
+### The solution
+
+Replaced racing real timing with the same **hold/release** shape `holdCookieLock()` (Task 6) already
+uses for testing a Web Lock deterministically, applied to the two mechanisms above instead of a lock:
+
+- For the suspend: a minimal, hand-written i18next `BackendModule` whose `read()` doesn't resolve
+  until the test calls `release()` — a `Promise` created once and `.then()`-chained from every `read`
+  call, exactly `holdCookieLock`'s `gate`/`release` pair. `initI18n`'s production call itself is
+  untouched — the real `router.tsx` route tree (`appRoutes`) is rendered through a real
+  `createMemoryRouter`, so a regression that removes the local `<Suspense>` wrapper still makes this
+  test fail, same as before this fix — only the *namespace loader* is swapped for a controllable one so
+  the pending state is provably still pending (`await` an assertion of absence) before being released
+  on command, instead of merely inferred from having usually observed it that way.
+- For the rejection: `withImportRetry(loader, { schedule: [] })` — a real, already-existing parameter
+  (`options.schedule`), not a stub — collapses the ~5s production backoff to an immediate give-up, paired
+  with the standard "throw a promise to suspend, throw the settled rejection to fail" resource pattern
+  (`createSuspenseResource`) wired into a synthetic route carrying the real `RouteSkeleton` and
+  `RouteErrorBoundary`. This proves the *general* mechanism Task 8 built (a settled-rejected suspended
+  promise is not something `<Suspense>` catches; only an `errorElement` above it can) without needing a
+  real chunk to actually fail 3 times over 5 seconds first.
+
+Both proofs were verified red-for-the-right-reason before being trusted: temporarily reverting
+`router.tsx`'s local `<Suspense>` wrap made the suspend test fail on an *empty* `<div>` (the regression
+Challenge 94 describes, reproduced on demand); temporarily dropping the synthetic route's
+`errorElement` made the rejection test fail on react-router's own generic "Unexpected Application
+Error" screen instead of `RouteErrorBoundary`'s heading.
+
+### Lesson
+
+A test that asserts "a fleeting async state was visible" is only as trustworthy as its control over
+that state's timing — if the test doesn't own when the state ends, it is racing whatever the runtime
+happens to do today, and a faster import resolution tomorrow (a warmer cache, a leaner bundler) can
+make a previously-green assertion start losing its race silently. The general fix is the same
+"hold, assert, release" shape already established for Web Locks in this codebase (`holdCookieLock`):
+find the one seam that controls *when* the async operation settles, and drive it explicitly instead of
+hoping the test's own polling interval wins the race. And for the failure-mode half specifically — a
+suspended promise that later rejects — `withImportRetry`'s own `schedule` option, added in Task 8 for
+production tuning, turned out to double as exactly the test seam needed to compress a deliberately slow
+retry policy down to instant, without stubbing the function or duplicating its logic.

@@ -72,12 +72,15 @@ describe('summarize (pure)', () => {
 });
 
 describe('measure', () => {
+  // Task 10 gave the real ROUTE_ENTRIES its first entry ('/login'), so this scenario -- an empty
+  // route map -- is now exercised with its own synthetic `{}`, the same way the "over-budget route"
+  // test below passes a synthetic map instead of relying on ROUTE_ENTRIES (see that test's comment).
   it('measures only the HTML entry when the route map is empty (ships this way in Task 2)', async () => {
     const dir = await makeDist(
       { 'index.html': { file: 'assets/index-abc.js', imports: [], css: [] } },
       { 'assets/index-abc.js': 'console.log(1)' },
     );
-    const results = await measure(ROUTE_ENTRIES, dir);
+    const results = await measure({}, dir);
     expect(results).toHaveLength(1);
     expect(results[0]?.label).toBe('index.html');
     expect(results[0]?.files).toEqual(['assets/index-abc.js']);
@@ -92,7 +95,7 @@ describe('measure', () => {
 
   it('resolves zero files when the HTML entry chunk carries no file, css, or imports', async () => {
     const dir = await makeDist({ 'index.html': { imports: [], css: [] } }, {});
-    const results = await measure(ROUTE_ENTRIES, dir);
+    const results = await measure({}, dir);
     const { totalFiles } = summarize(results);
     expect(totalFiles).toBe(0);
   });
