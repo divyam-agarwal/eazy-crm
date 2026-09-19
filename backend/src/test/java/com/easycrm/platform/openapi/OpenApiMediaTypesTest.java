@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
@@ -83,32 +85,50 @@ class OpenApiMediaTypesTest {
      * {@code applyApiError} has a 400 branch (bean-validation → fieldCodes) and a 429 branch
      * (Retry-After), and openapi-msw can only type a response the contract documents. Fixed by
      * ErrorResponsesCustomizer, a global OpenApiCustomizer bean.
+     *
+     * <p>429 is asserted for every operation under /api/v1/auth/** (all eight sit under the "auth" or
+     * "session" rate-limit policy, both prefixed /api/v1/auth/); 400 only for the three that actually
+     * take a {@code @Valid} request body (signup, login, invitation accept) — GET /me, GET
+     * signup/status, POST refresh, POST logout and GET the invitation preview take no body and cannot
+     * produce a bean-validation 400 (review finding B1, F0b Task 1 fix round 1;
+     * {@link #errorResponsesAreScopedToWhereTheyCanOccur()} is the general-purpose negative check).
      */
     @Test
     @SuppressWarnings("unchecked")
-    void authOperationsDocument400And429WithRetryAfter() throws Exception {
+    void authOperationsDocument429AndBodyBearingOnesDocument400() throws Exception {
         var paths = paths();
         var authOperations = paths.entrySet().stream()
                 .filter(e -> e.getKey().toString().startsWith("/api/v1/auth"))
                 .toList();
         assertFalse(authOperations.isEmpty(), "walked zero /api/v1/auth/** paths (non-vacuity)");
 
+        var bodyBearingRoutes = Set.of(
+                "/api/v1/auth/signup post", "/api/v1/auth/login post", "/api/v1/auth/invitations/{token}/accept post");
+        var seenBodyBearing = new TreeSet<String>();
+
         for (var pathEntry : authOperations) {
             for (var opEntry : ((Map<String, Object>) pathEntry.getValue()).entrySet()) {
                 if (!(opEntry.getValue() instanceof Map<?, ?> opMap)) continue;
                 String route = pathEntry.getKey() + " " + opEntry.getKey();
+                boolean hasBody = opMap.containsKey("requestBody");
+                if (hasBody) seenBodyBearing.add(route);
                 var responses = (Map<String, Object>) opMap.get("responses");
                 assertNotNull(responses, route + " has no responses");
 
                 var badRequest = (Map<String, Object>) responses.get("400");
-                assertNotNull(badRequest, route + " does not document 400");
-                assertEquals(
-                        "#/components/schemas/ApiErrorResponse",
-                        ((Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) badRequest.get("content"))
-                                                .get("application/json"))
-                                        .get("schema"))
-                                .get("$ref"),
-                        route + " 400 schema");
+                if (hasBody) {
+                    assertNotNull(badRequest, route + " has a request body but does not document 400");
+                    assertEquals(
+                            "#/components/schemas/ApiErrorResponse",
+                            ((Map<String, Object>)
+                                            ((Map<String, Object>) ((Map<String, Object>) badRequest.get("content"))
+                                                            .get("application/json"))
+                                                    .get("schema"))
+                                    .get("$ref"),
+                            route + " 400 schema");
+                } else {
+                    assertNull(badRequest, route + " has no request body; must not document 400");
+                }
 
                 var tooManyRequests = (Map<String, Object>) responses.get("429");
                 assertNotNull(tooManyRequests, route + " does not document 429");
@@ -125,6 +145,10 @@ class OpenApiMediaTypesTest {
                 assertTrue(headers.containsKey("Retry-After"), route + " 429 headers " + headers.keySet());
             }
         }
+        assertEquals(
+                new TreeSet<>(bodyBearingRoutes),
+                seenBodyBearing,
+                "expected exactly these /api/v1/auth/** operations to carry a request body");
     }
 
     @SuppressWarnings("unchecked")
@@ -132,6 +156,44 @@ class OpenApiMediaTypesTest {
         Map<String, Object> path = (Map<String, Object>) paths().get(route);
         assertNotNull(path, route + " missing from the document");
         return (Map<String, Object>) path.get("post");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> get(String route) throws Exception {
+        Map<String, Object> path = (Map<String, Object>) paths().get(route);
+        assertNotNull(path, route + " missing from the document");
+        return (Map<String, Object>) path.get("get");
+    }
+
+    /**
+     * The negative half of {@link #authOperationsDocument400And429WithRetryAfter}: ErrorResponsesCustomizer
+     * must NOT add 400 or 429 where they cannot occur (review finding B1, F0b Task 1 fix round 1). Without
+     * this test, CI cannot see that class of error at all -- the positive test above only inspects
+     * /api/v1/auth/**, where both a request body and a rate-limit policy happen to be true for every
+     * operation, so a customizer that added both unconditionally to every operation in the document would
+     * still pass it.
+     *
+     * <p>{@code GET /api/v1/customers} is both body-less (no request payload on a list GET) and outside
+     * every configured rate-limit policy (RateLimitProperties covers only /public/q/* and
+     * /api/v1/auth/**), and will stay that way structurally -- a list endpoint does not grow a body, and
+     * the customers module is not becoming a rate-limited auth/public route. {@code POST
+     * /api/v1/customers} isolates the two conditions from each other: it has a body (so 400 is expected)
+     * but is not rate-limited (so 429 must still be absent), proving the customizer's two gates are
+     * independent rather than one masking the other.
+     */
+    @Test
+    void errorResponsesAreScopedToWhereTheyCanOccur() throws Exception {
+        Map<?, ?> listResponses = (Map<?, ?>) get("/api/v1/customers").get("responses");
+        assertFalse(listResponses.containsKey("400"), "GET /api/v1/customers has no body; must not document 400");
+        assertFalse(
+                listResponses.containsKey("429"),
+                "GET /api/v1/customers is not under a rate-limit policy; must not document 429");
+
+        Map<?, ?> createResponses = (Map<?, ?>) post("/api/v1/customers").get("responses");
+        assertTrue(createResponses.containsKey("400"), "POST /api/v1/customers has a @Valid body; must document 400");
+        assertFalse(
+                createResponses.containsKey("429"),
+                "POST /api/v1/customers is not under a rate-limit policy; must not document 429");
     }
 
     @Test
