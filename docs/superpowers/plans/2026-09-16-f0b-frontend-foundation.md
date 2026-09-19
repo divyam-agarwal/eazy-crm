@@ -30,6 +30,17 @@
 | **P12** | **Boundary lint uses `eslint-plugin-import-x`'s `no-restricted-paths` with zones generated from `src/features/*`**, not `eslint-plugin-boundaries` | `boundaries` changed its configuration syntax in each of its last two majors; `no-restricted-paths` zones are stable. Each zone is proven red by a fixture test |
 | **P13** | **The dependency ledger is `frontend/DEPENDENCIES.md`, measured from the production build** (Task 13's `deps:sizes` script over the visualizer's raw data), not at `pnpm add` time | A size measured before tree-shaking is not the size a user downloads |
 
+**Added 2026-09-19 after the five specialist reviews of this plan** (architecture, performance, security, a11y-i18n, testing). Each row names the review finding it closes; the review record is Task 17 Step 5.
+
+| # | Decision | Why |
+|---|---|---|
+| **P14** | **A pending logout is durable: `localStorage['easycrm.logoutPending']` is written before the POST and cleared only on 204 (or when a login/signup/accept succeeds, since the server revokes the stale cookie).** Boot finishes a pending logout *before* it refreshes; other tabs are told `signing-out`, not `logout` | **Security-1, Critical.** `signing-out` lived only in the tab that started it while the credential it guards — the `easycrm_rt` cookie — is durable and shared by every tab. A failed logout broadcast sent other tabs to `/login` with a live cookie, so a reload signed the previous user straight back in, and closing the tab left the cookie live for 30 days. "Signed out" must not mean "looks signed out" on a shared counter phone |
+| **P15** | **Every request that writes the refresh cookie takes the `easycrm-refresh` Web Lock — login, signup, invitation accept and logout, not only refresh and boot** | **Security-2 / Architecture-1.** `AuthController` login/signup and `PublicInvitationController.accept` call `cookie.read(request).ifPresent(auth::logout)`, and `RefreshTokenService.revoke` revokes the *successor* of an already-rotated token. A login racing a boot refresh therefore leaves the jar holding a revoked cookie and kills the new session ~15 min later. The lock is a mutex over one shared row (the cookie jar); every writer must hold it, not only the rotating one. This also applies the client-side mitigation HANDOFF names for the logout-vs-grace backend follow-up |
+| **P16** | **The read side of the session (`Me`, `Role`, `SessionStatus`, `useMe`) lives in `src/session/`, a layer *below* `features/`; the write side (establish/end, coordinator, boot, logout) stays in `features/auth/session/`** | **Architecture-3.** Task 9's zones forbid feature-to-feature imports, and F1's role-aware UI must read `me.role`. Without a lower layer, F1 either weakens the zone or prop-drills `me` from `app` into every page — a pattern a later task would have to replace (checklist F) |
+| **P17** | **`networkMode: 'always'` for queries and mutations, and `refetchOnReconnect: true` stated explicitly** | **Performance-1.** TanStack Query 5 defaults to `'online'`: once the browser fires `offline`, queries and mutations **pause** instead of rejecting, so `applyApiError` never runs. `/invite/:token` would show its skeleton forever and Sign in would sit disabled with no message. This app has its own 15 s timeout and error UI; the library's queue only hides them |
+| **P18** | **The per-route JS budget lands in Task 2, not Task 13**, starting as an entry-only map that each page task extends | **Performance-2.** A budget introduced after every dependency and page is chosen is a budget already blown; the fix would be rework inside finished tasks. Task 13 keeps the dependency ledger and its guard |
+| **P19** | **Every task whose gate matters ends with a "mutate and see red" step**: break one named line, confirm the named test fails, revert | **Testing-3.** Nearly every "Expected: FAIL" in the first draft failed at *import* (module does not exist), which proves nothing about the assertions inside. Challenges #75–79 are this repo's record of gates that measured nothing |
+
 ---
 
 ## Global Constraints
@@ -43,14 +54,15 @@
 - CSP (exact, spec §4.9): `default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; connect-src 'self'`. No inline `<script>` or `<style>` in `index.html`.
 - Client header: `X-EasyCRM-Client: web` on every request (refresh and logout require it). Request timeout **15 s**.
 - Refresh-exempt routes (a 401 never triggers refresh): `/api/v1/auth/login`, `/api/v1/auth/signup`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/auth/invitations/**`.
-- Web Lock name: `easycrm-refresh`. BroadcastChannel name: `easycrm-auth`. Remembered workspace key: `localStorage['easycrm.lastWorkspace']`.
+- Web Lock name: `easycrm-refresh`. BroadcastChannel name: `easycrm-auth`. Remembered workspace key: `localStorage['easycrm.lastWorkspace']`. Pending-logout key: `localStorage['easycrm.logoutPending']` (P14 — a flag, never tenant data).
+- **Every call that writes the refresh cookie holds `easycrm-refresh`** (P15): refresh, boot, login, signup, invitation accept, logout.
 - Boot retry schedule: 2 000, 5 000, 15 000, 30 000 ms (last repeats); 429 → `Retry-After` clamped to [1, 60] s (P2).
-- Query defaults: queries retry network/5xx at most 2 times, never 4xx; mutations `retry: 0`; `refetchOnWindowFocus: false`; `staleTime: 30_000`.
+- Query defaults: queries retry network/5xx at most 2 times, never 4xx; mutations `retry: 0`; `refetchOnWindowFocus: false`; `staleTime: 30_000`; **`networkMode: 'always'` and `refetchOnReconnect: true`** (P17).
 - Per-route JS budget: **200 KB gzipped** for `/login`, `/signup`, `/invite/:token`.
 - Every user-visible string in `src/features/**` and `src/app/**` comes from `t()`; locale files are `src/locales/en/{common,auth}.json`.
 - Frontend commands run from `frontend/`; Gradle commands run from `backend/`.
 - Backend baseline before this plan: **677 tests (642 root + 35 `platform-primitives`), 0 failures** at `2d9a2aa`.
-- Engineering challenges log: template at the top of `docs/superpowers/engineering-challenges.md`; **next number is 84**.
+- Engineering challenges log: template at the top of `docs/superpowers/engineering-challenges.md`; **next number is 84**. This plan logs **#84** (two tabs, one cookie jar, two users), **#85** (proving cross-tab refresh serialization in E2E) and **#86** (a durable pending logout — P14/P15).
 
 ---
 
@@ -64,8 +76,8 @@
 - Regenerate: `docs/api/openapi.yaml`
 
 **Frontend — tooling** (`frontend/`)
-- `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `.npmrc`, `.gitignore`, `tsconfig.json`, `vite.config.ts`, `eslint.config.js`, `components.json`, `index.html`, `public/splash.css`, `DEPENDENCIES.md`
-- `scripts/check-budget.mjs` (+ `.test.ts`), `scripts/dependency-sizes.mjs`
+- `package.json` (incl. `pnpm.onlyBuiltDependencies: []`, Security-5), `pnpm-lock.yaml`, `.nvmrc`, `.npmrc`, `.gitignore`, `tsconfig.json`, `vite.config.ts`, `eslint.config.js`, `components.json`, `index.html`, `src/splash.css` (hashed by Vite — **not** `public/`, Performance-5), `DEPENDENCIES.md`
+- `scripts/check-budget.mjs` (+ `.test.ts`) — **created in Task 2** (P18), `scripts/dependency-sizes.mjs` (Task 13)
 
 **Frontend — `src/`** (one responsibility per file)
 ```
@@ -92,12 +104,16 @@ src/
     shell/HomePage.tsx         placeholder
     shell/UnreachableScreen.tsx
     shell/SignOutPendingScreen.tsx
+  session/                     P16 — the READ side, below features; every feature may import it
+    types.ts                   ROLES, Role, Me, SessionStatus
+    sessionStore.ts            Zustand {status, me}, useSessionStore, resetSessionStore
+    useMe.ts                   useMe(), useSessionStatus() selectors
   features/auth/
     api/authKeys.ts
     api/useLogin.ts, useSignup.ts, useSignupStatus.ts, useInvitationPreview.ts, useAcceptInvitation.ts
-    session/sessionStore.ts    Zustand {status, me}
     session/accessToken.ts     module-scoped token
-    session/toMe.ts            AuthResponse → Me, isRole
+    session/toMe.ts            AuthResponse → Me, isRole (throws on an unknown role — callers catch, Architecture-5)
+    session/logoutPending.ts   P14 durable marker: markLogoutPending/clearLogoutPending/isLogoutPending
     session/lockProvider.ts    LockProvider, webLocks, createInMemoryLocks, noopLocks
     session/authChannel.ts     BroadcastChannel wrapper
     session/sessionEvents.ts   session-expired event
@@ -119,6 +135,7 @@ src/
   lib/
     utils.ts                   shadcn cn()
     storage.ts, safeNext.ts, slug.ts, apiError.ts, useDocumentTitle.ts
+    caseInput.ts               forceCase(): change case without moving the caret (A11y-8)
     gst/states.ts
     i18n/index.ts, i18n/i18next.d.ts, i18n/translator.ts, i18n/keys.typecheck.ts
   locales/en/common.json, auth.json
@@ -170,8 +187,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
@@ -184,13 +203,26 @@ import org.yaml.snakeyaml.Yaml;
  */
 class OpenApiRequiredFieldsTest {
 
-    private static final Map<String, List<String>> REQUIRED = Map.of(
-            "AuthResponse", List.of("accessToken", "userId", "tenantId", "tenantSlug", "email", "role"),
-            "MeResponse", List.of("userId", "tenantId", "tenantSlug", "email", "role"),
-            "InvitationPreviewResponse", List.of("businessName", "email", "role"),
-            "SignupStatusResponse", List.of("open"),
-            "ApiErrorResponse", List.of("error"),
-            "ApiError", List.of("code", "message"));
+    // LinkedHashMap, not Map.of: iteration order is fixed, so the FIRST failure is always the
+    // AuthResponse message Step 3 predicts (Map.of's order is deliberately randomized per JVM).
+    private static final Map<String, List<String>> REQUIRED = new LinkedHashMap<>();
+
+    static {
+        REQUIRED.put("AuthResponse", List.of("accessToken", "userId", "tenantId", "tenantSlug", "email", "role"));
+        REQUIRED.put("MeResponse", List.of("userId", "tenantId", "tenantSlug", "email", "role"));
+        REQUIRED.put("InvitationPreviewResponse", List.of("businessName", "email", "role"));
+        REQUIRED.put("SignupStatusResponse", List.of("open"));
+        REQUIRED.put("ApiErrorResponse", List.of("error"));
+        REQUIRED.put("ApiError", List.of("code", "message"));
+    }
+
+    /**
+     * Schemas returned by a 2xx response that predate this rule. F0b annotates the six above; every
+     * NEW response schema must declare required or be added here deliberately, which is the point —
+     * a frozen baseline makes the omission visible in review instead of silent in the client.
+     * F1 empties this set for the schemas its screens render (ROADMAP item 4, F1).
+     */
+    private static final Set<String> LEGACY_UNANNOTATED = Set.of(/* filled in Step 4c from the run */ );
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> schemas() throws Exception {
@@ -228,13 +260,52 @@ class OpenApiRequiredFieldsTest {
             assertFalse(required.isEmpty(), name + " declares no required fields (non-vacuity)");
         }
     }
+
+    /**
+     * The general rule (owner decision, 2026-09-19): a response schema whose fields the browser
+     * renders must say which fields it always sends, or openapi-typescript types every one of them
+     * as optional and the optionality spreads into every consumer. A NEW schema is caught here;
+     * an old one is caught only when someone removes it from LEGACY_UNANNOTATED.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void everySchemaReturnedByA2xxDeclaresRequired() throws Exception {
+        var schemas = schemas();
+        var returned = new TreeSet<String>();
+        var paths = (Map<String, Object>) new Yaml()
+                .<Map<String, Object>>load(Files.readString(
+                        Path.of(System.getProperty("openapi.snapshot")), StandardCharsets.UTF_8))
+                .get("paths");
+        collect2xxSchemaNames(paths, returned); // walks operations → responses "2xx" → content → $ref
+        var missing = new TreeSet<String>();
+        for (var name : returned) {
+            if (LEGACY_UNANNOTATED.contains(name)) continue;
+            var schema = (Map<String, Object>) schemas.get(name);
+            if (schema == null || !schema.containsKey("properties")) continue; // enums, primitives
+            if (((List<String>) schema.getOrDefault("required", List.of())).isEmpty()) missing.add(name);
+        }
+        assertEquals(
+                Set.of(),
+                missing,
+                "these schemas are returned by a 2xx response but declare no required fields: " + missing
+                        + " — annotate them with @Schema(requiredProperties = …) or add them to"
+                        + " LEGACY_UNANNOTATED with a reason");
+        assertFalse(returned.isEmpty(), "walked zero 2xx schemas (non-vacuity)");
+        assertTrue(returned.contains("AuthResponse"), "the walk must reach AuthResponse (non-vacuity)");
+    }
 }
 ```
+
+Write `collect2xxSchemaNames` as a small private static helper in the same class: for each path → each operation → `responses` whose key starts with `2` → `content` → each media type → `schema`, add the last segment of a `$ref`, and recurse into `items` for arrays.
 
 - [ ] **Step 3: Run it and watch it fail**
 
 Run: `cd backend && ./gradlew test --tests 'com.easycrm.platform.openapi.OpenApiRequiredFieldsTest' --console=plain`
-Expected: FAIL — `AuthResponse must list exactly these as required ==> expected: <[accessToken, email, role, tenantId, tenantSlug, userId]> but was: <[]>`.
+Expected: FAIL — `AuthResponse must list exactly these as required ==> expected: <[accessToken, email, role, tenantId, tenantSlug, userId]> but was: <[]>` (LinkedHashMap fixes this as the first failure), and the general rule failing with a long `missing` list.
+
+- [ ] **Step 3b: Freeze the legacy baseline**
+
+Copy the `missing` list from the general rule's failure into `LEGACY_UNANNOTATED`, minus the six schemas this task annotates. Add a one-line comment above the set naming the date and the reason (`frozen 2026-09-19: pre-F0b response schemas; F1 annotates the ones its screens render`). Re-run: the general rule now passes while the first test still fails, which is the state Step 4 fixes.
 
 - [ ] **Step 4: Annotate the six records**
 
@@ -292,6 +363,17 @@ public record SignupStatusResponse(boolean open) {}
 
 `ApiError.java` — add `import io.swagger.v3.oas.annotations.media.Schema;` and, directly above the existing `@JsonInclude(JsonInclude.Include.NON_NULL)`, `@Schema(requiredProperties = {"code", "message"})`. Add one sentence to the end of its Javadoc: `<p>{@code code} and {@code message} are marked required in the contract; {@code fields} and {@code fieldCodes} stay optional because NON_NULL omits them.`
 
+- [ ] **Step 4b: Document 400 and 429 in the contract** (owner decision 2026-09-19, Testing-Q3)
+
+**Why:** the frontend's `applyApiError` has a 400 branch (bean validation → `fieldCodes`) and a 429 branch (`Retry-After`), and Task 7/10/11 mock both. `openapi-msw` can only type a response the contract documents, so today those two mocks are the plan's one untyped escape hatch (Testing-7). Verified on the committed snapshot: `/api/v1/auth/login` documents 401, 403, 404, 409 and 422 — the advice-level `@ApiResponse`s propagate — but **400 does not appear even though `ApiExceptionHandler.invalid` carries `@ApiResponse(responseCode = "400", …)`**, and 429 is annotated nowhere (`grep -c 429 docs/api/openapi.yaml` → 0).
+
+1. Find out why 400 is dropped: `cd backend && ./gradlew updateOpenApiSnapshot` after temporarily moving the `@ApiResponse` from the `invalid` handler onto `AuthController.login`. If the per-operation form appears, springdoc is skipping the advice entry for that exception type (likely because Spring's own `ResponseEntityExceptionHandler` contract for `MethodArgumentNotValidException` wins).
+2. **Preferred fix:** add a springdoc `OpenApiCustomizer` bean (`backend/src/main/java/com/easycrm/platform/openapi/ErrorResponsesCustomizer.java`) that adds a `400` and a `429` response referencing `ApiErrorResponse` to **every** operation that does not already declare one, with descriptions `bean-validation failure on the request body; fields/fieldCodes name the offending inputs` and `rate limit exceeded; Retry-After names the wait in seconds`. Document the `Retry-After` response header on the 429 (`RateLimitFilter` sets it — confirm the exact casing in that class).
+3. **Fallback** if a customizer proves awkward: annotate the five auth/invitation operations directly with `@ApiResponse(responseCode = "400" | "429", …)`. Narrower, and enough for F0b's mocks.
+4. Add to `OpenApiRequiredFieldsTest` (or `OpenApiMediaTypesTest`, whichever reads more naturally) one test: every operation under `/api/v1/auth/**` documents `400` and `429` with the `ApiErrorResponse` schema, and the 429 documents the `Retry-After` header. See it fail before step 2.
+
+This grows the regenerated diff well beyond the six `required:` blocks Step 5 predicts — expect a `400`/`429` block on most operations. Review it as generated output, not by hand-merging.
+
 - [ ] **Step 5: Regenerate the snapshot and inspect the diff**
 
 ```bash
@@ -299,12 +381,12 @@ cd backend && ./gradlew updateOpenApiSnapshot --console=plain && cd ..
 git diff --stat docs/api/openapi.yaml
 git diff docs/api/openapi.yaml | grep '^[+-]' | grep -v '^+++\|^---'
 ```
-Expected: only added `required:` blocks (six of them) with their list items; no removed lines. **If `required` did not appear for a schema**, springdoc ignored `requiredProperties` on that type: replace the type-level annotation on that record with `@Schema(requiredMode = Schema.RequiredMode.REQUIRED)` on each listed component (e.g. `@Schema(requiredMode = Schema.RequiredMode.REQUIRED) String accessToken`), regenerate, and record which form worked in the Step 7 annotations row.
+Expected: added `required:` blocks (six of them) with their list items, **plus** the `400`/`429` blocks Step 4b adds; no removed lines. **If `required` did not appear for a schema**, springdoc ignored `requiredProperties` on that type: replace the type-level annotation on that record with `@Schema(requiredMode = Schema.RequiredMode.REQUIRED)` on each listed component (e.g. `@Schema(requiredMode = Schema.RequiredMode.REQUIRED) String accessToken`), regenerate, and record which form worked in the Step 7 annotations row.
 
 - [ ] **Step 6: Run the guards and the full check**
 
 Run: `cd backend && ./gradlew test --tests 'com.easycrm.platform.openapi.*' --console=plain && ./gradlew clean check --console=plain 2>&1 | tail -3`
-Expected: PASS, `BUILD SUCCESSFUL`. Test count **679** (677 + 2).
+Expected: PASS, `BUILD SUCCESSFUL`. Test count **681** (677 + 3 in `OpenApiRequiredFieldsTest` + 1 for Step 4b's error-response test). Record the actual number; later tasks quote it.
 
 - [ ] **Step 7: Record the annotation use**
 
@@ -325,7 +407,7 @@ git commit -m "feat(api): mark session, invitation-preview and error fields requ
 ### Task 2: Scaffold `frontend/`
 
 **Files:**
-- Create: `frontend/package.json`, `frontend/.nvmrc`, `frontend/.npmrc`, `frontend/.gitignore`, `frontend/tsconfig.json`, `frontend/vite.config.ts`, `frontend/index.html`, `frontend/public/splash.css`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/src/test/setup.ts`, `frontend/src/test/msw.ts`, `frontend/src/test/environment.test.ts`, `frontend/DEPENDENCIES.md`
+- Create: `frontend/package.json`, `frontend/.nvmrc`, `frontend/.npmrc`, `frontend/.gitignore`, `frontend/tsconfig.json`, `frontend/vite.config.ts`, `frontend/index.html`, `frontend/src/splash.css`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/src/test/setup.ts`, `frontend/src/test/msw.ts`, `frontend/src/test/environment.test.ts`, `frontend/DEPENDENCIES.md`, `frontend/scripts/check-budget.mjs`, `frontend/scripts/check-budget.test.ts` (P18)
 
 **Interfaces:**
 - Produces: `pnpm dev|build|preview|typecheck|test` working; the `@/` alias → `src/`; `CSP` exported from `vite.config.ts`; a global MSW `server` in `src/test/msw.ts` started by `src/test/setup.ts` with `onUnhandledRequest: 'error'`.
@@ -381,9 +463,12 @@ playwright-report/
     "budget": "node scripts/check-budget.mjs",
     "deps:sizes": "node scripts/dependency-sizes.mjs",
     "e2e": "playwright test -c e2e/playwright.config.ts"
-  }
+  },
+  "pnpm": { "onlyBuiltDependencies": [] }
 }
 ```
+
+`onlyBuiltDependencies: []` states the install-script policy in the file rather than relying on pnpm 10's default (Security-5): no dependency may run a `postinstall`. If a package genuinely needs one, adding its name here shows up in diff review with a reason.
 
 - [ ] **Step 3: Install the base dependencies**
 
@@ -473,7 +558,7 @@ export default defineConfig({
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
     <title>EasyCRM</title>
-    <link rel="stylesheet" href="/splash.css" />
+    <link rel="stylesheet" href="/src/splash.css" />
   </head>
   <body>
     <div id="root"></div>
@@ -485,7 +570,7 @@ export default defineConfig({
 </html>
 ```
 
-`frontend/public/splash.css`:
+`frontend/src/splash.css` — **`src/`, not `public/`** (Performance-5): a file in `public/` keeps its name, so a render-blocking stylesheet could never carry spec Part 8's `immutable` cache header and would be revalidated on every cold start. Linked from `index.html`, Vite processes and hashes it and still emits it as an external file, so the CSP is unaffected. Step 6's build output must show `assets/splash-<hash>.css` and `index.html` rewritten to point at it; if Vite instead inlines it into a `<style>` tag (small-asset inlining), set `build.cssCodeSplit`/`assetsInlineLimit` so it stays external, and re-run Task 8 Step 7's CSP check.
 ```css
 /* Plan decision P7: the splash paints before any JS parses, and disappears the moment React renders
    anything into #root. External file, because the CSP forbids inline <style>. */
@@ -577,6 +662,17 @@ describe('test environment', () => {
     );
     expect(await response.json()).toEqual({ ok: true });
   });
+
+  // Architecture-4: authFetch combines the caller's signal with its own timeout via
+  // AbortSignal.any. Node 24 and current browsers have it; jsdom's DOM shim may not, and the
+  // failure would otherwise surface as "AbortSignal.any is not a function" inside authFetch.
+  it('supports AbortSignal.any, linking a caller signal to a timeout', () => {
+    const caller = new AbortController();
+    const combined = AbortSignal.any([caller.signal, AbortSignal.timeout(60_000)]);
+    expect(combined.aborted).toBe(false);
+    caller.abort();
+    expect(combined.aborted).toBe(true);
+  });
 });
 ```
 
@@ -587,8 +683,25 @@ pnpm test
 pnpm typecheck
 pnpm build
 ```
-Expected: 1 test PASS; typecheck clean; build writes `dist/index.html` and `dist/.vite/manifest.json`.
+Expected: 2 tests PASS; typecheck clean; build writes `dist/index.html`, `dist/.vite/manifest.json` and a hashed `dist/assets/splash-<hash>.css` referenced from `dist/index.html`.
 **If the probe fails with an AbortSignal instance error:** `pnpm add -D happy-dom`, set `test.environment: 'happy-dom'` in `vite.config.ts`, rerun. If it still fails, stop and report — do not remove the signal from authFetch.
+**If `AbortSignal.any` is missing under jsdom:** try happy-dom first; if it is missing there too, stop and report. Do not fall back to dropping the caller's signal — combine manually (a small `anySignal()` helper in `lib/`) and note it in the ledger.
+
+- [ ] **Step 6b: Stand up the JS budget now, not in Task 13** (P18, Performance-2)
+
+Build `frontend/scripts/check-budget.mjs` and `frontend/scripts/check-budget.test.ts` exactly as Task 13 Steps 1–3 specify (`BUDGET_BYTES`, `measure`, `routeFiles`, the "resolves zero files" failure, the missing-manifest throw), with **one difference**: the route map starts empty.
+
+```js
+// Each page task adds its own entry — the missing-key throw is what forces that.
+// Task 10 → '/login', Task 11 → '/signup', Task 12 → '/invite/:token'.
+export const ROUTE_ENTRIES = {};
+```
+With no routes, `pnpm budget` still measures the HTML entry and its static imports, and still fails if it resolves zero files. Add the visualizer wiring to `vite.config.ts` here too, so `ANALYZE=true pnpm build` works from this point on.
+
+Run: `pnpm test && pnpm build && pnpm budget`
+Expected: tests PASS; `budget` prints the entry total and exits 0.
+
+**Then make every later task pay attention to it:** Tasks 3–12 each end their commit step with `pnpm build && pnpm budget`, and the one-line total goes into the commit message body. A task that pushes a route over 200 KB is then caught by the task that caused it, not by Task 13 after every dependency is already chosen and shared.
 
 - [ ] **Step 7: Start the dependency ledger**
 
@@ -731,9 +844,14 @@ function fakeBridge(token: string | null, outcome: RefreshOutcome) {
 }
 
 function recordingFetch(statuses: number[]) {
-  const seen: { url: string; headers: Headers; body: string }[] = [];
+  const seen: { url: string; headers: Headers; body: string; signal: AbortSignal }[] = [];
   const impl = vi.fn(async (request: Request) => {
-    seen.push({ url: request.url, headers: request.headers, body: await request.text() });
+    seen.push({
+      url: request.url,
+      headers: request.headers,
+      signal: request.signal, // Architecture-4: the caller-signal tests read this
+      body: await request.text(),
+    });
     const status = statuses.shift() ?? 200;
     return new Response(status === 204 ? null : '{}', { status });
   });
@@ -857,6 +975,38 @@ describe('createAuthFetch', () => {
       name: 'TimeoutError',
     });
   });
+
+  // Architecture-4: the caller's signal must survive the snapshot/rebuild, or nothing above this
+  // layer can cancel anything — TanStack Query hands a signal to every queryFn.
+  it("aborts when the CALLER's signal aborts, not only on timeout", async () => {
+    const hang = vi.fn(
+      (request: Request) =>
+        new Promise<Response>((_, reject) =>
+          request.signal.addEventListener('abort', () => reject(request.signal.reason)),
+        ),
+    );
+    const doFetch = createAuthFetch({ bridge: () => fakeBridge('t', 'refreshed'), fetchImpl: hang });
+    const caller = new AbortController();
+
+    const inFlight = doFetch(new Request(`${ORIGIN}/api/v1/customers`, { signal: caller.signal }));
+    caller.abort();
+
+    await expect(inFlight).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('gives each attempt its own timeout, and the retry still carries the caller signal', async () => {
+    // 401 → refresh → retry: the rebuilt request must still be linked to the caller.
+    const { impl, seen } = recordingFetch([401, 200]);
+    const doFetch = createAuthFetch({ bridge: () => fakeBridge('t2', 'refreshed'), fetchImpl: impl });
+    const caller = new AbortController();
+
+    await doFetch(new Request(`${ORIGIN}/api/v1/customers`, { signal: caller.signal }));
+
+    expect(impl).toHaveBeenCalledTimes(2);
+    expect(seen[1]?.signal.aborted).toBe(false);
+    caller.abort();
+    expect(seen[1]?.signal.aborted).toBe(true); // the retry's signal follows the caller's
+  });
 });
 
 describe('createBareFetch', () => {
@@ -913,6 +1063,8 @@ interface RequestSnapshot {
   method: string;
   headers: Headers;
   body: ArrayBuffer | undefined;
+  /** The CALLER's signal (TanStack Query passes one to every queryFn). Kept, never replaced. */
+  callerSignal: AbortSignal | null;
 }
 
 // Plan decision P4: read the body once, then build a fresh Request per attempt. A Request body is a
@@ -920,7 +1072,13 @@ interface RequestSnapshot {
 async function snapshot(request: Request): Promise<RequestSnapshot> {
   const body =
     request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
-  return { url: request.url, method: request.method, headers: new Headers(request.headers), body };
+  return {
+    url: request.url,
+    method: request.method,
+    headers: new Headers(request.headers),
+    body,
+    callerSignal: request.signal ?? null,
+  };
 }
 
 function build(s: RequestSnapshot, token: string | null, timeoutMs: number): Request {
@@ -928,12 +1086,14 @@ function build(s: RequestSnapshot, token: string | null, timeoutMs: number): Req
   headers.set(CLIENT_HEADER, 'web');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   else headers.delete('Authorization');
-  return new Request(s.url, {
-    method: s.method,
-    headers,
-    body: s.body,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  // Architecture-4: the timeout is OURS, the other signal is the CALLER's. Dropping the caller's
+  // makes every request uncancellable — a superseded type-ahead in F2 would hold its connection
+  // for the full 15 s, and clearing the query cache on logout could not abort a request still
+  // carrying the previous user's bearer token. A fresh timeout per attempt is deliberate: each
+  // retry gets its own budget.
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const signal = s.callerSignal ? AbortSignal.any([s.callerSignal, timeout]) : timeout;
+  return new Request(s.url, { method: s.method, headers, body: s.body, signal });
 }
 
 const globalFetch: FetchLike = (request) => globalThis.fetch(request);
@@ -1179,14 +1339,27 @@ export function errorBody(
 }
 ```
 
-- [ ] **Step 11: Typecheck, test, commit**
+- [ ] **Step 11: Mutate and see red** (P19, Testing-3)
+
+Every "Expected: FAIL" above failed at *import*, which proves nothing about the assertions. Break each line, run the named test, confirm it fails for the named reason, then `git checkout`-revert the line:
+
+| Break in `authFetch.ts` | Test that must fail | Why it matters |
+|---|---|---|
+| In the retry path, pass `request` instead of `build(snap, …)` | "retry sends the identical body" | the whole point of P4's snapshot |
+| Drop `s.callerSignal` from `build` (timeout only) | "aborts when the CALLER's signal aborts" | Architecture-4 |
+| `headers.set(CLIENT_HEADER, 'web')` → delete the line | the bare-client header test **and** the P3 compile-time check | CSRF defence |
+| Make `isRefreshExempt` always return `false` | "does not refresh on a 401 from /auth/login" | a refresh loop on the login page |
+
+Record the four failure messages in the commit body — that is the evidence the gates work.
+
+- [ ] **Step 12: Typecheck, test, budget, commit**
 
 ```bash
-pnpm typecheck && pnpm test
+pnpm typecheck && pnpm test && pnpm build && pnpm budget
 cd .. && git add frontend
 git commit -m "feat(frontend): generated API client with body-safe retry, client header and timeout"
 ```
-Expected: typecheck clean (both `@ts-expect-error` lines are consumed); all tests PASS.
+Expected: typecheck clean (both `@ts-expect-error` lines are consumed); all tests PASS; `budget` under 200 KB (paste its one-line total into the commit body, P18).
 
 ---
 
@@ -1259,7 +1432,17 @@ pnpm add i18next react-i18next i18next-resources-to-backend
       "GSTIN_CHECKSUM": "This GSTIN is not valid. Check it for typos.",
       "STATE_CODE_INVALID": "Choose a valid state.",
       "STATE_CODE_GSTIN_MISMATCH": "The state doesn't match the state in the GSTIN.",
-      "SLUG_TAKEN": "This workspace name is taken."
+      "SLUG_TAKEN": "This workspace name is taken.",
+      "password": {
+        "SIZE": "Use at least 8 characters."
+      },
+      "slug": {
+        "SIZE": "Use 3–64 characters.",
+        "PATTERN": "Use lowercase letters, digits or hyphens."
+      },
+      "businessName": {
+        "SIZE": "Use 2–120 characters."
+      }
     }
   },
   "validation": {
@@ -1287,6 +1470,7 @@ pnpm add i18next react-i18next i18next-resources-to-backend
     "submit": "Sign in",
     "submitting": "Signing in…",
     "invalidCredentials": "Workspace, email or password is incorrect.",
+    "sessionEnded": "Your session ended. Sign in again to continue.",
     "noAccount": "New to EasyCRM? <link>Create a workspace</link>"
   },
   "signup": {
@@ -1400,9 +1584,19 @@ import { initReactI18next } from 'react-i18next';
 
 export const NAMESPACES = ['common', 'auth'] as const;
 
+/** Loaded at start-up. Everything else is loaded by the route that needs it (Performance-4). */
+export const BOOT_NAMESPACES = ['common'] as const;
+
 /**
  * Spec §4.7. Each language/namespace is its own dynamic import, so a future `hi` adds nothing to the
  * English user's bundle.
+ *
+ * <p>Performance-4: `ns` is the PRELOAD list, not the list of namespaces that exist. Preloading all
+ * of them means every visit downloads every feature's strings — in F3 a `/invite/:token` landing
+ * would fetch catalog, quotation and import text before first render, and one failed chunk leaves
+ * the page suspended or showing raw keys. Only `common` is preloaded; a page pulls its own namespace
+ * (`useTranslation('auth')` suspends on it, or the route's `lazy` calls
+ * `i18n.loadNamespaces('auth')`). `auth` still lands in the same round trip as the route chunk.
  */
 export function initI18n(instance: i18n = i18next): Promise<unknown> {
   instance.on('languageChanged', (lng) => {
@@ -1415,12 +1609,14 @@ export function initI18n(instance: i18n = i18next): Promise<unknown> {
       lng: 'en',
       supportedLngs: ['en'],
       fallbackLng: 'en',
-      ns: [...NAMESPACES],
+      ns: [...BOOT_NAMESPACES],
       defaultNS: 'common',
       interpolation: { escapeValue: false },
     });
 }
 ```
+
+Add one test to `i18n.test.ts` beside the existing ones: after `initI18n(instance)`, assert `instance.options.ns` is `['common']` and that `instance.hasResourceBundle('en', 'auth')` is `false` until a `loadNamespaces('auth')` (or a `useTranslation('auth')` render) resolves. The preload list is otherwise exactly the kind of setting that regrows one namespace per feature with nobody noticing.
 
 `frontend/src/lib/i18n/translator.ts`:
 ```ts
@@ -1489,15 +1685,21 @@ Expected: PASS; typecheck clean (the `@ts-expect-error` is consumed).
 ### Task 5: Session core — state, tokens, locks, the coordinator
 
 **Files:**
-- Create in `frontend/src/features/auth/session/`: `sessionStore.ts`, `accessToken.ts`, `toMe.ts`, `lockProvider.ts`, `authChannel.ts`, `sessionEvents.ts`, `runtime.ts`, `session.ts`, `refreshCall.ts`, `refreshCoordinator.ts`, `bridge.ts`
+- Create in `frontend/src/session/` (**P16 — the read side, a layer below `features/`; every feature may import it**): `types.ts` (`ROLES`, `Role`, `Me`, `SessionStatus`), `sessionStore.ts` (Zustand store + `resetSessionStore`), `useMe.ts` (`useMe()`, `useSessionStatus()`), `useMe.test.ts`
+- Create in `frontend/src/features/auth/session/` (**the write side — features must NOT import this**): `accessToken.ts`, `toMe.ts`, `lockProvider.ts`, `authChannel.ts`, `sessionEvents.ts`, `runtime.ts`, `session.ts`, `refreshCall.ts`, `refreshCoordinator.ts`, `bridge.ts`
 - Create tests: `session.test.ts`, `refreshCall.test.ts`, `refreshCoordinator.test.ts`, `lockProvider.test.ts` (same folder)
+
+> **P16, from Architecture-3.** Task 9's zones forbid feature→feature imports. F1's role-aware UI (design spec §5) must read `me.role`, and `SalesVisibility`-style role checks appear on nearly every screen. Leaving the store inside `features/auth` forces F1 either to weaken the zone or to prop-drill `me` from `app` into every page — a pattern a later task would replace, which checklist F rules out. The split is: **reading** the session is shared infrastructure (`src/session/`); **changing** it stays private to `features/auth`. `sessionStore.ts` exports `useSessionStore` for both, but Task 9's zone lets features import only `@/session/**`, and `session.ts`'s `establishSession`/`endSession` live where no feature can reach them.
 - Create: `frontend/src/lib/storage.ts`, `frontend/src/lib/storage.test.ts`
 - Modify: `frontend/src/test/setup.ts`
 
 **Interfaces:**
 - Consumes: `api/authBridge.ts`, `api/client.ts` (`bareApi`, `createBareClient`), `api/errors.ts` (`parseRetryAfter`), `api/types.ts` (`AuthResponse`).
 - Produces:
-  - `sessionStore.ts`: `ROLES`, `type Role`, `interface Me { userId; tenantId; tenantSlug; email; role: Role }`, `type SessionStatus = 'booting' | 'authenticated' | 'anonymous' | 'unreachable' | 'signing-out'`, `useSessionStore` (Zustand, state `{ status, me }`), `resetSessionStore()`.
+  - `src/session/types.ts`: `ROLES`, `type Role`, `interface Me { userId; tenantId; tenantSlug; email; role: Role }`, `type SessionStatus = 'booting' | 'authenticated' | 'anonymous' | 'unreachable' | 'signing-out'`.
+  - `src/session/sessionStore.ts`: `useSessionStore` (Zustand, state `{ status, me }`), `resetSessionStore()`.
+  - `src/session/useMe.ts`: `useMe(): Me | null`, `useSessionStatus(): SessionStatus` — the only session API a feature outside `auth` uses (P16). `useMe.test.ts` asserts both track the store.
+  - Every import of `Me`/`Role`/`SessionStatus` in this plan's later code reads `@/session/types`, not the feature path.
   - `accessToken.ts`: `getAccessToken()`, `setAccessToken(t)`, `clearAccessToken()`.
   - `toMe.ts`: `isRole(v: string): v is Role`, `toMe(r: AuthResponse): Me`.
   - `lockProvider.ts`: `REFRESH_LOCK = 'easycrm-refresh'`, `interface LockProvider { withLock<T>(name: string, fn: () => Promise<T>): Promise<T> }`, `webLocks`, `createInMemoryLocks()`, `noopLocks`, `supportsWebLocks()`.
@@ -1587,10 +1789,8 @@ Run again — Expected: PASS.
 
 - [ ] **Step 3: Write the small session modules**
 
-`sessionStore.ts`:
+`src/session/types.ts` (P16 — the shared read-side vocabulary; no store, no behaviour, so any layer may import it):
 ```ts
-import { create } from 'zustand';
-
 export const ROLES = ['OWNER', 'SALES_MANAGER', 'SALES_EXEC'] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -1604,6 +1804,12 @@ export interface Me {
 
 /** Spec §4.4's four statuses plus `signing-out` (plan decision P5). */
 export type SessionStatus = 'booting' | 'authenticated' | 'anonymous' | 'unreachable' | 'signing-out';
+```
+
+`src/session/sessionStore.ts`:
+```ts
+import { create } from 'zustand';
+import type { Me, SessionStatus } from './types';
 
 interface SessionState {
   status: SessionStatus;
@@ -1619,6 +1825,22 @@ export function resetSessionStore(): void {
   useSessionStore.setState(initial, true);
 }
 ```
+
+`src/session/useMe.ts` — **the only session API a feature outside `auth` calls** (P16). F1 writes `const me = useMe()` and never learns where the session is established:
+```ts
+import { useSessionStore } from './sessionStore';
+import type { Me, SessionStatus } from './types';
+
+/** The signed-in principal, or null. Null while booting, anonymous or signing out. */
+export function useMe(): Me | null {
+  return useSessionStore((s) => s.me);
+}
+
+export function useSessionStatus(): SessionStatus {
+  return useSessionStore((s) => s.status);
+}
+```
+`useMe.test.ts`: set the store to authenticated with a fixture and assert both hooks return it; call `resetSessionStore()` and assert `useMe()` is null and the status is `booting`.
 
 `accessToken.ts`:
 ```ts
@@ -1641,13 +1863,20 @@ export function clearAccessToken(): void {
 `toMe.ts`:
 ```ts
 import type { AuthResponse } from '@/api/types';
-import { ROLES, type Me, type Role } from './sessionStore';
+import { ROLES, type Me, type Role } from '@/session/types';
 
 export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
 }
 
-/** The one place a session response is narrowed (spec §4.4: no scattered assertions). */
+/**
+ * The one place a session response is narrowed (spec §4.4: no scattered assertions).
+ *
+ * <p>Architecture-5: this THROWS on a role the client does not know — the contract types `role` as
+ * a plain string, and ROADMAP item 4a adds a platform-admin role on the backend. Every caller must
+ * catch: an uncaught throw here leaves boot's status at `booting` forever (endless splash) and
+ * turns a sign-in into a misleading "Can't reach EasyCRM". See `boot.ts` and the coordinator.
+ */
 export function toMe(response: AuthResponse): Me {
   if (!isRole(response.role)) throw new Error(`unknown role from server: ${response.role}`);
   return {
@@ -1699,7 +1928,16 @@ export const noopLocks: LockProvider = { withLock: (_name, fn) => fn() };
 
 `authChannel.ts`:
 ```ts
-export type AuthMessage = { type: 'login'; userId: string; tenantId: string } | { type: 'logout' };
+export type AuthMessage =
+  | { type: 'login'; userId: string; tenantId: string }
+  /** The server confirmed 204: the cookie is really gone. */
+  | { type: 'logout' }
+  /**
+   * P14/Security-1: sign-out was requested but the server has NOT confirmed it. Other tabs must
+   * show the blocking screen, NOT the login page — the refresh cookie is still live, so a tab that
+   * believed "logged out" would sign the previous user back in on the next reload.
+   */
+  | { type: 'signing-out' };
 
 export interface AuthChannel {
   post(message: AuthMessage): void;
@@ -1780,7 +2018,7 @@ import type { AuthChannel, AuthMessage } from './authChannel';
 import { createInMemoryLocks } from './lockProvider';
 import { configureSession, type SessionRuntime } from './runtime';
 import { endSession, establishSession, subscribeToAuthChannel } from './session';
-import { useSessionStore } from './sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 
 function fakeRuntime() {
   let listener: ((m: AuthMessage) => void) | null = null;
@@ -1888,13 +2126,75 @@ describe('subscribeToAuthChannel', () => {
     expect(useSessionStore.getState().status).toBe('authenticated');
     expect(runtime.reload).not.toHaveBeenCalled();
   });
+
+  // P14/Security-1: a sign-out the server has not confirmed must NOT put other tabs on the login
+  // page — the cookie is still live there, and a reload would sign the same user back in.
+  it('shows signing-out, not anonymous, when another tab is mid sign-out', () => {
+    const { deliver } = fakeRuntime();
+    subscribeToAuthChannel();
+    establishSession(ownerSession);
+
+    deliver({ type: 'signing-out' });
+
+    expect(useSessionStore.getState()).toMatchObject({ status: 'signing-out', me: null });
+    expect(getAccessToken()).toBeNull(); // local state is cleared either way
+  });
+
+  // Architecture-2: a tab already showing signing-out has me === null. If it ignored broadcasts on
+  // that basis, a later sign-in elsewhere would leave it stuck, and its retry loop would log the
+  // NEW user out. A login means the server has revoked the old cookie: the sign-out is complete.
+  it('a signing-out tab returns to anonymous when any tab signs in', () => {
+    const { deliver } = fakeRuntime();
+    subscribeToAuthChannel();
+    establishSession(ownerSession);
+    deliver({ type: 'signing-out' });
+
+    deliver({ type: 'login', userId: inviteeSession.userId, tenantId: inviteeSession.tenantId });
+
+    expect(useSessionStore.getState().status).toBe('anonymous');
+  });
 });
+```
+
+`subscribeToAuthChannel` therefore cannot early-return on `!me`. The shape it needs:
+
+```ts
+export function subscribeToAuthChannel(): () => void {
+  return sessionRuntime().channel.subscribe((message) => {
+    const { me, status } = useSessionStore.getState();
+
+    if (message.type === 'signing-out') {
+      if (!me && status !== 'authenticated') return;
+      endSession('remote-logout');
+      useSessionStore.setState({ status: 'signing-out' }); // P14: blocking screen, not /login
+      return;
+    }
+
+    if (message.type === 'login' && status === 'signing-out') {
+      // Someone signed in: the server revoked the pending cookie for us (AuthController.login →
+      // auth::logout). Stop pretending to sign out. start.ts also stops the retry loop on this.
+      clearLogoutPending();
+      useSessionStore.setState({ status: 'anonymous' });
+      return;
+    }
+
+    if (!me) return;
+    if (message.type === 'logout') {
+      endSession('remote-logout');
+      return;
+    }
+    if (me.userId !== message.userId || me.tenantId !== message.tenantId) {
+      endSession('principal-changed');
+      sessionRuntime().reload();
+    }
+  });
+}
 ```
 
 Add to `frontend/src/test/setup.ts` inside the existing `afterEach` (and the imports at the top):
 ```ts
 import { clearAccessToken } from '@/features/auth/session/accessToken';
-import { resetSessionStore } from '@/features/auth/session/sessionStore';
+import { resetSessionStore } from '@/session/sessionStore';
 // ...in afterEach, after server.resetHandlers():
   resetSessionStore();
   clearAccessToken();
@@ -1910,8 +2210,9 @@ Run: `pnpm test src/features/auth/session/session.test.ts` — Expected: FAIL (`
 import type { AuthResponse } from '@/api/types';
 import { writeLastWorkspace } from '@/lib/storage';
 import { clearAccessToken, setAccessToken } from './accessToken';
+import { clearLogoutPending } from './logoutPending';
 import { sessionRuntime } from './runtime';
-import { useSessionStore } from './sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { toMe } from './toMe';
 
 export type EndReason = 'logout' | 'expired' | 'principal-changed' | 'remote-logout';
@@ -1930,6 +2231,10 @@ export function establishSession(response: AuthResponse): EstablishResult {
   }
   setAccessToken(response.accessToken);
   useSessionStore.setState({ status: 'authenticated', me: next });
+  // P14: login, signup and accept revoke the stale cookie server-side, so any logout this device
+  // still owed is now settled. Boot's own refresh does NOT reach here with a marker set: boot
+  // finishes the pending logout first.
+  clearLogoutPending();
   writeLastWorkspace(next.tenantSlug);
   sessionRuntime().channel.post({ type: 'login', userId: next.userId, tenantId: next.tenantId });
   return 'established';
@@ -1944,7 +2249,27 @@ export function endSession(_reason: EndReason): void {
 
 export function subscribeToAuthChannel(): () => void {
   return sessionRuntime().channel.subscribe((message) => {
-    const { me } = useSessionStore.getState();
+    const { me, status } = useSessionStore.getState();
+
+    // P14/Security-1: an unconfirmed sign-out elsewhere. Clear local state, but block the UI
+    // instead of showing /login — the cookie is still live in this tab too.
+    if (message.type === 'signing-out') {
+      if (!me && status !== 'authenticated') return;
+      endSession('remote-logout');
+      useSessionStore.setState({ status: 'signing-out' });
+      return;
+    }
+
+    // Architecture-2: any successful sign-in revokes the pending cookie server-side
+    // (AuthController.login/signup and PublicInvitationController.accept call auth::logout),
+    // so a tab stuck in signing-out is done — and must stop retrying before its next POST
+    // logs the NEW user out.
+    if (message.type === 'login' && status === 'signing-out') {
+      clearLogoutPending();
+      useSessionStore.setState({ status: 'anonymous' });
+      return;
+    }
+
     if (!me) return;
     if (message.type === 'logout') {
       endSession('remote-logout');
@@ -1957,6 +2282,41 @@ export function subscribeToAuthChannel(): () => void {
   });
 }
 ```
+
+`logoutPending.ts` (P14 — the durable half of the sign-out state):
+```ts
+// Security-1: `signing-out` is in-memory, but the credential it guards — the easycrm_rt cookie —
+// is durable and shared by every tab. If the tab that started the sign-out is closed or discarded
+// by Android, the cookie stays live for 30 days while the UI says "signed out". This marker is the
+// part that survives: boot finishes the logout BEFORE it tries to refresh.
+// It holds no tenant data — only that a logout is owed.
+const KEY = 'easycrm.logoutPending';
+
+export function markLogoutPending(): void {
+  try {
+    localStorage.setItem(KEY, '1');
+  } catch {
+    /* private mode / storage disabled: fall back to in-memory `signing-out` only */
+  }
+}
+
+export function clearLogoutPending(): void {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isLogoutPending(): boolean {
+  try {
+    return localStorage.getItem(KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+```
+`logoutPending.test.ts`: round-trips; `isLogoutPending()` is false after `clearLogoutPending()`; and a `localStorage.setItem` that throws (spy) does not propagate — a private-mode browser must still be able to sign out.
 
 `bridge.ts`:
 ```ts
@@ -2317,8 +2677,9 @@ Expected: PASS; typecheck clean.
 - Consumes: Task 5's modules.
 - Produces:
   - `boot.ts`: `RETRY_SCHEDULE_MS = [2000, 5000, 15000, 30000]`, `nextBootDelayMs(attempt: number, retryAfterSeconds?: number): number`, `interface Boot { start(): Promise<void>; retryNow(): Promise<void>; stop(): void }`, `createBoot(deps: BootDeps): Boot`.
-  - `logout.ts`: `LOGOUT_RETRY_MS = 5000`, `callLogout(client?): Promise<'done' | 'failed'>`, `createLogout(deps): { logout(): Promise<void>; stop(): void }`.
-  - `start.ts`: `interface SessionControls { boot: Boot; logout(): Promise<void>; stop(): void }`, `startSession(runtime: SessionRuntime, options?: { autoBoot?: boolean }): SessionControls`, `sessionControls(): SessionControls`, `stopSession(): void`.
+  - `logout.ts`: `LOGOUT_RETRY_MS = 5000`, `type LogoutResult = { kind: 'done' } | { kind: 'failed'; retryAfterSeconds?: number } | { kind: 'forbidden' }`, `callLogout(client?): Promise<LogoutResult>`, `createLogout(deps): { logout(): Promise<void>; settledElsewhere(): void; stop(): void }`.
+  - `start.ts`: `interface SessionControls { boot: Boot; logout(): Promise<void>; withCookieLock<T>(fn: () => Promise<T>): Promise<T>; stop(): void }`, `startSession(runtime: SessionRuntime, options?: { autoBoot?: boolean }): SessionControls`, `sessionControls(): SessionControls`, `stopSession(): void`.
+  - `logoutPending.ts` (Task 5): `markLogoutPending()`, `clearLogoutPending()`, `isLogoutPending()`.
 
 - [ ] **Step 1: Write the failing boot tests**
 
@@ -2329,7 +2690,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ownerSession } from '@/test/fixtures';
 import { createBoot, nextBootDelayMs } from './boot';
 import { REFRESH_FORBIDDEN_MESSAGE, type RefreshCallResult } from './refreshCall';
-import type { SessionStatus } from './sessionStore';
+import type { SessionStatus } from '@/session/types';
 
 function harness(results: RefreshCallResult[]) {
   let status: SessionStatus = 'booting';
@@ -2435,8 +2796,34 @@ describe('boot', () => {
     h.boot.stop();
     expect(h.scheduled[0]?.cancel).toHaveBeenCalled();
   });
+
+  // P14/Security-1 — the whole point of the durable marker.
+  it('finishes a pending logout instead of refreshing', async () => {
+    const h = harness([{ kind: 'ok', body: ownerSession }]);
+    h.deps.logoutPending.mockReturnValue(true);
+
+    await h.boot.start();
+
+    expect(h.deps.finishPendingLogout).toHaveBeenCalledTimes(1);
+    expect(h.deps.refresh).not.toHaveBeenCalled();
+    expect(h.deps.establish).not.toHaveBeenCalled();
+  });
+
+  // Architecture-5: an unknown role must not strand the splash.
+  it('leaves booting when establish throws on a role this build does not know', async () => {
+    const h = harness([{ kind: 'ok', body: { ...ownerSession, role: 'PLATFORM_ADMIN' } }]);
+    h.deps.establish.mockImplementation(() => {
+      throw new Error('unknown role from server: PLATFORM_ADMIN');
+    });
+
+    await expect(h.boot.start()).resolves.toBeUndefined(); // never rejects
+    expect(h.status()).toBe('unreachable');
+    expect(h.deps.log).toHaveBeenCalledWith(expect.stringContaining('unknown role'));
+  });
 });
 ```
+
+The harness gains `logoutPending: vi.fn(() => false)` and `finishPendingLogout: vi.fn(async () => {})`, and `establish` becomes a `vi.fn` whose implementation the last test replaces.
 
 Run: `pnpm test src/features/auth/session/boot.test.ts` — Expected: FAIL (missing module).
 
@@ -2445,7 +2832,7 @@ Run: `pnpm test src/features/auth/session/boot.test.ts` — Expected: FAIL (miss
 ```ts
 import type { AuthResponse } from '@/api/types';
 import { REFRESH_FORBIDDEN_MESSAGE, type RefreshCallResult } from './refreshCall';
-import type { SessionStatus } from './sessionStore';
+import type { SessionStatus } from '@/session/types';
 
 export const RETRY_SCHEDULE_MS = [2_000, 5_000, 15_000, 30_000] as const;
 const LAST_RETRY_MS = 30_000;
@@ -2467,6 +2854,10 @@ export interface BootDeps {
   setStatus(status: SessionStatus): void;
   schedule(fn: () => void, ms: number): () => void;
   log(message: string): void;
+  /** P14: true when this device owes the server a logout it never confirmed. */
+  logoutPending(): boolean;
+  /** P14: finish that logout before touching the cookie for a refresh. Resolves when settled. */
+  finishPendingLogout(): Promise<void>;
 }
 
 export interface Boot {
@@ -2491,12 +2882,29 @@ export function createBoot(deps: BootDeps): Boot {
   async function run(): Promise<void> {
     stop();
     if (!pending()) return;
+
+    // P14/Security-1: a logout this device started but never got a 204 for. Refreshing first would
+    // re-establish the very session the user asked to end — the cookie is still live. Finish the
+    // logout instead; createLogout owns the retry loop and the blocking status from there.
+    if (deps.logoutPending()) {
+      await deps.finishPendingLogout();
+      return;
+    }
+
     const result = await deps.refresh();
     if (!pending()) return; // plan decision P6
     switch (result.kind) {
       case 'ok':
         attempt = 0;
-        deps.establish(result.body);
+        try {
+          deps.establish(result.body);
+        } catch (error) {
+          // Architecture-5: toMe throws on a role this build does not know (ROADMAP item 4a adds
+          // one). Without this catch the rejection escapes `void boot.start()`, the status stays
+          // `booting`, and the user watches the splash spin forever.
+          deps.log(`session could not be established: ${String(error)}`);
+          deps.setStatus('unreachable');
+        }
         return;
       case 'unauthorized':
         deps.setStatus('anonymous');
@@ -2524,21 +2932,28 @@ Run — Expected: PASS.
 ```ts
 import { describe, expect, it, vi } from 'vitest';
 import { createBareClient } from '@/api/client';
-import { callLogout, createLogout, LOGOUT_RETRY_MS } from './logout';
-import type { SessionStatus } from './sessionStore';
+import { callLogout, createLogout, LOGOUT_RETRY_MS, type LogoutResult } from './logout';
+import type { AuthMessage } from './authChannel';
+import type { SessionStatus } from '@/session/types';
 
-function harness(outcomes: ('done' | 'failed')[]) {
+function harness(outcomes: LogoutResult[]) {
   const calls: string[] = [];
   let onlineListener: (() => void) | null = null;
   const timers: { fn: () => void; ms: number; cancel: ReturnType<typeof vi.fn> }[] = [];
   const deps = {
     callLogout: vi.fn(async () => {
       calls.push('POST');
-      return outcomes.shift() ?? 'failed';
+      return outcomes.shift() ?? { kind: 'failed' as const };
     }),
     endSession: vi.fn(() => calls.push('endSession')),
-    broadcastLogout: vi.fn(() => calls.push('broadcast')),
-    setStatus: vi.fn((_s: SessionStatus) => {}),
+    broadcastLogout: vi.fn((_m: AuthMessage) => calls.push('broadcast')),
+    // P14: the durable half of the state. `mark` before the POST, `clear` only on 204.
+    markPending: vi.fn(() => calls.push('mark')),
+    clearPending: vi.fn(() => calls.push('clear')),
+    log: vi.fn(),
+    setStatus: vi.fn((s: SessionStatus) => {
+      if (s === 'signing-out') calls.push('signing-out');
+    }),
     onOnline: vi.fn((fn: () => void) => {
       onlineListener = fn;
       return () => {
@@ -2555,25 +2970,67 @@ function harness(outcomes: ('done' | 'failed')[]) {
 }
 
 describe('logout', () => {
-  it('on 204: POSTs first, then ends the session and broadcasts', async () => {
-    const h = harness(['done']);
+  // Minor-1 (architecture) + Security-3: local state and the blocking screen come FIRST, so the
+  // previous user's data is off the screen immediately instead of up to 15 s later on 4G. The
+  // login page still waits for the 204 (spec §4.4 step 3) — that is `anonymous`, not `signing-out`.
+  it('on 204: clears local state and marks pending first, then POSTs, then goes anonymous', async () => {
+    const h = harness([{ kind: 'done' }]);
     await h.logout.logout();
-    expect(h.calls).toEqual(['POST', 'endSession', 'broadcast']);
+    expect(h.calls).toEqual(['mark', 'endSession', 'signing-out', 'POST', 'clear', 'broadcast']);
     expect(h.deps.endSession).toHaveBeenCalledWith('logout');
-    expect(h.deps.setStatus).not.toHaveBeenCalledWith('signing-out');
+    expect(h.deps.setStatus).toHaveBeenLastCalledWith('anonymous');
+    expect(h.deps.broadcastLogout).toHaveBeenCalledWith({ type: 'logout' });
   });
 
-  it('on failure: still clears local state, but blocks on signing-out and retries', async () => {
-    const h = harness(['failed']);
+  it('on failure: stays on signing-out, keeps the durable marker, and tells other tabs the same', async () => {
+    const h = harness([{ kind: 'failed' }]);
     await h.logout.logout();
     expect(h.deps.endSession).toHaveBeenCalled();
-    expect(h.deps.broadcastLogout).toHaveBeenCalled();
+    // P14/Security-1: NOT { type: 'logout' } — that would send other tabs to /login while the
+    // cookie is still live, and a reload there would sign the same user back in.
+    expect(h.deps.broadcastLogout).toHaveBeenCalledWith({ type: 'signing-out' });
+    expect(h.deps.clearPending).not.toHaveBeenCalled();
     expect(h.deps.setStatus).toHaveBeenLastCalledWith('signing-out');
     expect(h.timers[0]?.ms).toBe(LOGOUT_RETRY_MS);
   });
 
+  it('is idempotent: a second tap does not start a second POST or a second retry loop', async () => {
+    const h = harness([{ kind: 'failed' }, { kind: 'failed' }]);
+    const first = h.logout.logout();
+    const second = h.logout.logout();
+    await Promise.all([first, second]);
+    expect(h.deps.callLogout).toHaveBeenCalledTimes(1);
+    expect(h.timers).toHaveLength(1);
+  });
+
+  it('stops retrying when any tab signs in, without another POST', async () => {
+    // Architecture-2: the retry POSTs whatever cookie is in the jar NOW. After someone else signs
+    // in, that is THEIR cookie, and the server would happily revoke it.
+    const h = harness([{ kind: 'failed' }]);
+    await h.logout.logout();
+
+    h.logout.settledElsewhere(); // start.ts calls this on a `login` broadcast
+
+    h.timers[0]?.fn();
+    expect(h.deps.callLogout).toHaveBeenCalledTimes(1);
+    expect(h.deps.clearPending).toHaveBeenCalled();
+  });
+
+  it('does not auto-retry a 403, and honours Retry-After on a 429', async () => {
+    // Minor-4: a 403 means this client is broken (the same bug class boot treats as unreachable);
+    // 5 s forever is pointless. A 429 must wait the server's own interval.
+    const h = harness([{ kind: 'forbidden' }]);
+    await h.logout.logout();
+    expect(h.timers).toHaveLength(0);
+    expect(h.deps.log).toHaveBeenCalled();
+
+    const r = harness([{ kind: 'failed', retryAfterSeconds: 20 }]);
+    await r.logout.logout();
+    expect(r.timers[0]?.ms).toBe(20_000);
+  });
+
   it('shows the login page only after a later 204, retried when the network returns', async () => {
-    const h = harness(['failed', 'done']);
+    const h = harness([{ kind: 'failed' }, { kind: 'done' }]);
     await h.logout.logout();
 
     h.goOnline();
@@ -2583,7 +3040,7 @@ describe('logout', () => {
   });
 
   it('keeps retrying on a timer while the POST keeps failing', async () => {
-    const h = harness(['failed', 'failed']);
+    const h = harness([{ kind: 'failed' }, { kind: 'failed' }]);
     await h.logout.logout();
 
     h.timers[0]?.fn();
@@ -2605,14 +3062,22 @@ describe('callLogout', () => {
 
   it('sends the client header and reports done on 204', async () => {
     const { client, seen } = clientAnswering(204);
-    expect(await callLogout(client)).toBe('done');
+    expect(await callLogout(client)).toEqual({ kind: 'done' });
     expect(seen[0]?.headers.get('X-EasyCRM-Client')).toBe('web');
   });
 
   it('reports failed on any other status and on a network error', async () => {
-    expect(await callLogout(clientAnswering(500).client)).toBe('failed');
+    expect(await callLogout(clientAnswering(500).client)).toEqual({ kind: 'failed' });
     const broken = createBareClient(async () => Promise.reject(new TypeError('offline')));
-    expect(await callLogout(broken)).toBe('failed');
+    expect(await callLogout(broken)).toEqual({ kind: 'failed' });
+  });
+
+  it('distinguishes a 403 client bug and carries Retry-After from a 429 (Minor-4)', async () => {
+    expect(await callLogout(clientAnswering(403).client)).toEqual({ kind: 'forbidden' });
+    const limited = createBareClient(
+      async () => new Response('{}', { status: 429, headers: { 'Retry-After': '20' } }),
+    );
+    expect(await callLogout(limited)).toEqual({ kind: 'failed', retryAfterSeconds: 20 });
   });
 });
 ```
@@ -2625,41 +3090,65 @@ Run — Expected: FAIL (missing module).
 import { bareApi } from '@/api/client';
 import type * as Client from '@/api/client';
 import type { EndReason } from './session';
-import type { SessionStatus } from './sessionStore';
+import type { SessionStatus } from '@/session/types';
 
 export const LOGOUT_RETRY_MS = 5_000;
 
+/** Minor-4: a 403 is a client bug (retrying forever is pointless); a 429 names its own interval. */
+export type LogoutResult =
+  | { kind: 'done' }
+  | { kind: 'failed'; retryAfterSeconds?: number }
+  | { kind: 'forbidden' };
+
 export async function callLogout(
   client: ReturnType<typeof Client.createBareClient> = bareApi,
-): Promise<'done' | 'failed'> {
+): Promise<LogoutResult> {
   try {
     const { response } = await client.POST('/api/v1/auth/logout', {
       params: { header: { 'X-EasyCRM-Client': 'web' } },
     });
-    return response.status === 204 ? 'done' : 'failed';
+    if (response.status === 204) return { kind: 'done' };
+    if (response.status === 403) return { kind: 'forbidden' };
+    const retryAfterSeconds =
+      response.status === 429 ? parseRetryAfter(response.headers.get('Retry-After')) : undefined;
+    return { kind: 'failed', retryAfterSeconds };
   } catch {
-    return 'failed';
+    return { kind: 'failed' };
   }
 }
 
 export interface LogoutDeps {
-  callLogout(): Promise<'done' | 'failed'>;
+  callLogout(): Promise<LogoutResult>;
   endSession(reason: EndReason): void;
-  broadcastLogout(): void;
+  broadcastLogout(message: AuthMessage): void;
+  /** P14 — the durable marker. `mark` before the POST, `clear` only once the server confirms. */
+  markPending(): void;
+  clearPending(): void;
   setStatus(status: SessionStatus): void;
   onOnline(fn: () => void): () => void;
   schedule(fn: () => void, ms: number): () => void;
+  log(message: string): void;
 }
 
 /**
  * Spec §4.4. The cookie is httpOnly, so JS cannot delete it: until the server answers 204 the device
  * is still signed in, whatever local state says. On a shared counter phone that is the difference
  * between signed out and looking signed out.
+ *
+ * <p>P14/Security-1: the "logout owed" state is therefore DURABLE (a localStorage marker), not just
+ * a status in this tab's memory — the tab can be closed or discarded by Android while the cookie
+ * lives another 30 days. Other tabs are told `signing-out`, never `logout`, until the 204 lands.
+ *
+ * <p>P15: the POST runs inside the refresh Web Lock, so it cannot interleave with a rotation
+ * (logout racing a grace refresh can otherwise leave the successor live — HANDOFF's backend
+ * follow-up, whose named mitigation is this lock).
  */
 export function createLogout(deps: LogoutDeps) {
   let stopRetrying: (() => void) | null = null;
+  let inFlight: Promise<void> | null = null;
+  let settled = false;
 
-  function scheduleRetry() {
+  function scheduleRetry(retryAfterSeconds?: number) {
     const cleanup = () => {
       offOnline();
       cancelTimer();
@@ -2669,24 +3158,55 @@ export function createLogout(deps: LogoutDeps) {
       cleanup();
       void retry();
     };
+    const ms = retryAfterSeconds ? Math.min(Math.max(retryAfterSeconds, 1), 60) * 1_000 : LOGOUT_RETRY_MS;
     const offOnline = deps.onOnline(again);
-    const cancelTimer = deps.schedule(again, LOGOUT_RETRY_MS);
+    const cancelTimer = deps.schedule(again, ms);
     stopRetrying = cleanup;
   }
 
-  async function retry() {
-    if ((await deps.callLogout()) === 'done') deps.setStatus('anonymous');
-    else scheduleRetry();
+  function finish(result: LogoutResult): void {
+    if (result.kind === 'done') {
+      settled = true;
+      deps.clearPending();
+      deps.broadcastLogout({ type: 'logout' });
+      deps.setStatus('anonymous'); // spec §4.4: the login page ONLY after a 204
+      return;
+    }
+    if (result.kind === 'forbidden') {
+      // The same bug class boot treats as unreachable: this client is sending something wrong, so
+      // 5 s forever achieves nothing. The marker stays, so the next boot tries again.
+      deps.log('logout was refused (X-EasyCRM-Client) — not retrying automatically');
+      return;
+    }
+    scheduleRetry(result.retryAfterSeconds);
+  }
+
+  async function retry(): Promise<void> {
+    if (settled) return; // Architecture-2: another tab signed in; the old cookie is already revoked
+    finish(await deps.callLogout());
   }
 
   return {
     async logout(): Promise<void> {
-      const outcome = await deps.callLogout();
-      deps.endSession('logout');
-      deps.broadcastLogout();
-      if (outcome === 'done') return;
-      deps.setStatus('signing-out');
-      scheduleRetry();
+      if (inFlight) return inFlight; // Minor-1: a double tap must not start a second loop
+      inFlight = (async () => {
+        // Local state goes FIRST (Security-3): on 4G the POST can take up to 15 s, and the
+        // previous user's screen must not stay readable for that long.
+        deps.markPending();
+        deps.endSession('logout');
+        deps.setStatus('signing-out');
+        deps.broadcastLogout({ type: 'signing-out' });
+        finish(await deps.callLogout());
+      })().finally(() => {
+        inFlight = null;
+      });
+      return inFlight;
+    },
+    /** A `login` broadcast: the server revoked the pending cookie for us. Stop retrying. */
+    settledElsewhere(): void {
+      settled = true;
+      stopRetrying?.();
+      deps.clearPending();
     },
     stop(): void {
       stopRetrying?.();
@@ -2694,6 +3214,8 @@ export function createLogout(deps: LogoutDeps) {
   };
 }
 ```
+
+The import list gains `parseRetryAfter` from `@/api/errors` and `type AuthMessage` from `./authChannel`.
 
 Run — Expected: PASS.
 
@@ -2710,7 +3232,8 @@ import { callRefresh } from './refreshCall';
 import { createRefreshCoordinator } from './refreshCoordinator';
 import { configureSession, type SessionRuntime } from './runtime';
 import { endSession, establishSession, subscribeToAuthChannel } from './session';
-import { useSessionStore, type SessionStatus } from './sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
+import type { SessionStatus } from '@/session/types';
 
 export interface SessionControls {
   boot: Boot;
@@ -2751,34 +3274,63 @@ export function startSession(runtime: SessionRuntime, options: { autoBoot?: bool
   const unsubscribe = subscribeToAuthChannel();
 
   const setStatus = (status: SessionStatus) => useSessionStore.setState({ status });
-  const boot = createBoot({
-    // Boot takes the same lock as every other refresh: two tabs opening at once is the commonest race.
-    refresh: () => runtime.locks.withLock(REFRESH_LOCK, () => callRefresh()),
-    establish: establishSession,
-    getStatus: () => useSessionStore.getState().status,
-    setStatus,
-    schedule,
-    log: runtime.log,
-  });
+
+  // P15: ONE place defines "this call writes the refresh cookie, so it serializes with refresh".
+  // Login, signup, accept and logout all go through it — see useLogin/useSignup/useAcceptInvitation.
+  const withCookieLock = <T,>(fn: () => Promise<T>) => runtime.locks.withLock(REFRESH_LOCK, fn);
+
   const logout = createLogout({
-    callLogout: () => callLogout(),
+    callLogout: () => withCookieLock(() => callLogout()),
     endSession,
-    broadcastLogout: () => runtime.channel.post({ type: 'logout' }),
+    broadcastLogout: (message) => runtime.channel.post(message),
+    markPending: markLogoutPending,
+    clearPending: clearLogoutPending,
     setStatus,
     onOnline: (fn) => {
       window.addEventListener('online', fn);
       return () => window.removeEventListener('online', fn);
     },
     schedule,
+    log: runtime.log,
   });
+
+  const boot = createBoot({
+    // Boot takes the same lock as every other refresh: two tabs opening at once is the commonest race.
+    refresh: () => withCookieLock(() => callRefresh()),
+    establish: establishSession,
+    getStatus: () => useSessionStore.getState().status,
+    setStatus,
+    schedule,
+    log: runtime.log,
+    // P14: a logout this device never got a 204 for outranks a refresh — refreshing first would
+    // re-establish exactly the session the user asked to end.
+    logoutPending: isLogoutPending,
+    finishPendingLogout: () => logout.logout(),
+  });
+
+  // Architecture-2 / Security-1: a `login` anywhere means the server revoked the pending cookie
+  // (AuthController.login/signup → auth::logout), so this tab must stop retrying BEFORE its next
+  // POST logs the new user out. session.ts flips the status; this stops the loop.
+  const unsubscribeSettled = runtime.channel.subscribe((message) => {
+    if (message.type === 'login') logout.settledElsewhere();
+  });
+
+  // Performance-6: retry boot the moment the phone is back, instead of waiting out a 30 s step.
+  const onOnline = () => {
+    if (useSessionStore.getState().status === 'unreachable') void boot.retryNow();
+  };
+  window.addEventListener('online', onOnline);
 
   controls = {
     boot,
     logout: () => logout.logout(),
+    withCookieLock,
     stop: () => {
       boot.stop();
       logout.stop();
       unsubscribe();
+      unsubscribeSettled();
+      window.removeEventListener('online', onOnline);
     },
   };
   if (options.autoBoot ?? true) void boot.start();
@@ -2786,16 +3338,32 @@ export function startSession(runtime: SessionRuntime, options: { autoBoot?: bool
 }
 ```
 
+`SessionControls` gains `withCookieLock<T>(fn: () => Promise<T>): Promise<T>` — the handle Tasks 10–12 use, so no page has to know the lock's name. The imports gain `clearLogoutPending, isLogoutPending, markLogoutPending` from `./logoutPending`.
+
 In `frontend/src/test/setup.ts` add `import { stopSession } from '@/features/auth/session/start';` and call `stopSession();` first inside `afterEach`.
 
-- [ ] **Step 6: Run and commit**
+- [ ] **Step 6: Mutate and see red** (P19, Testing-3)
+
+| Break | Test that must fail | What it protects |
+|---|---|---|
+| `boot.ts`: `case 'forbidden'` → `deps.setStatus('anonymous')` | "treats 403 as a client bug" | a 403 must never read as "signed out" |
+| `boot.ts`: delete the `logoutPending()` branch | "finishes a pending logout instead of refreshing" | **P14 — the Critical fix** |
+| `boot.ts`: remove the try/catch around `establish` | "leaves booting when establish throws" | Architecture-5's endless splash |
+| `logout.ts`: broadcast `{ type: 'logout' }` on failure | "stays on signing-out … tells other tabs the same" | **the Critical finding itself** |
+| `logout.ts`: drop `if (settled) return` from `retry()` | "stops retrying when any tab signs in" | logging out the *next* user |
+| `session.ts`: remove `clearQueryCache()` from `endSession` | the `endSession` test | the next user seeing the last user's data |
+| `start.ts`: call `callLogout()` without `withCookieLock` | Task 15's E2E lock test (record that it is E2E-only) | P15 |
+
+Paste the failure messages into the commit body.
+
+- [ ] **Step 7: Run and commit**
 
 ```bash
-pnpm test && pnpm typecheck
+pnpm test && pnpm typecheck && pnpm build && pnpm budget
 cd .. && git add frontend
-git commit -m "feat(frontend): boot with grace-aware retry and fail-safe logout"
+git commit -m "feat(frontend): boot with grace-aware retry and a durable, fail-safe logout"
 ```
-Expected: PASS; clean.
+Expected: PASS; clean; budget under 200 KB.
 
 ---
 
@@ -3089,12 +3657,23 @@ export function applyApiError<T extends FieldValues>(
       const fieldCode = envelope.fieldCodes[field];
       const serverText = envelope.fields[field];
       if (fieldCode === undefined && serverText === undefined) continue;
+      // A11y-3: a per-field key wins over the generic constraint key, because a bare `SIZE` code
+      // carries no min or max — "This value has the wrong length." replaces the server's
+      // "password must be at least 8 characters" and tells the user nothing about how to fix it.
+      // Order: errors.fields.<field>.<CODE> → errors.fields.<CODE> → errors.codes.<code> → server text.
+      // The per-field texts state real limits, so confirm each number against the backend DTO's
+      // @Size/@Pattern before writing it (SignupRequest, AcceptInvitationRequest) — a wrong limit
+      // here is worse than the generic message it replaces. Record in `docs/api/error-codes.md`
+      // that SIZE and PATTERN are parameterised and therefore want field-specific keys.
+      const specific = fieldCode !== undefined ? `errors.fields.${field}.${fieldCode}` : undefined;
       const message =
-        fieldCode !== undefined && tr.exists(`errors.fields.${fieldCode}`)
-          ? tr.t(`errors.fields.${fieldCode}`)
-          : code !== null && tr.exists(`errors.codes.${code}`)
-            ? tr.t(`errors.codes.${code}`)
-            : (serverText ?? tr.t('errors.unexpected'));
+        specific !== undefined && tr.exists(specific)
+          ? tr.t(specific)
+          : fieldCode !== undefined && tr.exists(`errors.fields.${fieldCode}`)
+            ? tr.t(`errors.fields.${fieldCode}`)
+            : code !== null && tr.exists(`errors.codes.${code}`)
+              ? tr.t(`errors.codes.${code}`)
+              : (serverText ?? tr.t('errors.unexpected'));
       form.setError(field, { type: 'server', message }, { shouldFocus: appliedFields.length === 0 });
       appliedFields.push(field);
     }
@@ -3193,6 +3772,24 @@ describe('FormAlert', () => {
     expect(screen.getByRole('alert')).toBeEmptyDOMElement();
     rerender(<FormAlert message="Workspace, email or password is incorrect." />);
     expect(screen.getByRole('alert')).toHaveTextContent('Workspace, email or password is incorrect.');
+  });
+
+  // A11y-1: on a phone the alert renders above the fold of a long form while the user's thumb is
+  // on the submit button at the bottom. Announcing it is not the same as showing it.
+  it('takes focus and scrolls into view when a message appears', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { rerender } = render(<FormAlert message={null} />);
+
+    rerender(<FormAlert message="Can’t reach EasyCRM. Check your connection." />);
+
+    expect(screen.getByRole('alert')).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it('does not steal focus while there is no message', () => {
+    render(<FormAlert message={null} />);
+    expect(screen.getByRole('alert')).not.toHaveFocus();
   });
 });
 ```
@@ -3359,20 +3956,48 @@ export function SelectField({ id, label, placeholder, options, description, erro
 
 `frontend/src/components/form/FormAlert.tsx`:
 ```tsx
+import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
-/** Persistent role="alert" region (spec §4.6): form-level failures are never toasts. */
+/**
+ * Persistent role="alert" region (spec §4.6): form-level failures are never toasts.
+ *
+ * <p>A11y-1: `role="alert"` reaches a screen reader, but a sighted phone user never sees a message
+ * that renders above the fold of a two-screen form while their thumb is on a submit button at the
+ * bottom. So the region also takes focus and scrolls itself into view whenever the message changes
+ * to non-null. Focus additionally repairs what disabling the submit button breaks: a focused
+ * element that becomes disabled can drop focus to <body>, stranding a keyboard user at the top of
+ * the page. The region stays mounted (never conditionally inserted) so live-region announcements
+ * are reliable.
+ */
 export function FormAlert({ message }: { message: string | null }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!message) return;
+    ref.current?.focus();
+    ref.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }, [message]);
+
   return (
     <div
+      ref={ref}
       role="alert"
-      className={cn(message && 'border-destructive/50 bg-destructive/10 text-destructive rounded-md border p-3 text-sm')}
+      tabIndex={message ? -1 : undefined}
+      className={cn(
+        // A11y-2: `text-destructive` on `bg-destructive/10` computes to ~3.99:1, under the 4.5:1
+        // AA minimum for 14 px text. Darken the text rather than the tint; verify with the axe
+        // colour-contrast rule running on a page that HAS an error (Task 14).
+        message &&
+          'border-destructive/50 bg-destructive/10 text-destructive-strong rounded-md border p-3 text-sm outline-none',
+      )}
     >
       {message}
     </div>
   );
 }
 ```
+
+Add a `--destructive-strong` token to `index.css` beside shadcn's `--destructive` (a darker red — start from `oklch(0.45 0.18 27)` and check), expose it as `text-destructive-strong`, and **measure the pair before moving on**: compute the contrast of the resolved text colour against the resolved tint over the page background. If it is still below 4.5:1, drop the tinted background instead. Record the measured ratio in the Task 17 walkthrough notes.
 
 `frontend/src/components/PageHeading.tsx`:
 ```tsx
@@ -3466,8 +4091,35 @@ describe('query defaults (spec §4.5)', () => {
     expect(queries?.refetchOnWindowFocus).toBe(false);
     expect(queries?.staleTime).toBe(30_000);
   });
+
+  // P17/Performance-1: the library's default is `networkMode: 'online'`, which PAUSES queries and
+  // mutations once the browser reports offline. A paused request never rejects, so applyApiError
+  // never runs: /invite/:token would show its skeleton forever and Sign in would sit disabled with
+  // no message. This app has its own 15 s timeout and error UI; the queue only hides them.
+  it('fails offline requests instead of pausing them, and refetches on reconnect', () => {
+    const { queries, mutations } = createQueryClient().getDefaultOptions();
+    expect(queries?.networkMode).toBe('always');
+    expect(mutations?.networkMode).toBe('always');
+    expect(queries?.refetchOnReconnect).toBe(true);
+  });
 });
 ```
+
+And one behavioural test, because the option alone is the kind of thing a future edit silently flips — put it beside the login tests in Task 10 (it needs a page):
+
+```ts
+it('shows an error, not a spinner, when the phone is offline', async () => {
+  onlineManager.setOnline(false); // @tanstack/react-query
+  try {
+    renderApp('/login', { session: { status: 'anonymous' } });
+    await submitLogin(); // the task's existing helper
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Can’t reach EasyCRM/);
+  } finally {
+    onlineManager.setOnline(true);
+  }
+});
+```
+**UNVERIFIED:** the exact `onlineManager` behaviour in v5 — this test is also the proof. If it does not go red with `networkMode` left at the default, say so in the Task 17 review record rather than deleting it.
 Run — FAIL. Then `frontend/src/app/queryClient.ts`:
 ```ts
 import { QueryClient } from '@tanstack/react-query';
@@ -3484,35 +4136,92 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
-      queries: { retry: shouldRetryQuery, refetchOnWindowFocus: false, staleTime: 30_000 },
-      mutations: { retry: 0 },
+      queries: {
+        retry: shouldRetryQuery,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: true,
+        // P17: never pause on `offline` — fail, so the error UI runs. See queryClient.test.ts.
+        networkMode: 'always',
+        staleTime: 30_000,
+      },
+      mutations: { retry: 0, networkMode: 'always' },
     },
   });
 }
 ```
 Run — PASS.
 
-- [ ] **Step 3: Write the screens, layout and router**
+- [ ] **Step 3: Write the app tests FIRST** (reordered — Testing-2)
+
+> **This step used to be Step 5.** Task 8 was the one task that wrote its code before its tests, and it produced the plan's one test that cannot fail (see below). Do Step 5's `renderApp` and `app.test.tsx` here, run them, and record the failure, before writing a line of Step 4's screens.
+
+Two corrections to those tests, both required:
+
+1. **The "renders nothing while booting" test asserts too early.** `renderApp('/')` matches lazy routes, so React Router has not initialised when a synchronous `expect(container).toBeEmptyDOMElement()` runs: the container is empty whatever `RequireSession` does — even if `booting` redirected to `/login`. Wait for the router, then assert, and add a positive control so the test can distinguish the two cases:
+
+```ts
+it('renders nothing while booting, so the index.html splash stays visible', async () => {
+  const { container, router } = renderApp('/');
+  await waitFor(() => expect(router.state.initialized).toBe(true));
+  expect(container).toBeEmptyDOMElement();
+});
+
+it('renders the shell once authenticated (the control for the test above)', async () => {
+  renderApp('/', { session: authenticated });
+  expect(await screen.findByRole('banner')).toBeInTheDocument();
+});
+```
+
+2. **Devtools must not render under Vitest.** `import.meta.env.DEV` is true in tests, so `ReactQueryDevtools` loads into every component test and injects its toggle button — which would make the corrected empty-container assertion fail for an unrelated reason. In `providers.tsx`:
+
+```tsx
+const Devtools =
+  import.meta.env.DEV && import.meta.env.MODE !== 'test'
+    ? lazy(() => import('@tanstack/react-query-devtools').then((m) => ({ default: m.ReactQueryDevtools })))
+    : () => null;
+```
+
+- [ ] **Step 4: Write the screens, layout and router**
 
 `frontend/src/app/shell/UnreachableScreen.tsx`:
 ```tsx
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeading } from '@/components/PageHeading';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
-export function UnreachableScreen({ onRetry }: { onRetry: () => void }) {
+export function UnreachableScreen({ onRetry }: { onRetry: () => Promise<void> }) {
   const { t } = useTranslation();
+  const [retrying, setRetrying] = useState(false);
+  const [failures, setFailures] = useState(0);
   useDocumentTitle(t('unreachable.title'));
+
+  // A11y-6: without this, pressing "Try again" and failing again leaves the screen byte-identical,
+  // so the user keeps pressing. The status line reports each failed attempt.
+  const retry = async () => {
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+      setFailures((n) => n + 1);
+    }
+  };
+
   return (
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-10">
       <PageHeading>{t('unreachable.heading')}</PageHeading>
       <p>{t('unreachable.body')}</p>
-      <Button onClick={onRetry}>{t('actions.retry')}</Button>
+      <Button onClick={() => void retry()} disabled={retrying}>
+        {retrying ? t('actions.retrying') : t('actions.retry')}
+      </Button>
+      <p role="status">{failures > 0 && !retrying ? t('unreachable.stillFailing') : ''}</p>
     </main>
   );
 }
 ```
+(`onRetry` becomes `() => Promise<void>`; `boot.retryNow()` already returns one. New keys: `actions.retrying`, `unreachable.stillFailing` — add them to `common.json` in Task 4's files, not here.)
 
 `frontend/src/app/shell/SignOutPendingScreen.tsx`:
 ```tsx
@@ -3524,9 +4233,11 @@ export function SignOutPendingScreen() {
   const { t } = useTranslation();
   useDocumentTitle(t('signOutPending.title'));
   return (
-    <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-10" aria-busy="true">
+    {/* A11y-6: no aria-busy on the landmark — some screen readers hold back or skip content
+        marked busy, and this screen's whole job is to explain why the app is blocked. */}
+    <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-10">
       <PageHeading>{t('signOutPending.heading')}</PageHeading>
-      <p>{t('signOutPending.body')}</p>
+      <p role="status">{t('signOutPending.body')}</p>
     </main>
   );
 }
@@ -3538,7 +4249,7 @@ import { useTranslation } from 'react-i18next';
 import { Outlet } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { sessionControls } from '@/features/auth/session/start';
-import { useSessionStore } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -3571,7 +4282,7 @@ export function AppShell() {
 ```tsx
 import { useTranslation } from 'react-i18next';
 import { PageHeading } from '@/components/PageHeading';
-import { useSessionStore } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 /** Placeholder; F3 replaces it with the role-aware dashboard. */
@@ -3640,7 +4351,7 @@ export function RouteErrorBoundary() {
 ```tsx
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { sessionControls } from '@/features/auth/session/start';
-import { useSessionStore } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { safeNext } from '@/lib/safeNext';
 import { UnreachableScreen } from './shell/UnreachableScreen';
 
@@ -3654,7 +4365,7 @@ export function RequireSession() {
       // signing-out: RootLayout renders the blocking screen instead of this outlet.
       return null;
     case 'unreachable':
-      return <UnreachableScreen onRetry={() => void sessionControls().boot.retryNow()} />;
+      return <UnreachableScreen onRetry={() => sessionControls().boot.retryNow()} />;
     case 'anonymous': {
       const next = safeNext(location.pathname + location.search) ?? '/';
       return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
@@ -3670,7 +4381,7 @@ export function RequireSession() {
 import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { onSessionExpired } from '@/features/auth/session/sessionEvents';
-import { useSessionStore } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { safeNext } from '@/lib/safeNext';
 import { SignOutPendingScreen } from './shell/SignOutPendingScreen';
 
@@ -3690,7 +4401,12 @@ export function RootLayout() {
       onSessionExpired(() => {
         const { pathname, search } = locationRef.current;
         const next = safeNext(pathname + search) ?? '/';
-        void navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
+        // A11y-5: carry WHY. Without it the user is dropped on an empty login page mid-task and
+        // cannot tell whether they mis-tapped something. LoginPage seeds its FormAlert from this.
+        void navigate(`/login?next=${encodeURIComponent(next)}`, {
+          replace: true,
+          state: { reason: 'expired' },
+        });
       }),
     [navigate],
   );
@@ -3751,9 +4467,13 @@ import { RouterProvider, type createBrowserRouter } from 'react-router';
 
 type AppRouter = ReturnType<typeof createBrowserRouter>;
 
-const Devtools = import.meta.env.DEV
-  ? lazy(() => import('@tanstack/react-query-devtools').then((m) => ({ default: m.ReactQueryDevtools })))
-  : () => null;
+// Testing-2: `import.meta.env.DEV` is TRUE under Vitest, so without the MODE check the devtools
+// toggle button renders into every component test — including the one asserting the app renders
+// nothing while booting.
+const Devtools =
+  import.meta.env.DEV && import.meta.env.MODE !== 'test'
+    ? lazy(() => import('@tanstack/react-query-devtools').then((m) => ({ default: m.ReactQueryDevtools })))
+    : () => null;
 
 export function Providers({ router, queryClient }: { router: AppRouter; queryClient: QueryClient }) {
   return (
@@ -3779,19 +4499,46 @@ import { initI18n } from '@/lib/i18n';
 import { createQueryClient } from './queryClient';
 import { createAppRouter } from './router';
 
-export function startApp() {
-  void initI18n();
-  const queryClient = createQueryClient();
-  startSession({
+/**
+ * Testing-4: the production wiring lives here so `renderApp` can use it too, with overrides.
+ * When `renderApp` built its own runtime, `clearQueryCache: () => queryClient.clear()` was the one
+ * binding no test ever executed — and that binding is what stops the next user on a shared counter
+ * phone from seeing the previous user's data (challenge #84).
+ */
+export function createSessionRuntime(
+  queryClient: QueryClient,
+  overrides: Partial<SessionRuntime> = {},
+): SessionRuntime {
+  return {
     clearQueryCache: () => queryClient.clear(),
     channel: createAuthChannel(),
     // Browsers without Web Locks serialize per tab only; every browser this product targets has them.
     locks: supportsWebLocks() ? webLocks : createInMemoryLocks(),
     reload: () => window.location.reload(),
     log: (message) => console.error(`[easycrm] ${message}`),
-  });
+    ...overrides,
+  };
+}
+
+export function startApp() {
+  void initI18n();
+  const queryClient = createQueryClient();
+  startSession(createSessionRuntime(queryClient));
   return { queryClient, router: createAppRouter() };
 }
+```
+
+`renderApp` (Step 3) builds its runtime with `createSessionRuntime(queryClient, { channel: fakeChannel, locks: createInMemoryLocks(), reload: vi.fn() })` — overriding only what a test must control, and keeping the real `clearQueryCache`. Add the test that binding deserves:
+
+```ts
+it('clears cached server data when the session ends', async () => {
+  const { queryClient } = renderApp('/', { session: authenticated });
+  queryClient.setQueryData(['probe'], 'previous user data');
+
+  await user.click(screen.getByRole('button', { name: /sign out/i }));
+
+  await waitFor(() => expect(queryClient.getQueryCache().getAll()).toHaveLength(0));
+});
 ```
 
 `frontend/src/main.tsx` (replace):
@@ -3827,7 +4574,8 @@ import { setAccessToken } from '@/features/auth/session/accessToken';
 import { createNoopChannel } from '@/features/auth/session/authChannel';
 import { createInMemoryLocks } from '@/features/auth/session/lockProvider';
 import { startSession } from '@/features/auth/session/start';
-import { useSessionStore, type Me, type SessionStatus } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
+import type { Me, SessionStatus } from '@/session/types';
 
 export interface RenderAppOptions {
   session?: { status: SessionStatus; me?: Me | null; accessToken?: string };
@@ -3874,7 +4622,7 @@ import { HttpResponse, http as mswHttp } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { REFRESH_FORBIDDEN_MESSAGE } from '@/features/auth/session/refreshCall';
 import { emitSessionExpired } from '@/features/auth/session/sessionEvents';
-import { useSessionStore } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { errorBody, ownerMe, ownerSession } from '@/test/fixtures';
 import { server } from '@/test/msw';
 import { http } from '@/test/openapiHttp';
@@ -3979,6 +4727,54 @@ describe('RootLayout', () => {
   });
 });
 
+// Testing-1: the whole point of the session design — a 401 mid-session refreshes once and retries
+// — is otherwise tested only with fakes. `renderApp` runs the REAL startSession, so this exercises
+// api → authFetch → bridge → coordinator → callRefresh as one wired system. Without it, deleting
+// `setAuthBridge(...)` from start.ts leaves the inert bridge answering 'ended': every expired token
+// silently logs the user out, and all 17 tasks stay green. F1 would be the first to notice.
+describe('refresh on 401 (real wiring)', () => {
+  it('refreshes once for three concurrent 401s and retries each with the new token', async () => {
+    const STALE = 'stale-token';
+    const FRESH = 'fresh-token';
+    let refreshes = 0;
+    server.use(
+      http.get('/api/v1/auth/me', ({ request, response }) =>
+        request.headers.get('Authorization') === `Bearer ${FRESH}`
+          ? response(200).json(ownerMe)
+          : response(401).json(errorBody('UNAUTHORIZED', 'expired')),
+      ),
+      http.post('/api/v1/auth/refresh', ({ response }) => {
+        refreshes += 1;
+        return response(200).json({ ...ownerSession, accessToken: FRESH });
+      }),
+    );
+    renderApp('/', { session: { ...authenticated, accessToken: STALE } });
+
+    const results = await Promise.all([
+      api.GET('/api/v1/auth/me'),
+      api.GET('/api/v1/auth/me'),
+      api.GET('/api/v1/auth/me'),
+    ]);
+
+    expect(results.map((r) => r.response.status)).toEqual([200, 200, 200]);
+    expect(refreshes).toBe(1); // the coordinator, under the Web Lock, is what makes this 1 and not 3
+    expect(getAccessToken()).toBe(FRESH);
+  });
+
+  it('ends the session and lands on /login when the refresh itself returns 401', async () => {
+    server.use(
+      http.get('/api/v1/auth/me', ({ response }) => response(401).json(errorBody('UNAUTHORIZED', 'expired'))),
+      http.post('/api/v1/auth/refresh', ({ response }) => response(401).json(errorBody('UNAUTHORIZED', 'gone'))),
+    );
+    const { router } = renderApp('/', { session: authenticated });
+
+    await api.GET('/api/v1/auth/me');
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+    expect(useSessionStore.getState().me).toBeNull();
+  });
+});
+
 describe('AppShell', () => {
   it('signs out: POST logout with the client header, then leaves the protected route', async () => {
     let sawHeader: string | null = null;
@@ -4003,6 +4799,8 @@ describe('AppShell', () => {
 
 Run: `pnpm test src/app`
 Expected: PASS for all. If `redirects an anonymous visitor` fails on the search string, compare with `encodeURIComponent('/?tab=1')` = `%2F%3Ftab%3D1` — do not weaken the assertion to a `contains`.
+
+`renderApp` needs a `session.accessToken` option (it already accepts one) and must call the real `startSession`; the refresh-wiring tests import `api` from `@/api/client` and `getAccessToken` from the session. If MSW's `/api/v1/auth/me` route does not exist in the contract's typed handlers, use the typed `http` helper — `me` is a documented operation, so it should.
 
 - [ ] **Step 7: Prove the splash in a real browser, and commit**
 
@@ -4112,6 +4910,28 @@ describe('no request bypasses src/api', () => {
   it('allows fetch inside src/api (non-vacuity)', async () => {
     expect(await ruleIds('src/api/x.ts', "export const go = () => fetch('/x');\n")).not.toContain('no-restricted-globals');
   });
+
+  // P16: the boundary F1 will lean on. A feature reads the session through @/session and never
+  // reaches into features/auth for it.
+  it('lets any feature import @/session but not features/auth/session', async () => {
+    const readSide = await ruleIds(
+      'src/features/zz-fixture/X.ts',
+      "import { useMe } from '@/session/useMe';\nexport const go = () => useMe();\n",
+    );
+    expect(readSide).not.toContain('import-x/no-restricted-paths');
+
+    const writeSide = await ruleIds(
+      'src/features/zz-fixture/Y.ts',
+      "import { endSession } from '@/features/auth/session/session';\nexport const go = () => endSession('logout');\n",
+    );
+    expect(writeSide).toContain('import-x/no-restricted-paths');
+  });
+
+  it('stops src/session importing a feature (non-vacuity for its own zone)', async () => {
+    expect(
+      await ruleIds('src/session/x.ts', "import { LoginPage } from '@/features/auth/pages/LoginPage';\nexport const p = LoginPage;\n"),
+    ).toContain('import-x/no-restricted-paths');
+  });
 });
 
 describe('JSX gates', () => {
@@ -4215,13 +5035,19 @@ export default tseslint.config(
           zones: [
             {
               target: './src/api',
-              from: ['./src/lib', './src/components', './src/features', './src/app'],
+              from: ['./src/lib', './src/components', './src/session', './src/features', './src/app'],
               message: 'api is the lowest layer: it imports nothing else from src.',
             },
             {
               target: ['./src/lib', './src/components'],
-              from: ['./src/features', './src/app'],
-              message: 'lib and components never import features or app.',
+              from: ['./src/session', './src/features', './src/app'],
+              message: 'lib and components never import session, features or app.',
+            },
+            // P16: src/session is the shared READ side. It may use api and lib, nothing above.
+            {
+              target: './src/session',
+              from: ['./src/components', './src/features', './src/app'],
+              message: 'src/session is below features: it reads the session, it does not drive it.',
             },
             { target: './src/features', from: './src/app', message: 'features never import app.' },
             ...features.map((name) => ({
@@ -4252,6 +5078,15 @@ pnpm lint
 ```
 Expected: the gate tests PASS. `pnpm lint` exits 0. **If `pnpm lint` flags existing code**, fix the code (e.g. add a missing dependency to a hook array); if a shadcn-generated file in `src/components/ui/` trips a jsx-a11y rule, fix that file. Never disable a rule to get green. If a gate test fails because a rule id differs in the installed plugin version (e.g. `import-x/no-restricted-paths` renamed), update the expected id **and** confirm by hand that the violating snippet is still reported.
 
+**Testing-8 — make the "allows" tests able to fail.** `not.toContain(ruleId)` also passes when the snippet never parsed, or when the TypeScript resolver could not resolve `@/…` (unresolved imports are simply ignored by `no-restricted-paths`). In `ruleIds`, also return each message's `fatal` flag and null rule ids, and assert in every allow-case that there were none:
+
+```ts
+const { ids, fatal } = await lintOnce(file, source);
+expect(fatal).toEqual([]); // a parse error would otherwise read as "allowed"
+expect(ids).not.toContain('import-x/no-restricted-paths');
+```
+Give this file `{ timeout: 60_000 }`: a cold ESLint start with typescript-eslint and the resolver can exceed the 10 s default on a CI runner.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -4279,7 +5114,7 @@ git commit -m "build(frontend): ESLint layer, no-bypass, a11y, i18n and no-dange
 import { screen, waitFor } from '@testing-library/react';
 import { HttpResponse, http as mswHttp } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { useSessionStore } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { errorBody, ownerMe, ownerSession } from '@/test/fixtures';
 import { server } from '@/test/msw';
 import { http } from '@/test/openapiHttp';
@@ -4406,13 +5241,45 @@ import type { LoginRequest } from '@/api/types';
 
 export function useLogin() {
   return useMutation({
-    mutationFn: async (body: LoginRequest) => unwrap(await api.POST('/api/v1/auth/login', { body })),
+    /**
+     * P15: login WRITES the refresh cookie, so it serializes with refresh under the same Web Lock.
+     * The backend revokes the incoming cookie (`AuthController.login` → `auth::logout`), and
+     * `RefreshTokenService.revoke` revokes the successor of an already-rotated token. Unlocked, a
+     * login racing a boot refresh can revoke the refresh's successor while the refresh's
+     * `Set-Cookie` lands last — the jar keeps a dead cookie and the new session dies at its first
+     * refresh, ~15 minutes later, with nothing on screen to explain it.
+     */
+    mutationFn: async (body: LoginRequest) =>
+      sessionControls().withCookieLock(async () => unwrap(await api.POST('/api/v1/auth/login', { body }))),
   });
 }
+```
+(Import `sessionControls` from `../session/start`. `useSignup` and `useAcceptInvitation` take the same lock, for the same reason — signup and `PublicInvitationController.accept` also revoke the incoming cookie.)
+
+Add one test per hook, in the page test files:
+
+```ts
+it('waits for an in-flight refresh before signing in (P15)', async () => {
+  // A refresh is holding the lock; the login must not reach the network until it lets go.
+  const release = holdCookieLock(); // test helper around the in-memory lock provider
+  const { user } = renderApp('/login', { session: { status: 'anonymous' } });
+
+  await submitLogin();
+  expect(loginRequests).toBe(0);
+
+  release();
+  await waitFor(() => expect(loginRequests).toBe(1));
+});
 ```
 
 `frontend/src/features/auth/workspaceState.ts`:
 ```ts
+/** A11y-5: why the user landed back on /login, when RootLayout sent them (`{ reason: 'expired' }`). */
+export function readEndReasonState(state: unknown): 'expired' | null {
+  if (typeof state !== 'object' || state === null || !('reason' in state)) return null;
+  return state.reason === 'expired' ? 'expired' : null;
+}
+
 /** Router state a page may pass to /login to pre-fill the workspace (signup's lost-response hint). */
 export function readWorkspaceState(state: unknown): string | null {
   if (typeof state !== 'object' || state === null || !('workspace' in state)) return null;
@@ -4435,13 +5302,14 @@ import { TextField } from '@/components/form/TextField';
 import { PageHeading } from '@/components/PageHeading';
 import { Button } from '@/components/ui/button';
 import { applyApiError } from '@/lib/apiError';
+import { forceCase } from '@/lib/caseInput';
 import { useFieldError, useTranslator } from '@/lib/i18n/translator';
 import { safeNext } from '@/lib/safeNext';
 import { readLastWorkspace } from '@/lib/storage';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { useLogin } from '../api/useLogin';
 import { establishSession } from '../session/session';
-import { useSessionStore } from '../session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { readWorkspaceState } from '../workspaceState';
 
 const loginSchema = z.object({
@@ -4461,7 +5329,12 @@ export function LoginPage() {
   const location = useLocation();
   const [params] = useSearchParams();
   const login = useLogin();
-  const [formMessage, setFormMessage] = useState<string | null>(null);
+  // A11y-5: a session that expired mid-task, or was ended from another tab, otherwise drops the
+  // user on an empty login page with no idea what happened. RootLayout passes the reason in state.
+  const endedReason = readEndReasonState(location.state);
+  const [formMessage, setFormMessage] = useState<string | null>(
+    endedReason === 'expired' ? t('login.sessionEnded') : null,
+  );
   useDocumentTitle(t('login.title'));
 
   const form = useForm<LoginValues>({
@@ -4504,8 +5377,7 @@ export function LoginPage() {
           error={fieldError(errors.slug)}
           {...slugField}
           onChange={(event) => {
-            const lower = event.target.value.toLowerCase();
-            if (lower !== event.target.value) event.target.value = lower;
+            forceCase(event, 'lower'); // A11y-8: keeps the caret in place
             void slugField.onChange(event);
           }}
         />
@@ -4679,7 +5551,7 @@ Run: `pnpm test src/lib/gst src/lib/slug.test.ts` — Expected: FAIL before the 
 import { screen, waitFor, within } from '@testing-library/react';
 import { HttpResponse, http as mswHttp } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { useSessionStore } from '@/features/auth/session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { errorBody, ownerSession } from '@/test/fixtures';
 import { server } from '@/test/msw';
 import { http } from '@/test/openapiHttp';
@@ -4830,6 +5702,27 @@ Run — Expected: FAIL (module not found).
 
 - [ ] **Step 3: Implement**
 
+`frontend/src/lib/caseInput.ts` (A11y-8 — used by every field that changes case as you type):
+```ts
+import type { ChangeEvent } from 'react';
+
+/**
+ * Assigning to `event.target.value` moves the caret to the end. On a GSTIN pasted in lowercase
+ * from WhatsApp, fixing one character in the middle then jumps the cursor on every keystroke.
+ * Restore the selection the user had.
+ */
+export function forceCase(event: ChangeEvent<HTMLInputElement>, to: 'upper' | 'lower'): void {
+  const next = to === 'upper' ? event.target.value.toUpperCase() : event.target.value.toLowerCase();
+  if (next === event.target.value) return;
+  const { selectionStart, selectionEnd } = event.target;
+  event.target.value = next;
+  if (selectionStart !== null && selectionEnd !== null) {
+    event.target.setSelectionRange(selectionStart, selectionEnd);
+  }
+}
+```
+`caseInput.test.ts`: typing into the middle of `27aaa` keeps the caret where it was (assert `selectionStart`), and the value is uppercased.
+
 `frontend/src/features/auth/api/useSignupStatus.ts`:
 ```ts
 import { useQuery } from '@tanstack/react-query';
@@ -4840,7 +5733,9 @@ import { authKeys } from './authKeys';
 export function useSignupStatus() {
   return useQuery({
     queryKey: authKeys.signupStatus(),
-    queryFn: async () => unwrap(await api.GET('/api/v1/auth/signup/status')),
+    // Architecture-4: forward the query's AbortSignal, so a superseded or unmounted query really
+    // stops. This is the pattern F1-F3 copy for every list and detail fetch.
+    queryFn: async ({ signal }) => unwrap(await api.GET('/api/v1/auth/signup/status', { signal })),
   });
 }
 ```
@@ -4854,7 +5749,9 @@ import type { SignupRequest } from '@/api/types';
 
 export function useSignup() {
   return useMutation({
-    mutationFn: async (body: SignupRequest) => unwrap(await api.POST('/api/v1/auth/signup', { body })),
+    // P15: signup writes the refresh cookie and revokes the incoming one — same lock as refresh.
+    mutationFn: async (body: SignupRequest) =>
+      sessionControls().withCookieLock(async () => unwrap(await api.POST('/api/v1/auth/signup', { body }))),
   });
 }
 ```
@@ -4862,8 +5759,8 @@ export function useSignup() {
 `frontend/src/features/auth/pages/SignupPage.tsx`:
 ```tsx
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useRef, useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useRef, useState, type ChangeEvent } from 'react';
+import { useForm } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link, Navigate } from 'react-router';
 import * as z from 'zod/mini';
@@ -4876,6 +5773,7 @@ import { PageHeading } from '@/components/PageHeading';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { applyApiError, parseEnvelope } from '@/lib/apiError';
+import { forceCase } from '@/lib/caseInput';
 import { GST_STATES } from '@/lib/gst/states';
 import { useFieldError, useTranslator } from '@/lib/i18n/translator';
 import { suggestSlug } from '@/lib/slug';
@@ -4883,7 +5781,7 @@ import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { useSignup } from '../api/useSignup';
 import { useSignupStatus } from '../api/useSignupStatus';
 import { establishSession } from '../session/session';
-import { useSessionStore } from '../session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 
 const signupSchema = z.object({
   businessName: z.string().check(z.trim(), z.minLength(1, { error: 'validation.required' })),
@@ -4920,10 +5818,13 @@ export function SignupPage() {
     resolver: zodResolver(signupSchema),
     defaultValues: { businessName: '', slug: '', stateCode: '', gstin: '', email: '', phone: '', password: '' },
   });
-  const businessName = useWatch({ control: form.control, name: 'businessName' });
-  useEffect(() => {
-    if (!form.getFieldState('slug').isDirty) form.setValue('slug', suggestSlug(businessName));
-  }, [businessName, form]);
+  // Architecture Minor-2: suggest in the change handler, not in an effect. An effect reacting to a
+  // user event costs an extra render per keystroke, and `isDirty` flips back to false when the user
+  // clears the slug — so the suggestion would silently overwrite a field they deliberately emptied.
+  const slugEdited = useRef(false);
+  const onBusinessNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!slugEdited.current) form.setValue('slug', suggestSlug(event.target.value));
+  };
 
   if (status === 'authenticated') return <Navigate to="/" replace />;
 
@@ -4977,7 +5878,12 @@ export function SignupPage() {
     }
   });
 
-  const slugField = form.register('slug');
+  const businessNameField = form.register('businessName');
+  const slugField = form.register('slug', {
+    onChange: () => {
+      slugEdited.current = true; // once touched, the suggestion stops overwriting it
+    },
+  });
   const gstinField = form.register('gstin');
   const { errors, isSubmitting } = form.formState;
 
@@ -5000,7 +5906,11 @@ export function SignupPage() {
           autoComplete="organization"
           label={t('signup.businessName')}
           error={fieldError(errors.businessName)}
-          {...form.register('businessName')}
+          {...businessNameField}
+          onChange={(event) => {
+            onBusinessNameChange(event); // suggests the slug in the handler, not an effect
+            void businessNameField.onChange(event);
+          }}
         />
         <TextField
           id="signup-slug"
@@ -5012,8 +5922,7 @@ export function SignupPage() {
           error={fieldError(errors.slug)}
           {...slugField}
           onChange={(event) => {
-            const lower = event.target.value.toLowerCase();
-            if (lower !== event.target.value) event.target.value = lower;
+            forceCase(event, 'lower'); // A11y-8: keeps the caret in place
             void slugField.onChange(event);
           }}
         />
@@ -5035,8 +5944,7 @@ export function SignupPage() {
           error={fieldError(errors.gstin)}
           {...gstinField}
           onChange={(event) => {
-            const upper = event.target.value.toUpperCase();
-            if (upper !== event.target.value) event.target.value = upper;
+            forceCase(event, 'upper'); // A11y-8: keeps the caret in place
             void gstinField.onChange(event);
           }}
         />
@@ -5220,7 +6128,8 @@ import { authKeys } from './authKeys';
 export function useInvitationPreview(token: string) {
   return useQuery({
     queryKey: authKeys.invitation(token),
-    queryFn: async () => unwrap(await api.GET('/api/v1/auth/invitations/{token}', { params: { path: { token } } })),
+    queryFn: async ({ signal }) =>
+      unwrap(await api.GET('/api/v1/auth/invitations/{token}', { params: { path: { token } }, signal })),
     enabled: token !== '',
   });
 }
@@ -5235,8 +6144,12 @@ import type { AcceptInvitationRequest } from '@/api/types';
 
 export function useAcceptInvitation(token: string) {
   return useMutation({
+    // P15: accept issues a session and revokes the incoming cookie
+    // (`PublicInvitationController.accept` → `auth::logout`) — same lock as refresh.
     mutationFn: async (body: AcceptInvitationRequest) =>
-      unwrap(await api.POST('/api/v1/auth/invitations/{token}/accept', { params: { path: { token } }, body })),
+      sessionControls().withCookieLock(async () =>
+        unwrap(await api.POST('/api/v1/auth/invitations/{token}/accept', { params: { path: { token } }, body })),
+      ),
   });
 }
 ```
@@ -5268,13 +6181,14 @@ import { PageHeading } from '@/components/PageHeading';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { applyApiError } from '@/lib/apiError';
+import { forceCase } from '@/lib/caseInput';
 import { useFieldError, useTranslator } from '@/lib/i18n/translator';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { useAcceptInvitation } from '../api/useAcceptInvitation';
 import { useInvitationPreview } from '../api/useInvitationPreview';
 import { useRoleLabel } from '../roleLabel';
 import { establishSession } from '../session/session';
-import { useSessionStore } from '../session/sessionStore';
+import { useSessionStore } from '@/session/sessionStore';
 import { sessionControls } from '../session/start';
 
 const acceptSchema = z.object({
@@ -5310,7 +6224,7 @@ export function InvitePage() {
 
   if (preview.isPending || status === 'booting') {
     return (
-      <main className={CARD} aria-busy="true">
+      <main className={CARD} key="loading" aria-busy="true">
         <p className="sr-only">{t('invite.loading')}</p>
         <Skeleton aria-hidden className="h-8 w-2/3" />
         <Skeleton aria-hidden className="h-6 w-full" />
@@ -5321,14 +6235,25 @@ export function InvitePage() {
 
   if (preview.isError) {
     const invalid = preview.error instanceof ApiHttpError && preview.error.status === 404;
+    // A11y-7: not every failure is the network. Telling someone on good Wi-Fi to check their
+    // connection because the server rate-limited them is simply wrong; reuse the same 429/5xx/
+    // network branches applyApiError already has. No new keys needed.
+    const message = applyApiError(
+      toApiFailure(preview.error),
+      { setError: () => {}, fields: [] },
+      translator,
+    ).formMessage;
     return (
-      <main className={CARD}>
+      // A11y-4: `key` per branch. React keeps one <main>/<PageHeading> instance across these
+      // branches, so the heading's focus-on-mount effect never re-runs while the focused "Try
+      // again" button is removed — focus falls to <body>.
+      <main className={CARD} key={invalid ? 'invalid' : 'error'}>
         <PageHeading>{t('invite.heading')}</PageHeading>
         {invalid ? (
           <p>{t('invite.invalid')}</p>
         ) : (
           <>
-            <FormAlert message={tc('errors.network')} />
+            <FormAlert message={message} />
             <Button onClick={() => void preview.refetch()}>{tc('actions.retry')}</Button>
           </>
         )}
@@ -5341,7 +6266,7 @@ export function InvitePage() {
   if (status === 'authenticated' && me) {
     // F0-10: no redirect (it would lose the link), no silent accept (it would replace this session in every tab).
     return (
-      <main className={CARD}>
+      <main className={CARD} key="signed-in">
         <PageHeading>{t('invite.heading')}</PageHeading>
         <p>
           <Trans
@@ -5397,7 +6322,7 @@ export function InvitePage() {
   const { errors, isSubmitting } = form.formState;
 
   return (
-    <main className={CARD}>
+    <main className={CARD} key="accept">
       <PageHeading>{t('invite.heading')}</PageHeading>
       <p>
         <Trans
@@ -5454,11 +6379,14 @@ Expected: PASS; clean.
 
 ---
 
-### Task 13: Per-route JS budget and the measured dependency ledger
+### Task 13: Per-route JS budget — final run — and the measured dependency ledger
+
+> **Changed by P18 (Performance-2):** `check-budget.mjs`, its test and the visualizer now land in **Task 2**, with an entry-only route map that Tasks 10–12 extend. This task keeps the **dependency ledger** (and its new guard test), the `deps:sizes` script, and the final full-budget run with the numbers recorded. Steps 1–3 below therefore execute in Task 2; leave them here as the specification of what Task 2 builds, and in this task only re-run them.
 
 **Files:**
-- Create: `frontend/scripts/check-budget.mjs`, `frontend/scripts/check-budget.test.ts`, `frontend/scripts/dependency-sizes.mjs`
-- Modify: `frontend/vite.config.ts` (visualizer), `frontend/DEPENDENCIES.md`
+- Create: `frontend/scripts/dependency-sizes.mjs`, `frontend/scripts/dependencies.test.ts` (ledger guard, Performance-8)
+- Modify: `frontend/DEPENDENCIES.md`
+- (Task 2 already created `frontend/scripts/check-budget.mjs`, `check-budget.test.ts` and the visualizer wiring in `vite.config.ts`.)
 
 **Interfaces:**
 - Consumes: `dist/.vite/manifest.json` from `vite build` (Task 2 set `build.manifest: true`).
@@ -5689,6 +6617,27 @@ Expected: `pnpm budget` prints three routes, each under 200 KB, and exits 0. If 
 
 Replace the table in `frontend/DEPENDENCIES.md` with one row per **runtime** dependency from `pnpm list --prod --depth 0`, filling `Version` from that list and `Chunk` / `Gzipped` from `pnpm deps:sizes` (map a chunk file to `entry` if it is the `index.html` chunk, else to the route whose manifest key imports it). Keep the "Why" column: react/react-dom (UI runtime), react-router (routing), @tanstack/react-query (server state), zustand (session status), react-hook-form + @hookform/resolvers + zod (forms; `zod/mini` only), i18next + react-i18next + i18next-resources-to-backend (i18n), openapi-fetch (typed client), class-variance-authority + clsx + tailwind-merge + the Radix package (shadcn primitives), lucide-react (password toggle icons), tw-animate-css (CSS only; no JS). Add a line under the table: `Route totals at <commit>: /login N KB, /signup N KB, /invite/:token N KB (gzipped, budget 200 KB).`
 
+- [ ] **Step 5b: Guard the ledger, so it cannot quietly go stale** (Performance-8)
+
+A ledger filled once by hand is a document, not a gate: F1 can add a runtime dependency and nobody notices. `frontend/scripts/dependencies.test.ts`:
+
+```ts
+// @vitest-environment node
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import pkg from '../package.json' with { type: 'json' };
+
+describe('dependency ledger', () => {
+  it('has a row for every runtime dependency', () => {
+    const ledger = readFileSync(new URL('../DEPENDENCIES.md', import.meta.url), 'utf8');
+    const names = Object.keys(pkg.dependencies ?? {});
+    expect(names.length).toBeGreaterThan(0); // non-vacuity
+    expect(names.filter((name) => !new RegExp(`^\\|\\s*${name}\\s*\\|`, 'm').test(ledger))).toEqual([]);
+  });
+});
+```
+See it red once: add a throwaway `"left-pad": "^1"` to `dependencies`, run, then remove it. Add a **"Pulled in by"** column to the table, filled from `pnpm deps:sizes`, so a transitive runtime package that shows up in the bundle has somewhere to be recorded.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -5766,9 +6715,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 const MAIN_API = 18080;
 const REFRESH_API = 18081;
-const MAIN_WEB = 4173;
-const REFRESH_WEB = 4174;
-const reuse = !process.env.CI;
+// Testing-9: NOT Vite preview's default 4173. A leftover `pnpm preview` from a manual check
+// (Task 8 Step 7 runs one) listens there, proxies to :8080, and `reuseExistingServer` would
+// silently adopt it — the suite would then test a different backend than it started.
+const MAIN_WEB = 41731;
+const REFRESH_WEB = 41741;
+const reuse = false; // always start our own; the cost is a few seconds, the failure mode is silent
 
 // Commands run from frontend/ (cwd '..' is relative to this file).
 const backend = (apiPort: number, webPort: number, extra: string[] = []) => ({
@@ -5948,6 +6900,21 @@ const walk = (suite, trail) => {
 };
 for (const suite of report.suites ?? []) walk(suite, [suite.title]);
 console.log(flaky.length ? flaky.map((f) => `- ${f}`).join('\n') : 'None: every test passed on its first attempt.');
+
+// Testing-6: Playwright exits 0 when a project's testDir matches NOTHING while the other passes,
+// so "green" can mean "half the suite never ran". Count what actually executed, per project.
+const EXPECTED = { 'e2e-main': 9, 'e2e-refresh': 2 }; // update alongside the specs
+const ran = {};
+const countWalk = (suite, projects) => {
+  for (const spec of suite.specs ?? []) for (const t of spec.tests ?? []) projects[t.projectName] = (projects[t.projectName] ?? 0) + 1;
+  for (const child of suite.suites ?? []) countWalk(child, projects);
+};
+for (const suite of report.suites ?? []) countWalk(suite, ran);
+const short = Object.entries(EXPECTED).filter(([name, n]) => (ran[name] ?? 0) < n);
+if (short.length) {
+  console.log(`\n**Missing tests:** ${short.map(([n, e]) => `${n} ran ${ran[n] ?? 0}, expected ${e}`).join('; ')}`);
+  process.exit(1);
+}
 ```
 
 - [ ] **Step 3: Write the five `e2e-main` paths and the guard proofs**
@@ -5962,6 +6929,8 @@ test('signup, survive a reload, sign out, and sign back in with the remembered w
   const account = newAccount('owner');
 
   await signUpThroughUi(page, account);
+  // A11y-1 (Task 8 Step 4): the splash must be gone once React has rendered.
+  await expect(page.locator('#splash')).toBeHidden();
   await expectAccessible(page);
 
   await page.reload();
@@ -5969,6 +6938,16 @@ test('signup, survive a reload, sign out, and sign back in with the remembered w
 
   await signOutThroughUi(page);
   await expect(page.getByLabel('Workspace', { exact: true })).toHaveValue(account.slug);
+  await expectAccessible(page);
+
+  // A11y-2: axe has never run on a page in its ERROR state, so the colour-contrast rule has never
+  // seen the alert or a field error — the exact colours the review found at ~3.99:1. One wrong
+  // password fixes that, and costs one request.
+  await page.getByLabel('Email', { exact: true }).fill(account.email);
+  await page.getByLabel('Password', { exact: true }).fill('wrong-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('alert')).toContainText('incorrect');
+  await expect(page.getByRole('alert')).toBeFocused(); // A11y-1: the message is not just announced
   await expectAccessible(page);
 
   await page.getByLabel('Email', { exact: true }).fill(account.email);
@@ -6059,7 +7038,59 @@ test('signing out in one tab signs the other out, and the next user sees nothing
   for (const tab of [page, other]) await expect(tab.getByText(first.email)).toHaveCount(0);
   expect(otherCsp).toEqual([]);
 });
+
+// Testing-4 / challenge #84: the dangerous case is a tab still SHOWING user 1 while the shared
+// cookie jar switches to user 2 — no sign-out involved. Today that path is covered only by a unit
+// test with a fake channel and a spy on clearQueryCache.
+test('a tab showing one user reloads into the other when the cookie jar switches underneath it', async ({
+  context,
+  page,
+  request,
+}) => {
+  const first = newAccount('first');
+  const second = newAccount('second');
+  await signUpThroughUi(page, first);
+  await expect(page.getByText(signedInText(first.slug, first.email))).toBeVisible();
+
+  // Same cookie jar, no BroadcastChannel message: this is the "another tab/device signed in" case.
+  await signupViaApi(request, second);
+
+  const other = await context.newPage();
+  await other.goto('/'); // boots as `second` and broadcasts login
+  await expect(other.getByText(signedInText(second.slug, second.email))).toBeVisible();
+
+  // The first tab must notice the principal change and reload rather than keep rendering `first`.
+  await expect(page.getByText(signedInText(second.slug, second.email))).toBeVisible();
+  await expect(page.getByText(first.email)).toHaveCount(0);
+});
+
+// P14/Security-1: the Critical finding, in a real browser. A sign-out whose POST never lands must
+// not leave another tab believing it is signed out while the cookie is still live.
+test('a failed sign-out blocks the other tab and survives a reload', async ({ context, page }) => {
+  const account = newAccount('owner');
+  await signUpThroughUi(page, account);
+
+  const other = await context.newPage();
+  await other.goto('/');
+  await expect(other.getByText(signedInText(account.slug, account.email))).toBeVisible();
+
+  await context.route('**/api/v1/auth/logout', (route) => route.abort('failed'));
+  await page.getByRole('button', { name: 'Sign out' }).click();
+
+  // Not the login page: the blocking screen, in BOTH tabs.
+  await expect(page.getByRole('heading', { name: /Sign-out did not complete/ })).toBeVisible();
+  await expect(other.getByRole('heading', { name: /Sign-out did not complete/ })).toBeVisible();
+
+  // And a reload must not sign the user back in — the marker outlives the tab.
+  await other.reload();
+  await expect(other.getByText(signedInText(account.slug, account.email))).toHaveCount(0);
+
+  // Once the network returns, the retry completes and the login page finally appears.
+  await context.unroute('**/api/v1/auth/logout');
+  await expect(page.getByRole('heading', { name: 'Sign in to EasyCRM' })).toBeVisible({ timeout: 15_000 });
+});
 ```
+(`cross-tab-logout.spec.ts` gains `signupViaApi` to its imports. These two tests are the E2E half of challenges #84 and #86.)
 
 `frontend/e2e/main/invite-invalid.spec.ts`:
 ```ts
@@ -6132,28 +7163,47 @@ import { newAccount } from '../support/api';
 import { signedInText, signUpThroughUi } from '../support/ui';
 
 // Spec §6.4 test 6, asserted as the invariant Web Locks provide (plan decision P11): across two tabs
-// booting at once, at most one refresh is ever in flight. Each response is held 1.5 s so that, without
-// serialization, the second tab's refresh is guaranteed to overlap the first.
+// booting at once, at most one refresh is ever in flight.
+//
+// Testing-5: the first draft held each response for a fixed 1.5 s and hoped tab B's refresh landed
+// inside that window. On a slow CI runner — page load plus i18n init — it may not, so a broken
+// (no-op) lock could pass and a real regression would be caught only sometimes. Hold tab A's
+// response until tab B's refresh is OBSERVED (or 5 s pass): without locks the overlap is then
+// certain; with locks, B never arrives and the hold simply times out.
+//
+// The in-flight count is measured from context request events, not inside the handler: the handler
+// only learns a response was ACKNOWLEDGED by Playwright, which is later than the browser receiving it.
 test('two tabs booting at once never run two refreshes, and both stay signed in', async ({ context, page }) => {
   const account = newAccount('tabs');
   await signUpThroughUi(page, account);
   const other = await context.newPage();
   const otherCsp = watchCsp(other);
 
+  const isRefresh = (url: string) => url.includes('/api/v1/auth/refresh');
   let inFlight = 0;
   let maxInFlight = 0;
   let refreshes = 0;
-  await context.route('**/api/v1/auth/refresh', async (route) => {
+  let secondArrived!: () => void;
+  const secondRefresh = new Promise<void>((resolve) => (secondArrived = resolve));
+
+  context.on('request', (request) => {
+    if (!isRefresh(request.url())) return;
     inFlight += 1;
     refreshes += 1;
     maxInFlight = Math.max(maxInFlight, inFlight);
-    try {
-      const response = await route.fetch();
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
-      await route.fulfill({ response });
-    } finally {
-      inFlight -= 1;
-    }
+    if (refreshes > 1) secondArrived();
+  });
+  const done = (request: { url(): string }) => {
+    if (isRefresh(request.url())) inFlight -= 1;
+  };
+  context.on('requestfinished', done);
+  context.on('requestfailed', done);
+
+  await context.route('**/api/v1/auth/refresh', async (route) => {
+    const response = await route.fetch();
+    // Wait for a second refresh to show up — or give up after 5 s, which is the serialized case.
+    await Promise.race([secondRefresh, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+    await route.fulfill({ response });
   });
 
   const signedIn = (tab: Page) => expect(tab.getByText(signedInText(account.slug, account.email))).toBeVisible({ timeout: 15_000 });
@@ -6229,7 +7279,9 @@ In `frontend/src/app/bootstrap.ts`, temporarily change the `locks:` line to `loc
 pnpm build
 pnpm e2e --project=e2e-refresh -g 'two tabs' 2>&1 | tee /tmp/f0b-noop-locks-red.txt | tail -20
 ```
-Expected: FAIL with `two refreshes overlapped: cross-tab Web Locks serialization is broken` — `Expected: 1, Received: 2`. **If it passes, the test is vacuous: stop and redesign it before continuing.** Copy the failure lines into your notes for the Task 17 HANDOFF entry, then restore and re-verify:
+Expected: FAIL with `two refreshes overlapped: cross-tab Web Locks serialization is broken` — `Expected: 1, Received: 2`. With the latch above this is deterministic rather than timing-dependent: tab A's response is held precisely until tab B's refresh arrives. **If it still passes, the test is vacuous: stop and redesign it before continuing.**
+
+**Also record a second red run, for P15** (Security-2 / Architecture-1): in `useLogin.ts`, drop the `withCookieLock(...)` wrapper, rebuild, and run a new spec in which a login is issued while a boot refresh is in flight; it must fail. This is the only place the login-versus-refresh race is observable, since the unit tests fake the lock. Copy the failure lines into your notes for the Task 17 HANDOFF entry, then restore and re-verify:
 ```bash
 git checkout -- src/app/bootstrap.ts
 pnpm build && pnpm e2e --project=e2e-refresh
@@ -6390,7 +7442,12 @@ class FrontendWorkflowTest {
                 assertTrue(
                         String.valueOf(step.get("uses")).startsWith("actions/upload-artifact"),
                         name + " / " + step.get("name") + " is conditional but is not an artifact upload");
-                assertEquals("failure()", String.valueOf(condition), name + " / " + step.get("name"));
+                // Performance-3: the bundle report is the ONE artifact that must also survive a
+                // failing gate — a budget failure with no treemap forces whoever investigates to
+                // rebuild at that exact commit to find which package grew. Every other upload
+                // stays failure()-only so a green run does not accumulate artifacts.
+                String allowed = "Upload bundle report".equals(step.get("name")) ? "!cancelled()" : "failure()";
+                assertEquals(allowed, String.valueOf(condition), name + " / " + step.get("name"));
             }
         }
     }
@@ -6404,10 +7461,20 @@ class FrontendWorkflowTest {
         assertTrue(drift.contains("pnpm gen:api") && drift.contains("git diff --exit-code"), drift);
         assertTrue(run("frontend", "Typecheck").contains("pnpm typecheck"));
         assertTrue(run("frontend", "Lint").contains("pnpm lint"));
-        assertTrue(run("frontend", "Unit and component tests").contains("pnpm test"));
+        // Testing-6: `contains("pnpm test")` also accepts a bare `pnpm test`, which silently drops
+        // Task 17's coverage floor. Require the script that enforces it.
+        assertTrue(
+                run("frontend", "Unit and component tests").contains("pnpm test:coverage"),
+                "the unit-test gate must run the coverage script, or the coverage floor is not enforced");
+        assertTrue(run("frontend", "Build").contains("pnpm build")); // the job's own build step
+        assertTrue(run("e2e", "Build the frontend").contains("pnpm build"));
         assertTrue(run("frontend", "Route JS budget").contains("pnpm budget"));
         String e2e = run("e2e", "End-to-end tests");
         assertTrue(e2e.contains("pnpm e2e"), e2e);
+        // Testing-6: a narrowed run would skip the refresh-race specs entirely and still be green.
+        for (String narrowing : List.of("--project", "--grep", " -g ")) {
+            assertFalse(e2e.contains(narrowing), "the E2E gate must run every project and test, but has " + narrowing);
+        }
         if (e2e.contains("set +e")) {
             assertTrue(e2e.strip().endsWith("exit $status"), "set +e is only allowed when the step exits with the test status:\n" + e2e);
         }
@@ -6484,6 +7551,9 @@ Append under `jobs:` (after `dependency-check`):
         run: pnpm budget
 
       - name: Upload bundle report
+        # Performance-3: also upload when the budget gate FAILED — that is the run whose treemap
+        # someone needs. !cancelled() keeps it out of cancelled runs only.
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: bundle-report
@@ -6644,7 +7714,7 @@ Then, one at a time, make each change to `ci.yml`, run `./gradlew test --tests '
 2. `if: github.event_name == 'push'` on `Lint` → `must not carry if:`.
 3. `pnpm budget || true` → `must not swallow failure`.
 4. `image: postgres:16-alpine` → `expected an exact tag`.
-5. `if: always()` on `Upload bundle report` → `expected: <failure()>`.
+5. `if: github.event_name == 'push'` on `Upload bundle report` → `expected: <!cancelled()>` (the bundle report is the one upload allowed `!cancelled()`; every other upload must still be `failure()`).
 6. Remove `exit $status` from the E2E step → `set +e is only allowed when…`.
 
 - [ ] **Step 7: Every frontend gate seen red (spec §6.5)**
@@ -6702,7 +7772,14 @@ With the stack running (`docker compose up -d` in `backend/`, `SPRING_PROFILES_A
 
 Record pass/fail per line for the HANDOFF entry. Fix any failure in code (with a test where one is possible) before continuing.
 
-- [ ] **Step 3: Engineering challenges #84 and #85**
+- [ ] **Step 2b: Extra walkthrough lines from the plan review (2026-09-19)**
+
+- [ ] **200% browser zoom** on `/signup` and the shell header: no horizontal scroll, no clipped labels (A11y-10, WCAG 1.4.4/1.4.10). The cheapest proxy for longer Hindi strings before the Hindi pass.
+- [ ] **The alert is actually seen:** on a 360 px viewport, submit `/signup` with the network offline; the "Can't reach EasyCRM" message must be in view without scrolling, and focused (A11y-1).
+- [ ] **Measure the alert's contrast** with DevTools on that same screen and record the ratio; it must be ≥ 4.5:1 (A11y-2).
+- [ ] **Sign out with the backend stopped:** both tabs show the blocking screen, a reload does NOT sign back in, and starting the backend lets the retry finish (P14/Security-1 — the Critical finding, by hand).
+
+- [ ] **Step 3: Engineering challenges #84, #85 and #86**
 
 Append to `docs/superpowers/engineering-challenges.md`, following the template at the top of that file:
 
@@ -6763,8 +7840,13 @@ would pass through an ordinary refresh instead of the grace window.
 ### The solution
 
 - Assert the invariant the control provides rather than a downstream symptom: count refresh requests
-  in flight across both tabs inside the route handler, holding each response 1.5 s. With Web Locks the
-  maximum is 1; with a no-op lock it is 2. The red run with `noopLocks` is recorded.
+  in flight across both tabs, and hold the first response **until a second refresh is observed** (or
+  5 s pass) rather than for a fixed 1.5 s — a fixed hold makes the overlap a race against page-load
+  speed on a CI runner, so a broken lock could pass. With Web Locks the maximum in flight is 1; with
+  a no-op lock it is 2. The red run with `noopLocks` is recorded.
+- Count from the context's `request`/`requestfinished` events, not inside the route handler: the
+  handler observes when Playwright acknowledged a response, which is later than the browser
+  receiving it, and can report an overlap that did not happen.
 - For the lost response, restore the pre-rotation cookie explicitly with `context.addCookies` before
   aborting, and assert that the recovering request's `Cookie` header carries the pre-rotation value —
   proof the grace path, not a normal rotation, did the recovery.
@@ -6775,6 +7857,49 @@ An end-to-end test for a concurrency control should assert the control's own inv
 point the harness genuinely observes, and must be run once with the control removed. If the failure
 you are trying to provoke depends on an ordering your tooling does not let you pin, the test can pass
 for the wrong reason.
+```
+
+```markdown
+## Challenge 86 — A sign-out that fails leaves the device signed in, and the UI says otherwise
+
+**Phase:** Design (F0b plan review)
+
+### The problem
+
+The refresh token lives in an httpOnly cookie, so JavaScript cannot delete it. Only the server can, by
+answering 204 to `POST /auth/logout`. The first design handled a failed logout by clearing local state,
+showing a blocking "signing out" screen in the tab that started it, and retrying every 5 s.
+
+Two things make that insufficient, and both are ordinary on a shared counter phone:
+
+1. **The blocking state was in memory, in one tab.** The other tabs got a plain `logout` broadcast, so
+   they showed the login page — while the cookie was still live. A reload there boots, refreshes,
+   gets 200, and silently signs the previous user back in. If the retrying tab is closed, or Android
+   discards it, nobody ever completes the logout and the cookie lives its full 30 days.
+2. **The retry POSTs whatever cookie is in the jar at that moment.** If someone else signs in first,
+   the retry logs *them* out instead — a sign-out that reaches across users.
+
+The state is durable (a cookie shared by every tab); the flag guarding it was not.
+
+### The solution
+
+- A durable marker, `localStorage['easycrm.logoutPending']`, written before the POST and cleared only
+  on a 204 — or when a login, signup or accept succeeds, since each of those revokes the stale cookie
+  server-side (`AuthController.login` → `auth::logout`).
+- Boot checks the marker **before** refreshing: a device that owes a logout finishes it rather than
+  re-establishing the session the user asked to end.
+- Other tabs are told `signing-out`, not `logout`, so they block instead of offering a login page that
+  would lie.
+- The retry stops as soon as any tab broadcasts `login`.
+- The POST runs inside the same Web Lock as refresh, so logout cannot interleave with a rotation
+  (which could otherwise leave the successor live — the backend follow-up HANDOFF records).
+
+### Lesson
+
+When only the server can revoke a credential, "signed out" is a server fact, and any local state
+representing it must be as durable and as shared as the credential itself. An in-memory flag in one
+tab is not a revocation; it is a picture of one. And a retry that carries ambient authority must check
+that the authority is still the one it meant to revoke.
 ```
 
 - [ ] **Step 4: Spec corrections and amendments**
@@ -6805,6 +7930,16 @@ reasoning.
 - **P11** E2E test 6 asserts at most one refresh in flight across tabs (challenge #85) (§6.4).
 - **P12** Boundary lint uses `import-x/no-restricted-paths` zones (§4.3).
 - **P13** The dependency ledger is measured from the production build (§4.2).
+- **P14** A pending logout is durable (`localStorage`) and finished at boot before any refresh; other
+  tabs are told `signing-out`, not `logout`, until the server confirms 204 (§4.4).
+- **P15** Login, signup, invitation accept and logout take the same Web Lock as refresh, because each
+  writes the shared refresh cookie (§4.4, and F0a's `AuthController` stale-cookie revoke).
+- **P16** The session's read side (`Me`, `Role`, status, `useMe`) lives in `src/session/`, below
+  `features/`, so F1's role-aware UI needs no exception to the layer rule (§4.3, §5).
+- **P17** TanStack Query uses `networkMode: 'always'`: offline requests fail into the error UI rather
+  than pausing invisibly (§4.5).
+- **P18** The per-route JS budget lands with the scaffold and every task re-runs it (§4.2, §6.5).
+- **P19** Each gate task ends by breaking one named line and confirming the named test goes red (§6.5).
 ```
 
 In `docs/superpowers/specs/2026-07-22-easycrm-design.md`, at the end of section `## 5. Frontend Architecture` (immediately before the next `## ` heading), add:
@@ -6828,9 +7963,13 @@ In `docs/superpowers/specs/2026-07-22-easycrm-design.md`, at the end of section 
 
 `docs/ROADMAP.md` — update the header "what changed" block, §1.1 (frontend row), §1.4 (remove "Frontend (zero lines)" and "`/invite/{token}` page"), Part 5 Frontend row (F0 done; F1–F3 left), Part 6 item 4 and §6.1 ("F0b next" → "F1 next"), with the verified commit and test counts.
 
+- [ ] **Step 5b: Record the specialist review of this plan**
+
+Append to the F0 spec's Part 9 (the specialist review record) a short subsection **"Plan review, 2026-09-19"**: all five lenses reviewed `plans/2026-09-16-f0b-frontend-foundation.md`; all five returned "Ready with fixes"; the fixes became **P14–P19** plus the smaller items marked in the plan with their finding ids (`Security-1`, `Architecture-3`, `Performance-1`, `A11y-2`, `Testing-1`, …). Name the Critical one explicitly — a failed sign-out could sign the previous user back in — and that its proof is the E2E test in Task 14 plus the boot unit test in Task 6.
+
 - [ ] **Step 6: End-of-session challenge pass**
 
-Ask: did implementation hit anything non-obvious not yet logged — e.g. the jsdom `AbortSignal` probe needing the happy-dom fallback, a Radix/shadcn primitive tripping the CSP, `requiredProperties` being ignored and needing the per-component form, or Spring's whole-list replacement for the rate-limit args? If yes, log it as #86+ using the template, in this same commit.
+Ask: did implementation hit anything non-obvious not yet logged — e.g. the jsdom `AbortSignal` probe needing the happy-dom fallback, a Radix/shadcn primitive tripping the CSP, `requiredProperties` being ignored and needing the per-component form, or Spring's whole-list replacement for the rate-limit args? If yes, log it as #87+ using the template, in this same commit (#84-#86 are already taken by Step 3).
 
 - [ ] **Step 7: Final verification**
 
@@ -6850,6 +7989,6 @@ Expected: `BUILD SUCCESSFUL` with the count recorded in HANDOFF; every frontend 
 
 ```bash
 git add docs frontend
-git commit -m "docs: record F0b -- challenges 84-85, spec amendments, coverage floor, handoff and roadmap"
+git commit -m "docs: record F0b -- challenges 84-86, spec amendments, coverage floor, handoff and roadmap"
 ```
 Then request the final review — general code review **plus the specialist reviewers whose "Use when" matches** (all five frontend lenses plausibly do: architecture, performance, security, a11y-i18n, testing), dispatched in parallel on the branch range; if `subagent_type: frontend-review-<lens>` is rejected, dispatch a `general-purpose` agent told to read `.claude/agents/frontend-review-<lens>.md` and follow it verbatim (it worked for F0a) — verify each finding against the code before acting, and use `superpowers:finishing-a-development-branch`. **Do not push**; pushing is the owner's call.
