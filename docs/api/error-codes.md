@@ -16,6 +16,15 @@ Every error uses one envelope: `{"error":{"code","message","fields"?,"fieldCodes
 3. A hand-thrown `ValidationException` or `ConflictException` a frontend form will display **must**
    pass a code (`new ValidationException(field, message, CODE)`). Add the code to the table below in
    the same change.
+4. `SIZE` and `PATTERN` are **parameterised** — the same code means "too short" on one field and
+   "too long" on another, and carries no min/max itself. A bare `errors.fields.SIZE` /
+   `errors.fields.PATTERN` translation ("This value has the wrong length.") is a safe fallback but
+   states no real limit, so the frontend resolves a **per-field** key first
+   (`errors.fields.<field>.<CODE>`, e.g. `errors.fields.password.SIZE` → "Use at least 8
+   characters.") before falling back to the bare code key (`frontend/src/lib/apiError.ts`,
+   `applyApiError`). Adding a new `@Size`/`@Pattern` field that a form displays means adding its
+   per-field key to `frontend/src/locales/en/common.json`'s `errors.fields.<field>` block, not just
+   relying on the generic one.
 
 ## Domain codes
 

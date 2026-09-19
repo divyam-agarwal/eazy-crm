@@ -8,6 +8,14 @@ import { stopSession } from '@/features/auth/session/start';
 import { resetSessionStoreForTests } from '@/session/sessionStore';
 import { server } from './msw';
 
+// jsdom does not implement scrollIntoView at all (the property is undefined, not a no-op), so
+// `vi.spyOn(Element.prototype, 'scrollIntoView')` in an individual test (R27) has nothing to wrap.
+// Give it a base no-op once per test file's fresh jsdom environment; restoreMocks still undoes any
+// per-test spyOn back to this stub, never leaking a real assertion mock into the next file.
+if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
   // Task 6: a leaked boot/logout — its `online` listeners, its scheduled retry timer — from one

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { FieldError } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -16,4 +17,17 @@ export function useTranslator(): Translator {
     const untypedT = i18n.t as unknown as (key: string, options?: Record<string, unknown>) => string;
     return { t: (key, options) => untypedT(key, options), exists: (key) => i18n.exists(key) };
   }, [i18n]);
+}
+
+/**
+ * Zod messages are i18n keys (spec §4.7); server field messages are already final text from
+ * applyApiError. A message that is a known key is translated; anything else is shown as is.
+ */
+export function useFieldError(): (error: FieldError | undefined) => string | undefined {
+  const tr = useTranslator();
+  return (error) => {
+    const message = error?.message;
+    if (!message) return undefined;
+    return tr.exists(message) ? tr.t(message) : message;
+  };
 }

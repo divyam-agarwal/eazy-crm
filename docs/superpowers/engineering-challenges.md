@@ -6005,3 +6005,58 @@ the verification's evidence covers every case the trust it replaces used to — 
 domain (in-memory identity, which does not survive the exact tab-discard scenario the whole feature
 targets) than the state being gated (a durable marker, which does) is a gap the removed code never
 had, and the fix has to close it explicitly rather than inherit the old code's incidental coverage.
+
+---
+
+## Challenge 92 — Measuring WCAG contrast for an OKLCH token pair with no browser to sample
+
+**Phase:** Implementation (F0b, Task 7)
+
+### The problem
+
+A11y-2 requires `--destructive-strong` (error text on the `bg-destructive/10` tint FormAlert uses)
+to clear the WCAG AA 4.5:1 contrast minimum for 14px text, and requires the ratio to be **measured**,
+not assumed — the token it replaces (plain `--destructive` on that same tint) was previously measured
+at ~3.99:1 by rendering it and sampling pixels in a real browser. This task has no browser to render
+into: the tokens are defined as Tailwind v4 `@theme` OKLCH values (`oklch(L C H)`), and WCAG's
+contrast formula wants linear-light sRGB relative luminance, not the OKLCH numbers themselves. Getting
+this wrong silently ships a decision the ruling explicitly said not to assume.
+
+Two things make the conversion easy to get subtly wrong, not just tedious:
+- OKLCH's chroma at `--destructive`'s lightness (`oklch(0.577 0.245 27.325)`) is **out of the sRGB
+  gamut** — converting it to linear RGB yields a negative blue channel. Clamping each channel
+  independently to `[0,1]` (a per-channel clip) is *not* what a browser's CSS Color 4 gamut-mapping
+  algorithm does (it preserves lightness/hue and reduces chroma instead), so a hand-rolled conversion
+  will disagree with a real browser's rendered pixel by a few points of contrast — enough to matter
+  right at a 4.5:1 boundary, though not enough to flip a comfortable pass/fail.
+- WCAG's relative-luminance formula (`0.2126 R + 0.7152 G + 0.0722 B`) wants **linear-light** RGB.
+  The standard OKLab→linear-sRGB matrices already produce linear values — re-applying the sRGB gamma
+  companding curve on top (the step needed if you started from 8-bit sRGB instead) double-transforms
+  the numbers and produces a plausible-looking but wrong ratio.
+
+### The solution
+
+Wrote a small Node script implementing the published OKLab↔linear-sRGB matrices (Björn Ottosson's
+coefficients) to convert both tokens to linear RGB, alpha-composited `--destructive` at 10% over
+white (the FormAlert tint over the page background) as the background half of the pair, computed
+relative luminance directly from the *linear* values (no extra gamma step), and applied the WCAG
+ratio formula `(L_light + 0.05) / (L_dark + 0.05)`. Per-channel clamping to `[0,1]` was used for the
+out-of-gamut `--destructive` channel — an approximation of, not identical to, browser gamut mapping.
+
+Result: `--destructive-strong: oklch(0.45 0.18 27)` measures **~7.53:1** against the composited tint
+(and ~8.18:1 against plain white) — comfortably clear of 4.5:1, and in the same neighbourhood as the
+~3.99:1 the plan cites for the token it replaces (the script's per-channel-clamp approximation put the
+*old* pairing at ~4.39:1 against the same tint, close enough to confirm the method is measuring the
+right thing, not exactly reproducing a browser's specific gamut-mapping algorithm). Recorded the
+script and both figures in the task-7 report rather than asserting the number without showing the
+derivation.
+
+### Lesson
+
+"Measured, not assumed" for a color token doesn't require a browser if the color space's conversion
+math is public — but the measurement is only as trustworthy as getting two easy-to-conflate steps
+right: gamut mapping (which changes the *input* to the luminance formula) and gamma linearity (which
+the luminance formula's own definition already assumes, so applying it twice is invisible in the
+code but wrong in the number). Landing several points away from a 4.5:1 cliff edge, rather than
+skating just over it, is what makes an approximate gamut-mapping method acceptable here — the same
+script would not be good enough evidence for a ratio measured at 4.6:1.
