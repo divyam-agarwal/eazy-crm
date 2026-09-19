@@ -146,6 +146,29 @@ class FrontendWorkflowTest {
     }
 
     @Test
+    @DisplayName("no step carries continue-on-error unless it is a registered gate")
+    void continueOnErrorIsOnlyOnRegisteredGates() throws IOException {
+        // gateStepsAreUnconditional only inspects the steps named in GATES, and
+        // onlyUploadsAreConditional only inspects steps carrying an `if:`. A brand-new step with
+        // ONLY `continue-on-error: true` — no `if:`, not registered — is invisible to both: it
+        // is a way to add a non-blocking step that nothing here notices (F0b Task 16 fix round 1).
+        // Scanning every step in both jobs, rather than only the named gates, is what closes that.
+        for (String jobName : GATES.keySet()) {
+            List<String> registered = GATES.get(jobName);
+            for (var step : steps(jobName)) {
+                if (step.get("continue-on-error") == null) continue;
+                String name = String.valueOf(step.get("name"));
+                assertTrue(
+                        registered.contains(name),
+                        jobName + " / " + name + " carries continue-on-error but is not a gate registered in"
+                                + " GATES — such a step is invisible to gateStepsAreUnconditional and can be added"
+                                + " as a silent, permanently non-blocking step. Register it in GATES (and adjust"
+                                + " the checked-count assertion) if it is meant to gate the build.");
+            }
+        }
+    }
+
+    @Test
     @DisplayName("the E2E Postgres image has an exact version tag")
     @SuppressWarnings("unchecked")
     void postgresImageIsPinned() throws IOException {
