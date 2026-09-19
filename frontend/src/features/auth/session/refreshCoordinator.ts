@@ -31,7 +31,21 @@ export function createRefreshCoordinator(deps: RefreshCoordinatorDeps): RefreshC
     const result = await deps.callRefresh();
     switch (result.kind) {
       case 'ok':
-        return deps.onRefreshed(result.body) === 'established' ? 'refreshed' : 'ended';
+        // ROADMAP 4a: onRefreshed (establishSession) calls toMe(), which THROWS on a role this
+        // bundle doesn't recognize (see toMe.ts) — e.g. an older tab refreshing after a new role
+        // ships server-side. AuthBridge.refresh is typed as never rejecting, and authFetch.ts
+        // awaits it unguarded, so an uncaught throw here would break that contract from this side
+        // of the seam and leave the caller in no terminal state at all. Map it to the same outcome
+        // an explicit 401 already produces.
+        try {
+          return deps.onRefreshed(result.body) === 'established' ? 'refreshed' : 'ended';
+        } catch (error) {
+          deps.log(
+            `onRefreshed threw for an otherwise-successful refresh: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          deps.onUnauthorized();
+          return 'ended';
+        }
       case 'unauthorized':
         deps.onUnauthorized();
         return 'ended';

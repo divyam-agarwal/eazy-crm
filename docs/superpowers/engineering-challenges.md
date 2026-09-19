@@ -5587,14 +5587,31 @@ observe — until the one user on a browser without Web Locks hits it.
 Added two tests neither in the brief nor implied by scaling its existing ones (`refreshCoordinator.test.ts`):
 `N parallel 401s in one tab produce exactly ONE refresh() call` generalizes single-flight dedup from
 2 to N callers sharing one `inFlight` promise, matching the real trigger (several TanStack queries
-firing on one page mount, all racing the same stale token). `two tabs refreshing near-simultaneously
-both end up refreshed, not logged out` gives each "tab" its **own** `createInMemoryLocks()` instance
-— deliberately *not* shared, modelling the no-shared-lock case — and races them against one shared
-fake backend that tolerates exactly one extra concurrent use of a token before rejecting it, mirroring
-the real 30 s single-use grace. Both tabs still resolve `'refreshed'`; `onUnauthorized` is never
-called on either. This is the mechanism the docstring on `createRefreshCoordinator` already asserted
-in prose ("two concurrent refreshes of one cookie both succeed... through the grace window") — it was
-simply untested before this task.
+firing on one page mount, all racing the same stale token). The second test — call it v1 — gave each
+"tab" its own unshared `createInMemoryLocks()` instance and raced them against a fake backend that
+tolerated exactly one extra concurrent use of a token before rejecting it, asserting both tabs
+resolved `'refreshed'`.
+
+**v1 turned out to be vacuous, and it wasn't caught until review round 1.** The testing lens ran the
+experiment that should have been run while writing it: swap the two independent locks for one shared
+instance — the exact condition the test's own docstring said would make the grace window unreachable
+— and rerun it. It passed identically. The reason: with only two racers and a fake that tolerated two
+uses, `used <= 2` was true for both calls regardless of whether they actually overlapped, or whether
+`deps.locks` was consulted at all. The test could not fail short of the coordinator calling the fake
+more than twice, which nothing in the coordinator's logic does. A correct insight about *what* to test
+(don't share the lock) produced a test that still measured nothing, because the pass/fail boundary
+never depended on the thing being claimed.
+
+**v2** fixes this two ways. First, it asserts the concurrency premise directly: the fake backend
+tracks `inFlight`/`maxInFlight` (the same technique the brief's own "serializes across tabs that
+share a lock" test already used, just pointed at proving the opposite claim), and the test asserts
+`maxInFlight === 2` *before* checking any outcome — verified by performing the same shared-lock swap
+against v2 and confirming it now fails at exactly that line (`expected 1 to be 2`), for exactly the
+mechanistic reason predicted, not a downstream symptom. Second, it adds a **third caller**, arriving
+after the first two have consumed the fake's tolerance, on the same stale token, and asserts it is
+rejected — the only way to distinguish "the grace window caps at one extra use" from "the fake
+happened to tolerate as many uses as showed up in this test", since a test with exactly as many
+racers as the tolerance can never observe the cap being enforced.
 
 ### Lesson
 
@@ -5604,3 +5621,83 @@ the outer one works, and silently assumes the inner one would too. Concretely: t
 fallback, don't share the lock between the two racing actors in the test: sharing it is exactly the
 condition under which the fallback is never reached, so a passing test that shares the lock is
 evidence for the wrong claim.
+
+**The sharper lesson, from getting v1 wrong:** a test can rest on a genuinely correct insight and
+still measure nothing. "Don't share the lock" was the right idea — it's *necessary* for the test to
+be meaningful — but it wasn't *sufficient*, because the fake's tolerance exactly matched the number
+of racers, so the assertions held on a coincidence of the numbers chosen, not on the mechanism under
+test. The tell was hiding in plain sight: nothing in the test explained *why* `used <= 2` had to be
+`2` rather than any other number `>=` the racer count, because nothing in the test would have
+noticed if it were. Two checks catch this class of error reliably, and both are cheap enough to run
+before trusting any concurrency test: (1) assert the premise the test depends on, not just its
+consequence — here, that the racers' calls actually overlapped (`maxInFlight`), not only that both
+eventually succeeded; (2) push at least one input past the boundary the test claims exists — here, a
+caller beyond the tolerance — because a test whose racer count never exceeds the fake's tolerance can
+never distinguish "bounded at N" from "bounded at anything ≥ N, including infinity".
+
+## Challenge 88 — A doc comment named "the coordinator" as the catcher; the coordinator had no catch, and a scheduled roadmap item turns the gap into a live bug
+
+**Phase:** Implementation (F0b, Task 5, fix round 1)
+
+### The problem
+
+`toMe.ts` deliberately throws when the server returns a role the client bundle doesn't recognize, and
+its own doc comment says so explicitly: *"Every caller must catch... See `boot.ts` and the
+coordinator."* `refreshCoordinator.ts`'s `underLock()` calls `deps.onRefreshed(result.body)` — which
+is `establishSession`, which calls `toMe()` — directly inside its `'ok'` case, with no `try/catch`.
+The throw was real and reachable, not hypothetical: `refreshCoordinator.test.ts`'s "reports ended
+when the refreshed principal differs" test proves `onRefreshed` can return a non-`'established'`
+result and the coordinator handles it — but nothing proved it could *throw* and the coordinator would
+still resolve.
+
+Two independently-documented contracts collided at this one call site without either side noticing:
+`toMe.ts` promises to throw and says the coordinator catches it; `AuthBridge` (`api/authBridge.ts`)
+promises `refresh()` never rejects, and `authFetch.ts` awaits `bridge.refresh(tokenAtSend)` with
+nothing guarding it. `createRefreshCoordinator`'s `refresh()` is the thing installed as
+`AuthBridge.refresh` (via `bridge.ts`), so an uncaught throw inside `underLock` propagates through
+`.finally()` and out through `withLock()`, turning `coordinator.refresh()` — and therefore
+`AuthBridge.refresh()` — into a promise that rejects. Neither file was wrong in isolation; the
+combination was.
+
+### Why it's hard
+
+Nothing in the existing test suite could have found this without deliberately constructing the
+failure: every `refreshCoordinator.test.ts` fixture for the `'ok'` branch used an `onRefreshed` stub
+that always returned a string. The bug is dormant until the one specific trigger fires — ROADMAP item
+4a ships a platform-admin role on the backend — and even then it's dormant *per tab*: only a tab
+still running an older bundle that predates the new role hits it, and only on its next token refresh
+after that role change is live. When it does fire, the failure mode is actively misleading: the
+access token was never set (so nothing looks "logged in"), `sessionExpired()` is never called either
+(so nothing reaches the normal "session ended" terminal state), the user sees a generic, unrelated
+query error, and — because the *server* already rotated the refresh cookie successfully before the
+client-side throw — the next request's 401 triggers another refresh, which succeeds server-side and
+rotates the cookie *again*, silently, on every retry. A bug report from this would say "logged out
+randomly, sometimes an error, cookie churns for no reason" — nothing in that description points at an
+`if (!isRole(...))` check three call frames away.
+
+### The solution
+
+Added a `try/catch` around the `'ok'` branch's call to `deps.onRefreshed(result.body)` in
+`refreshCoordinator.ts`, mapping a throw to the same terminal outcome an explicit 401 already
+produces: `deps.onUnauthorized()` then `return 'ended'`, plus a `deps.log(...)` call so the failure is
+discoverable rather than silently swallowed. Added a symmetric defensive `try/catch` around
+`await bridge.refresh(tokenAtSend)` in `authFetch.ts` itself — belt and suspenders, since the
+contract "AuthBridge.refresh never rejects" is a promise made *to* `authFetch.ts` by whichever bridge
+is installed, and the coordinator is only one such implementation. Covered both with tests: a
+coordinator test with a throwing `onRefreshed` asserting the outcome is `'ended'` (not a rejected
+promise), and an `authFetch.test.ts` test with a bridge whose `refresh()` itself rejects, asserting
+`authFetch` still returns the original 401 response rather than propagating the rejection.
+
+### Lesson
+
+A doc comment that names a specific function as "the catcher" of a documented throw is a claim about
+a caller's *behavior*, not its *existence* — and nothing checks that claim except reading the
+callee's code at the call site. `toMe.ts` was right that something needed to catch it, and correctly
+named where; it just wasn't true yet. Any function documented as "throws — caller X must catch" is
+worth a five-second check at X's actual call site, not just a search confirming X calls it. Cross-file
+contracts that are individually well-documented (`toMe` throws and says why; `AuthBridge.refresh`
+promises never to reject and says why) are exactly the ones most likely to be individually verified
+and never checked *against each other* — each looks complete on its own terms. And separately: a bug
+gated behind a not-yet-shipped roadmap item is real today, not deferred — the code path exists and is
+reachable by anything that can influence what `toMe()` receives (a role typo in a test fixture would
+have found this too), it simply hadn't been exercised yet.

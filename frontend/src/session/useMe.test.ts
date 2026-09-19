@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ownerSession } from '@/test/fixtures';
-import { resetSessionStore, useSessionStore } from './sessionStore';
+import { resetSessionStoreForTests, useSessionStore } from './sessionStore';
 import type { Me } from './types';
 import { useMe, useSessionStatus } from './useMe';
 
@@ -24,10 +24,10 @@ describe('useMe / useSessionStatus', () => {
     expect(status.result.current).toBe('authenticated');
   });
 
-  it('return null / booting after resetSessionStore()', () => {
+  it('return null / booting after resetSessionStoreForTests()', () => {
     useSessionStore.setState({ status: 'authenticated', me: ownerMe });
 
-    resetSessionStore();
+    resetSessionStoreForTests();
 
     const me = renderHook(() => useMe());
     const status = renderHook(() => useSessionStatus());

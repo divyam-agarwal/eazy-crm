@@ -97,6 +97,28 @@ describe('createAuthFetch', () => {
     expect(bridge.sessionExpired).toHaveBeenCalledTimes(1);
   });
 
+  // Fix round 1, item 1: AuthBridge.refresh is contracted to never reject, but this guard is
+  // defensive from BOTH sides of the seam (the coordinator itself now guards onRefreshed throwing —
+  // see refreshCoordinator.test.ts). If it ever did reject anyway, authFetch must still reach a
+  // terminal state — end the session and hand back the original 401 — rather than let the rejection
+  // propagate unguarded out of doFetch().
+  it('ends the session instead of throwing when bridge.refresh() itself rejects', async () => {
+    const { impl } = recordingFetch([401]);
+    const bridge = {
+      getAccessToken: () => 'token-1',
+      refresh: vi.fn(async () => {
+        throw new Error('should never happen, but must not crash the caller');
+      }),
+      sessionExpired: vi.fn(),
+    } satisfies AuthBridge;
+    const doFetch = createAuthFetch({ bridge: () => bridge, fetchImpl: impl });
+
+    const response = await doFetch(new Request(`${ORIGIN}/api/v1/customers`));
+
+    expect(response.status).toBe(401);
+    expect(bridge.sessionExpired).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the session and fails retryably when the refresh could not be completed', async () => {
     const { impl } = recordingFetch([401]);
     const bridge = fakeBridge('token-1', 'unavailable');

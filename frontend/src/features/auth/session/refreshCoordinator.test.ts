@@ -16,15 +16,16 @@ function coordinator(opts: {
   token?: () => string | null;
   call: () => Promise<RefreshCallResult>;
   established?: boolean;
+  onRefreshedThrows?: boolean;
 }) {
   const deps = {
     locks: opts.locks ?? createInMemoryLocks(),
     callRefresh: vi.fn(opts.call),
     getToken: opts.token ?? (() => 'token-1'),
-    onRefreshed: vi.fn(
-      (): 'established' | 'principal-changed' =>
-        opts.established === false ? 'principal-changed' : 'established',
-    ),
+    onRefreshed: vi.fn((): 'established' | 'principal-changed' => {
+      if (opts.onRefreshedThrows) throw new Error('unknown role from server: ADMIN');
+      return opts.established === false ? 'principal-changed' : 'established';
+    }),
     onUnauthorized: vi.fn(),
     log: vi.fn(),
   };
@@ -98,6 +99,24 @@ describe('refresh coordinator', () => {
     expect(deps.onUnauthorized).not.toHaveBeenCalled();
   });
 
+  // Fix round 1, item 1: onRefreshed (establishSession → toMe) THROWS on a role this bundle
+  // doesn't recognize (ROADMAP 4a — a platform-admin role ships server-side, and any tab still on
+  // an older bundle refreshes into a 200 body it can't parse). Without a guard, that throw would
+  // propagate out of refresh() and reject the coordinator's promise — breaking AuthBridge.refresh's
+  // documented no-reject contract from this side of the seam. It must behave exactly like an
+  // explicit 401: a terminal 'ended', onUnauthorized called, and the failure logged so it isn't
+  // silently swallowed.
+  it('treats a throwing onRefreshed the same as an explicit 401, not as a rejected promise', async () => {
+    const { deps, coordinator: c } = coordinator({
+      call: async () => ({ kind: 'ok', body: ownerSession }),
+      onRefreshedThrows: true,
+    });
+
+    await expect(c.refresh('token-1')).resolves.toBe('ended');
+    expect(deps.onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('onRefreshed threw'));
+  });
+
   it('reports ended when the refreshed principal differs', async () => {
     const { coordinator: c } = coordinator({
       call: async () => ({ kind: 'ok', body: ownerSession }),
@@ -135,35 +154,61 @@ describe('refresh coordinator', () => {
     expect(deps.callRefresh).toHaveBeenCalledTimes(1);
   });
 
-  // R44(b): the cross-tab rotation grace window. Web Locks (when supported) already serialize
-  // refreshes across tabs of one origin, but the fallback path (Web Locks unsupported, or any two
-  // realms that do not share a lock manager) has no such serialization — createInMemoryLocks()
-  // itself only holds "within one JS realm" (see lockProvider.ts). In that fallback, two tabs can
-  // both dispatch POST /api/v1/auth/refresh with the SAME refresh cookie at once. The backend's 30s
-  // single-use grace on a just-rotated token is what stops that from becoming a double sign-out: the
-  // "losing" concurrent request, which presents a token the server just rotated away, is honoured
-  // once more instead of being treated as token replay/theft. Model that here: two coordinators with
-  // INDEPENDENT locks (no cross-tab serialization at all) race a shared backend that tolerates
-  // exactly one extra concurrent use of the same token before treating a repeat as stale.
-  it('two tabs refreshing near-simultaneously both end up refreshed, not logged out', async () => {
-    let used = 0;
+  // R44(b), rebuilt in fix round 1 (item 2 — the original version could not fail: with only two
+  // racers and a fake that tolerated two uses, the assertions held regardless of whether the two
+  // coordinators' calls actually overlapped, or even whether `deps.locks` was consulted at all).
+  //
+  // Web Locks (when supported) already serialize refreshes across tabs of one origin, but the
+  // fallback path (Web Locks unsupported, or any two realms that don't share a lock manager) has no
+  // such serialization — createInMemoryLocks() itself only holds "within one JS realm" (see
+  // lockProvider.ts). In that fallback, two tabs can both dispatch POST /api/v1/auth/refresh with
+  // the SAME refresh cookie at once. The backend's 30s single-use grace on a just-rotated token is
+  // what stops that from becoming a double sign-out: the "losing" concurrent request, which presents
+  // a token the server just rotated away, is honoured once more instead of being treated as token
+  // replay/theft — but the grace is BOUNDED to one extra use, not "as many as happen to race".
+  //
+  // This version models that bound explicitly (a fake backend that tolerates exactly two uses of
+  // one token generation, then rejects), adds a THIRD, later caller on the same stale token that
+  // must be rejected — the only way to prove the cap is real rather than coincidentally never
+  // reached — and asserts the concurrency premise itself (that A and B's backend calls genuinely
+  // overlapped), so a coordinator that accidentally serialized them would fail here even though
+  // every outcome-level assertion would still look right.
+  it('two tabs racing the same rotated-away token both refresh; a third, later use of it is rejected', async () => {
+    const GRACE_CAPACITY = 2; // the original use plus one grace re-use — matches the backend's model
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let uses = 0;
     const sharedBackend = async (): Promise<RefreshCallResult> => {
-      used += 1;
-      // The racing pair (both still holding the token that was "current" when they fired) both land
-      // inside the grace window. A third, later call on a token nobody still holds would not.
-      return used <= 2 ? { kind: 'ok', body: ownerSession } : { kind: 'unauthorized' };
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 10)); // hold the "network" open so a real race can form
+      inFlight -= 1;
+      uses += 1;
+      return uses <= GRACE_CAPACITY ? { kind: 'ok', body: ownerSession } : { kind: 'unauthorized' };
     };
     const tabA = coordinator({ locks: createInMemoryLocks(), call: sharedBackend });
     const tabB = coordinator({ locks: createInMemoryLocks(), call: sharedBackend });
+    const tabC = coordinator({ locks: createInMemoryLocks(), call: sharedBackend });
 
+    // A and B race genuinely concurrently on the token the grace window exists to cover.
     const [outcomeA, outcomeB] = await Promise.all([
       tabA.coordinator.refresh('token-1'),
       tabB.coordinator.refresh('token-1'),
     ]);
 
+    // The concurrency premise itself: without independent locks actually letting both calls run at
+    // once, this would be 1, and everything below would still pass — that was fix round 1's finding.
+    expect(maxInFlight).toBe(2);
     expect(outcomeA).toBe('refreshed');
     expect(outcomeB).toBe('refreshed');
     expect(tabA.deps.onUnauthorized).not.toHaveBeenCalled();
     expect(tabB.deps.onUnauthorized).not.toHaveBeenCalled();
+
+    // C arrives afterward, still presenting the same now-doubly-used token (a third tab that also
+    // had it cached). The grace is spent: this MUST be rejected, proving the cap is "one extra use",
+    // not "however many callers happen to race".
+    const outcomeC = await tabC.coordinator.refresh('token-1');
+    expect(outcomeC).toBe('ended');
+    expect(tabC.deps.onUnauthorized).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,6 +11,9 @@ const initial: SessionState = { status: 'booting', me: null };
 
 export const useSessionStore = create<SessionState>()(() => initial);
 
-export function resetSessionStore(): void {
+// Named -ForTests (fix round 1, item 5): it always returns to 'booting', not 'anonymous', which
+// would be the wrong contract for a real "sign out and switch user" flow — the old, unqualified
+// name invited exactly that future misuse.
+export function resetSessionStoreForTests(): void {
   useSessionStore.setState(initial, true);
 }

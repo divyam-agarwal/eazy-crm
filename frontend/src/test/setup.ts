@@ -4,7 +4,7 @@ import { cleanup } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { resetAuthBridge } from '@/api/authBridge';
 import { clearAccessToken } from '@/features/auth/session/accessToken';
-import { resetSessionStore } from '@/session/sessionStore';
+import { resetSessionStoreForTests } from '@/session/sessionStore';
 import { server } from './msw';
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -14,7 +14,7 @@ afterEach(() => {
   // global setup file works for every environment.
   if (typeof document !== 'undefined') cleanup();
   server.resetHandlers();
-  resetSessionStore();
+  resetSessionStoreForTests();
   clearAccessToken();
   if (typeof localStorage !== 'undefined') localStorage.clear();
   // Without this, a setAuthBridge() call in one test file leaks into the next test file sharing

@@ -1,6 +1,7 @@
 import type { AuthResponse } from '@/api/types';
 import { writeLastWorkspace } from '@/lib/storage';
 import { useSessionStore } from '@/session/sessionStore';
+import type { Me, SessionStatus } from '@/session/types';
 import { clearAccessToken, setAccessToken } from './accessToken';
 import { clearLogoutPending } from './logoutPending';
 import { sessionRuntime } from './runtime';
@@ -8,6 +9,27 @@ import { toMe } from './toMe';
 
 export type EndReason = 'logout' | 'expired' | 'principal-changed' | 'remote-logout';
 export type EstablishResult = 'established' | 'principal-changed';
+
+/**
+ * The ONLY place `status` is written to the store (fix round 1, item 4) — `me` is passed alongside
+ * it explicitly on every call, rather than defaulted, so a transition can never silently leave a
+ * stale `me` behind via Zustand's shallow merge. Task 6 adds boot.ts and logout.ts on top of this
+ * module; routing every status change through one un-exported helper means they inherit one
+ * auditable pattern instead of copying whichever raw `setState` call they find first.
+ */
+function transition(status: SessionStatus, me: Me | null): void {
+  useSessionStore.setState({ status, me });
+}
+
+/** The side effects every session-ending path shares, EXCEPT the store's terminal status — each
+ * caller picks its own via transition() so ending mid sign-out can land directly on 'signing-out'
+ * without detouring through 'anonymous' first (that detour was a real double-write bug: two store
+ * writes, two re-renders, to reach one state). */
+function clearSession(reason: EndReason): void {
+  sessionRuntime().log(`session ended: ${reason}`);
+  clearAccessToken();
+  sessionRuntime().clearQueryCache();
+}
 
 /** Boot, login, signup, accept and every refresh go through here (spec §4.4). */
 export function establishSession(response: AuthResponse): EstablishResult {
@@ -21,7 +43,7 @@ export function establishSession(response: AuthResponse): EstablishResult {
     return 'principal-changed';
   }
   setAccessToken(response.accessToken);
-  useSessionStore.setState({ status: 'authenticated', me: next });
+  transition('authenticated', next);
   // P14: login, signup and accept revoke the stale cookie server-side, so any logout this device
   // still owed is now settled. Boot's own refresh does NOT reach here with a marker set: boot
   // finishes the pending logout first.
@@ -33,10 +55,8 @@ export function establishSession(response: AuthResponse): EstablishResult {
 
 /** EVERY way a session ends goes through here (spec §4.4). */
 export function endSession(reason: EndReason): void {
-  sessionRuntime().log(`session ended: ${reason}`);
-  clearAccessToken();
-  useSessionStore.setState({ status: 'anonymous', me: null });
-  sessionRuntime().clearQueryCache();
+  clearSession(reason);
+  transition('anonymous', null);
 }
 
 export function subscribeToAuthChannel(): () => void {
@@ -44,11 +64,12 @@ export function subscribeToAuthChannel(): () => void {
     const { me, status } = useSessionStore.getState();
 
     // P14/Security-1: an unconfirmed sign-out elsewhere. Clear local state, but block the UI
-    // instead of showing /login — the cookie is still live in this tab too.
+    // instead of showing /login — the cookie is still live in this tab too. Lands directly on
+    // 'signing-out' (one write), not via endSession's 'anonymous' followed by a second write.
     if (message.type === 'signing-out') {
       if (!me && status !== 'authenticated') return;
-      endSession('remote-logout');
-      useSessionStore.setState({ status: 'signing-out' });
+      clearSession('remote-logout');
+      transition('signing-out', null);
       return;
     }
 
@@ -58,7 +79,7 @@ export function subscribeToAuthChannel(): () => void {
     // logs the NEW user out.
     if (message.type === 'login' && status === 'signing-out') {
       clearLogoutPending();
-      useSessionStore.setState({ status: 'anonymous' });
+      transition('anonymous', null);
       return;
     }
 

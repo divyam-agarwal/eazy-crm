@@ -81,6 +81,9 @@ describe('endSession', () => {
     expect(getAccessToken()).toBeNull();
     expect(useSessionStore.getState()).toMatchObject({ status: 'anonymous', me: null });
     expect(runtime.clearQueryCache).toHaveBeenCalledTimes(1);
+    // R26: endSession must actually USE its reason, not just accept it — assert it reaches
+    // runtime.log so a future edit can't silently drop the parameter again.
+    expect(runtime.log).toHaveBeenCalledWith('session ended: logout');
   });
 });
 

@@ -103,7 +103,17 @@ export function createAuthFetch(
     const first = await send(fetchImpl, build(snap, tokenAtSend, timeoutMs));
     if (first.status !== 401 || isRefreshExempt(snap.url)) return first;
 
-    const outcome = await bridge.refresh(tokenAtSend);
+    // AuthBridge.refresh is contracted to never reject (its result is a typed RefreshOutcome, not
+    // an exception). Defended from this side of the seam too, matching the coordinator's own
+    // guard against onRefreshed throwing (refreshCoordinator.ts) — the contract should hold
+    // whichever side someone breaks it from.
+    let outcome: Awaited<ReturnType<AuthBridge['refresh']>>;
+    try {
+      outcome = await bridge.refresh(tokenAtSend);
+    } catch {
+      bridge.sessionExpired();
+      return first;
+    }
     if (outcome === 'unavailable') throw new RetryableRequestError();
     if (outcome === 'ended') {
       bridge.sessionExpired();
