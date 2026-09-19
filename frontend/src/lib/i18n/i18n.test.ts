@@ -10,23 +10,19 @@ describe('initI18n', () => {
     await initI18n(instance);
 
     expect(instance.t('app.name')).toBe('EasyCRM');
-    // R4: `auth` is not in BOOT_NAMESPACES (Performance-4 — only `common` preloads), so it must be
-    // loaded explicitly before asserting on one of its keys.
-    await instance.loadNamespaces('auth');
+    // `auth` is preloaded (BOOT_NAMESPACES), so its keys resolve immediately after initI18n with no
+    // separate loadNamespaces call — see the perf note on BOOT_NAMESPACES for why.
     expect(instance.t('login.heading', { ns: 'auth' })).toBe('Sign in to EasyCRM');
     expect(document.documentElement.lang).toBe('en');
   });
 
-  it('preloads only the boot namespace, leaving auth to load lazily', async () => {
+  it('preloads both boot namespaces so no F0 route pays a second network round trip', async () => {
     const instance = i18next.createInstance();
 
     await initI18n(instance);
 
-    expect(instance.options.ns).toEqual(['common']);
-    expect(instance.hasResourceBundle('en', 'auth')).toBe(false);
-
-    await instance.loadNamespaces('auth');
-
+    expect(instance.options.ns).toEqual(['common', 'auth']);
+    expect(instance.hasResourceBundle('en', 'common')).toBe(true);
     expect(instance.hasResourceBundle('en', 'auth')).toBe(true);
   });
 });
