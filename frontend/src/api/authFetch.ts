@@ -14,6 +14,18 @@ export class RetryableRequestError extends Error {
 }
 
 // Routes whose 401 means "wrong credentials" or "no session", never "access token expired".
+//
+// /api/v1/auth/signup/status is deliberately NOT in this list, even though the generated contract
+// documents a 401 for it. Verified against the backend source, not assumed: SecurityConfig.java
+// permitAll()s GET /api/v1/auth/signup/status, so it never reaches the "authenticated" gate that
+// produces a 401 at all; and JwtAuthenticationFilter.java swallows an invalid/expired bearer token
+// into an unauthenticated (not rejected) request for any route that doesn't require auth --
+// "invalid token: leave unauthenticated; SecurityConfig will 401 protected routes" (this route
+// isn't protected). The controller method itself (AuthController.signupStatus()) does no
+// auth-dependent check either. So this route cannot answer 401 in practice regardless of what the
+// contract documents, and refresh()-on-401 here would never trigger — exempting it would be inert,
+// not wrong, but the contract's documented 401 for a permitAll route looks like a stray artifact
+// worth flagging to whoever owns the backend contract, not a reason to grow this list speculatively.
 const REFRESH_EXEMPT = [
   /^\/api\/v1\/auth\/(login|signup|refresh|logout)$/,
   /^\/api\/v1\/auth\/invitations\//,

@@ -34,6 +34,20 @@ describe('toApiFailure', () => {
     expect(toApiFailure(http)).toMatchObject({ kind: 'http', status: 422 });
     expect(toApiFailure(new TypeError('Failed to fetch'))).toEqual({ kind: 'network' });
   });
+
+  it('maps an AbortError — DOMException or a plain Error-like value — to aborted', () => {
+    expect(toApiFailure(new DOMException('The user aborted a request.', 'AbortError'))).toEqual({
+      kind: 'aborted',
+    });
+
+    const errorLike = new Error('aborted');
+    errorLike.name = 'AbortError';
+    expect(toApiFailure(errorLike)).toEqual({ kind: 'aborted' });
+  });
+
+  it('leaves a TimeoutError (AbortSignal.timeout) as network, not aborted', () => {
+    expect(toApiFailure(new DOMException('signal timed out', 'TimeoutError'))).toEqual({ kind: 'network' });
+  });
 });
 
 describe('parseRetryAfter', () => {
