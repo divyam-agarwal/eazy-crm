@@ -10,6 +10,9 @@ dependency adds a row here in the same change.**
 | react | 19.3.0 | entry | | UI runtime |
 | react-dom | 19.3.0 | entry | | UI runtime |
 | openapi-fetch | 0.17.0 | entry | | Typed fetch client generated from the OpenAPI contract (Task 3) |
+| i18next | 25.10.10 | entry | | i18n core; `common` namespace preloads at boot, others load lazily per route (Task 4) |
+| react-i18next | 16.6.6 | entry | | React bindings for i18next (Task 4) |
+| i18next-resources-to-backend | 1.2.3 | entry | | Dynamic `import()` loader so each locale/namespace is its own chunk (Task 4) |
 
 Version column filled from the resolved `package.json` majors; the gzipped-measured column is
 still Task 13's job (`pnpm deps:sizes`), not filled at install time. Dev-only dependencies are not

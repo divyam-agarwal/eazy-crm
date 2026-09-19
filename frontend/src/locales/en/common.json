@@ -1,0 +1,71 @@
+{
+  "app": { "name": "EasyCRM" },
+  "actions": { "retry": "Try again", "reload": "Reload page", "signOut": "Sign out", "retrying": "Retrying…" },
+  "roles": { "OWNER": "Owner", "SALES_MANAGER": "Sales manager", "SALES_EXEC": "Sales executive" },
+  "shell": {
+    "nav": "Main",
+    "homeTitle": "Home",
+    "homeHeading": "Welcome",
+    "signedInAs": "Signed in to {{slug}} as {{email}} ({{role}})"
+  },
+  "unreachable": {
+    "title": "Can't reach EasyCRM",
+    "heading": "Can't reach EasyCRM",
+    "body": "Check your internet connection. We'll keep trying.",
+    "stillFailing": "Still can't reach EasyCRM. We'll keep trying."
+  },
+  "signOutPending": {
+    "title": "Signing out",
+    "heading": "Sign-out did not complete — retrying",
+    "body": "Keep this page open. This device is not signed out until this finishes."
+  },
+  "notFound": { "title": "Page not found", "heading": "Page not found", "home": "Go to home" },
+  "routeError": {
+    "title": "Something went wrong",
+    "heading": "Something went wrong",
+    "body": "Reload the page to try again."
+  },
+  "errors": {
+    "network": "Can't reach EasyCRM. Check your connection and try again.",
+    "server": "Something went wrong on our side. Try again.",
+    "unexpected": "Something went wrong. Try again.",
+    "rateLimited": "Too many attempts. Try again shortly.",
+    "rateLimitedIn_one": "Too many attempts. Try again in {{count}} second.",
+    "rateLimitedIn_other": "Too many attempts. Try again in {{count}} seconds.",
+    "codes": {
+      "FORBIDDEN": "You don't have permission to do that."
+    },
+    "fields": {
+      "NOT_BLANK": "This field is required.",
+      "SIZE": "This value has the wrong length.",
+      "PATTERN": "This value is not in the expected format.",
+      "EMAIL": "Enter a valid email address.",
+      "GSTIN_REQUIRED": "Enter a GSTIN.",
+      "GSTIN_LENGTH": "A GSTIN has 15 characters.",
+      "GSTIN_CHARSET": "A GSTIN uses only digits and capital letters.",
+      "GSTIN_CHECKSUM": "This GSTIN is not valid. Check it for typos.",
+      "STATE_CODE_INVALID": "Choose a valid state.",
+      "STATE_CODE_GSTIN_MISMATCH": "The state doesn't match the state in the GSTIN.",
+      "SLUG_TAKEN": "This workspace name is taken.",
+      "password": {
+        "SIZE": "Use at least 8 characters."
+      },
+      "slug": {
+        "SIZE": "Use 3–64 characters.",
+        "PATTERN": "Use lowercase letters, digits or hyphens."
+      },
+      "businessName": {
+        "SIZE": "Use 2–120 characters."
+      }
+    }
+  },
+  "validation": {
+    "required": "This field is required.",
+    "email": "Enter a valid email address.",
+    "passwordMin": "Use at least 8 characters.",
+    "slugFormat": "Use 3–64 lowercase letters, digits or hyphens.",
+    "gstinShape": "A GSTIN has 15 digits and capital letters.",
+    "stateRequired": "Choose your state."
+  },
+  "password": { "show": "Show password" }
+}

@@ -23,9 +23,12 @@
     "onlyBuiltDependencies": []
   },
   "dependencies": {
+    "i18next": "^25.10.10",
+    "i18next-resources-to-backend": "^1.2.3",
     "openapi-fetch": "^0.17.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "react-i18next": "^16.6.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
