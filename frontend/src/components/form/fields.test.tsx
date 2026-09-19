@@ -77,6 +77,15 @@ describe('FormAlert', () => {
     expect(screen.getByRole('alert')).not.toHaveFocus();
   });
 
+  // Task 10 fix round 1, item 2: a message seeded at mount (attempt 0, e.g. /login's
+  // reason=expired banner) must still ANNOUNCE (role="alert" is enough for that) but must not
+  // steal focus from PageHeading's own mount-time focus() call.
+  it('announces but does not focus a message already present at mount (attempt 0)', () => {
+    render(<FormAlert message="Your session ended. Sign in again to continue." attempt={0} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Your session ended. Sign in again to continue.');
+    expect(screen.getByRole('alert')).not.toHaveFocus();
+  });
+
   // Fix round 1 / Challenge #93: a second submit that fails with the *same* message must still
   // announce — a live region whose text doesn't change, and an effect keyed only on that text,
   // is silent on the routine "tap Submit again on patchy 4G" case. `attempt` (the submit count)

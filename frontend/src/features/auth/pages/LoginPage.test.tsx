@@ -267,3 +267,95 @@ describe('R71: Suspense and error-boundary wiring for public routes', () => {
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeInTheDocument();
   });
 });
+
+// Task 10 fix round 1: three review findings, each proven by a test rather than by reasoning about
+// the fix.
+describe('Task 10 fix round 1', () => {
+  // Item 1 (Important, a11y): the pending window used to be silent (nothing announced) and, because
+  // the submit button was `disabled` (not `aria-disabled`), the browser blurred it the instant
+  // submission started -- stranding a keyboard/screen-reader user at <body> for the whole 2-5s round
+  // trip. Holds the login POST open (a controllable promise, not a real delay) so the pending state
+  // is provably observable rather than inferred from having usually caught it in time.
+  it('stays focusable and announces "Signing in…" while pending, and guards against a resubmit', async () => {
+    let requests = 0;
+    let releaseLogin: (() => void) | undefined;
+    server.use(
+      http.post('/api/v1/auth/login', async ({ response }) => {
+        requests += 1;
+        await new Promise<void>((resolve) => {
+          releaseLogin = resolve;
+        });
+        return response(200).json(ownerSession);
+      }),
+    );
+    const { user } = renderApp('/login', { session: anonymous });
+
+    await fillAndSubmit(user);
+
+    const button = await screen.findByRole('button', { name: 'Signing in…' });
+    // The discriminating assertion: `aria-disabled`, not the native `disabled` attribute, is what's
+    // applied while pending -- confirmed by reverting to `disabled={isSubmitting}` and rerunning,
+    // which fails here (attribute absent). `toHaveFocus()` below is NOT discriminating on its own:
+    // jsdom, unlike a real browser, does not blur a focused element when `disabled` is applied to
+    // it, so that assertion alone stayed green even against the reverted `disabled` code -- verified
+    // by temporarily removing the `aria-disabled` line and rerunning against the `disabled` revert.
+    // Kept anyway as a true statement of the intended behavior, not as the regression's proof.
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveFocus();
+    expect(screen.getByRole('status')).toHaveTextContent('Signing in…');
+
+    // The button is `aria-disabled`, not `disabled` -- the browser still lets it be activated. What
+    // actually stops a second tap from firing a second POST: `useLogin` (P15) holds the
+    // `easycrm-refresh` Web Lock for the whole call, so this second `mutateAsync` queues behind the
+    // still-held lock rather than reaching the network a second time (Challenge #98). Verified by
+    // temporarily stripping `withCookieLock` from `useLogin.ts` and rerunning -- see the task report.
+    await user.click(button);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(requests).toBe(1);
+
+    releaseLogin?.();
+    await waitFor(() => expect(useSessionStore.getState().me?.email).toBe('ravi@shop.in'));
+  });
+
+  // Item 3 (Minor, but the reason it matters is bigger than the finding): a prior review swapped
+  // `attempt={submitCount}` for `attempt={1}` in LoginPage.tsx and all 13 tests stayed green --
+  // TypeScript catches removing the prop, nothing caught neutering it into a constant. This test
+  // exists to be that catch. Verified by making that exact swap and watching it fail (see the task
+  // report for the failure output) before trusting it green again.
+  it('re-focuses the alert on a second, identical failure (guards the `attempt` wiring, not just the message)', async () => {
+    server.use(http.post('/api/v1/auth/login', ({ response }) => response(401).json(errorBody('UNAUTHORIZED', 'invalid credentials'))));
+    const { user } = renderApp('/login', { session: anonymous });
+
+    await fillAndSubmit(user);
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(alert).toHaveFocus());
+    alert.blur();
+    expect(alert).not.toHaveFocus();
+
+    // Same message text, a second real attempt -- with a constant `attempt`, FormAlert's effect
+    // deps ([message, attempt]) would be unchanged and this second focus would never happen.
+    await fillAndSubmit(user);
+    await waitFor(() => expect(alert).toHaveFocus());
+  });
+
+  // Item 4 (Minor): applyApiError is unit-tested generically elsewhere, but nothing proved a real
+  // 400 with `fieldCodes` reaches actual TextField DOM on THIS route. 400 with fields/fieldCodes is
+  // documented on POST /api/v1/auth/login (src/api/schema.d.ts) and reachable in practice (a
+  // bean-validation failure on the request body), so it's worth a route-level proof, not just a
+  // unit test of the mapping function.
+  it('a 400 field error lands on the right input: invalid, described and focused', async () => {
+    server.use(
+      http.post('/api/v1/auth/login', ({ response }) =>
+        response(400).json(errorBody('VALIDATION_FAILED', 'invalid request', { fieldCodes: { email: 'EMAIL' } })),
+      ),
+    );
+    const { user } = renderApp('/login', { session: anonymous });
+
+    await fillAndSubmit(user);
+
+    const email = await screen.findByLabelText('Email');
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(email).toHaveAccessibleDescription('Enter a valid email address.');
+    expect(email).toHaveFocus();
+  });
+});

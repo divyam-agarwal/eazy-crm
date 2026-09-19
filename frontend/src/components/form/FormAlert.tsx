@@ -20,14 +20,21 @@ import { cn } from '@/lib/utils';
  * `formState.submitCount` is the natural source) that changes on every submit regardless of
  * whether the resulting message text repeats, so the effect — and the focus/scroll it performs —
  * runs on every attempt, not just every distinct message.
+ *
+ * <p>Task 10 fix round 1, item 2: a message can also be seeded straight into initial state on mount
+ * (e.g. `/login`'s `reason=expired` banner, set from router state before any submit) — that case has
+ * `attempt === 0`. Moving focus there collided with `PageHeading`'s own mount-time focus: React runs
+ * a child's effects before its parent's, and this region sits after the heading in the tree, so its
+ * focus() call ran second and silently won, stealing the page-identity announcement from a user whose
+ * session had just expired. The fix gates the FOCUS (not the `role="alert"` announcement, which a
+ * mount-seeded message still needs) on `attempt > 0` — real submit attempts only.
  */
 export function FormAlert({ message, attempt }: { message: string | null; attempt: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!message) return;
+    if (!message || attempt === 0) return;
     ref.current?.focus();
     ref.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
-    // `attempt` is intentionally in the deps though unused in the body — see the doc comment above.
   }, [message, attempt]);
 
   return (

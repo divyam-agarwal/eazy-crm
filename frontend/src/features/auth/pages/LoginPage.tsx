@@ -80,6 +80,12 @@ export function LoginPage() {
         {/* R65: `attempt` must be a real counter (RHF's submitCount), never a constant -- otherwise
             the alert stays silent on a second, identical failure (the common case on flaky 4G). */}
         <FormAlert message={formMessage} attempt={submitCount} />
+        {/* Task 10 fix round 1, item 1: the 2-5s round trip on patchy 4G was otherwise silent --
+            nothing told a screen-reader user their tap registered. `role="status"` is an implicit
+            `aria-live="polite"` region (kept mounted, text-only-when-pending, like FormAlert). */}
+        <span role="status" className="sr-only">
+          {isSubmitting ? t('login.submitting') : ''}
+        </span>
         <TextField
           id="login-slug"
           label={t('login.workspace')}
@@ -110,7 +116,15 @@ export function LoginPage() {
           error={fieldError(errors.password)}
           {...form.register('password')}
         />
-        <Button type="submit" disabled={isSubmitting}>
+        {/* Task 10 fix round 1, item 1: `aria-disabled`, not `disabled` -- a native `disabled`
+            control loses focus the instant it's applied (the browser blurs it), stranding a
+            keyboard user at <body> for the whole round trip. `aria-disabled` + the button's own
+            `aria-disabled:pointer-events-none` styling keeps it focusable and visually inert
+            instead. Leaving it genuinely operable does NOT reopen a double-submit hole: `useLogin`
+            (P15) holds the `easycrm-refresh` Web Lock for the whole call, so a second activation
+            while the first is still pending queues behind that same lock rather than firing a
+            second POST -- see Challenge #98 and the "guards against a resubmit" test. */}
+        <Button type="submit" aria-disabled={isSubmitting || undefined}>
           {isSubmitting ? t('login.submitting') : t('login.submit')}
         </Button>
       </form>

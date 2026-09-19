@@ -6406,3 +6406,61 @@ hoping the test's own polling interval wins the race. And for the failure-mode h
 suspended promise that later rejects — `withImportRetry`'s own `schedule` option, added in Task 8 for
 production tuning, turned out to double as exactly the test seam needed to compress a deliberately slow
 retry policy down to instant, without stubbing the function or duplicating its logic.
+
+---
+
+## Challenge 98 — Switching a submit button from `disabled` to `aria-disabled` looked like it needed a new resubmit guard; the existing cookie lock already was one
+
+**Phase:** Implementation (F0b, Task 10, fix round 1)
+
+### The problem
+
+A review flagged that `/login`'s submit button used the native `disabled` attribute while the login
+request was in flight: `disabled` forces the browser to blur a focused element the instant it's
+applied, so a keyboard or screen-reader user's focus was silently dropped to `<body>` for the whole
+2-5s round trip on patchy 4G, with no announcement of what was happening either. The fix — swap to
+`aria-disabled` (which communicates the same state to assistive tech without removing the element
+from the focus order) plus a `pointer-events-none` style — is a well-known accessible pattern, but it
+has a well-known cost too: `aria-disabled` is purely semantic. Neither the browser nor `pointer-events:
+none` stops a *keyboard* activation (Enter on a focused button still fires a click), so the change
+looked like it was reopening a real hole: a user who double-taps (or double-presses Enter) during the
+pending window could now fire a second `POST /api/v1/auth/login` where the native `disabled` attribute
+used to silently prevent it.
+
+The obvious fix was a `useRef<boolean>` guard around the submit handler — cheap, and a common enough
+pattern in forms that lack it any other way. It got written, and then got tested rather than trusted:
+a test held the mock login response open (a controllable promise, not a real delay) and simulated a
+second click on the still-focused, still-`aria-disabled` button while the first was pending. With the
+`useRef` guard removed (to prove the test could tell the difference), the assertion on the request
+count **still passed at 1** — no second network call happened, guard or no guard.
+
+### The solution
+
+Instrumented `onSubmit` directly (a temporary `console.log`) to check whether the callback was even
+being invoked a second time — it was ("ONSUBMIT CALLED" printed twice) — so the dedup was happening
+*inside* the callback, between "RHF called the handler again" and "a second `fetch()` reached MSW".
+The remaining candidate was `useLogin`'s own `mutationFn`: `sessionControls().withCookieLock(async () =>
+unwrap(await api.POST(...)))` (P15, Task 10's own R14). `withCookieLock` holds the
+`easycrm-refresh` Web Lock for the *entire* wrapped call, including the network round trip — so a
+second `mutateAsync()` invocation, called while the first is still awaiting its (deliberately held-open)
+response, queues behind the *same* lock the first call is still holding, and never reaches `fetch()` at
+all until the first one releases it. Confirmed by removing `withCookieLock` from `useLogin.ts` (not
+just the new `useRef` guard) and rerunning the identical test: the request count went to 2. The
+`useRef` guard was deleted — it wasn't wrong, it was solving a problem P15 already solves for this
+specific mutation, for a reason that has nothing to do with double-submit prevention (revoking the
+incoming refresh cookie safely) but happens to fully cover it as a side effect, for as long as
+`isSubmitting` is true (which is exactly the window `aria-disabled` communicates and exactly the window
+a genuinely fast double-activation falls inside).
+
+### Lesson
+
+A newly-discovered gap next to a change doesn't automatically mean the change needs new code to close
+it — it might mean an *existing* mechanism, built for an unrelated reason, already reaches there too,
+and the honest way to find out is to remove the mechanism you suspect and watch the test that "proves"
+the gap actually turn red because of it, not because of the code you were about to add. Writing the
+`useRef` guard felt like the obviously-correct completion of the `aria-disabled` swap; only testing it
+adversarially (delete the guard, does the assertion still pass?) surfaced that it was redundant. The
+general habit this argues for: before adding a guard against a race a change seems to reopen, hold the
+race open on purpose (the same controllable-promise trick as `holdCookieLock` and Challenge 97's
+`createHeldBackend`) and check what — if anything — is *already* serializing it, rather than assuming
+the absence of an explicit guard means the absence of protection.
