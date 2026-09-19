@@ -92,6 +92,25 @@ export function subscribeToAuthChannel(): () => void {
     // when the confirming `logout` broadcast arrived — the exact real-sign-out case P14/Security-1
     // exists for, not just the forged-message case. `status !== 'signing-out'` still makes it a no-op
     // for a tab that was never told to block (nothing to end).
+    //
+    // Challenge #105 (accepted residual, NOT gated further): this also accepts a FORGED bare
+    // `logout` — any same-origin script can post one — as long as this tab is currently
+    // 'signing-out'. logout.ts's real flow calls clearLogoutPending() (a localStorage write)
+    // synchronously BEFORE broadcastLogout(), so it looked cheap to gate on isLogoutPending() here:
+    // reject a `logout` that arrives while the durable marker is still set, on the theory that the
+    // write always lands before the broadcast is even sent. Verified empirically in two real
+    // Chromium tabs before writing any gate (task-14-report.md) — it does NOT hold: a tight-loop
+    // stress test (localStorage.setItem(seq) then channel.postMessage({seq}), 3000 iterations, zero
+    // artificial delay) produced real violations on every run (2/3000 and 52/3000 across two runs),
+    // i.e. a receiving tab's message handler sometimes observes a localStorage value that is BEHIND
+    // the write which, in the sender's own program order, strictly preceded that exact postMessage.
+    // localStorage's cross-process propagation and BroadcastChannel's message delivery are not the
+    // same IPC path in Chromium and are not mutually ordered. A gate built on that assumption would
+    // sometimes reject the GENUINE confirming broadcast too — reintroducing the #103 stuck screen,
+    // which is strictly worse than the residual here: the forgery has no durable or credential
+    // effect (the cookie is never touched client-side; a resumed boot still finishes a real pending
+    // logout; the next real login still revokes server-side regardless), it only defeats the
+    // human-facing "you are safely signed out" signal for the tab it targets.
     if (message.type === 'logout') {
       if (!me && status !== 'signing-out') return;
       endSession('remote-logout');

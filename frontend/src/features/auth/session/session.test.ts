@@ -3,6 +3,7 @@ import { inviteeSession, ownerSession } from '@/test/fixtures';
 import { getAccessToken } from './accessToken';
 import type { AuthChannel, AuthMessage } from './authChannel';
 import { createInMemoryLocks } from './lockProvider';
+import { isLogoutPending, markLogoutPending } from './logoutPending';
 import { configureSession, type SessionRuntime } from './runtime';
 import { endSession, establishSession, setSessionStatus, subscribeToAuthChannel } from './session';
 import { useSessionStore } from '@/session/sessionStore';
@@ -146,6 +147,33 @@ describe('subscribeToAuthChannel', () => {
     expect(useSessionStore.getState().status).toBe('signing-out');
 
     deliver({ type: 'logout' });
+
+    expect(useSessionStore.getState()).toMatchObject({ status: 'anonymous', me: null });
+  });
+
+  // Challenge #105 (accepted residual, deliberately NOT gated further — see the comment above the
+  // `logout` branch in session.ts). This locks in the current, INTENTIONAL behavior: `logout` ends
+  // the blocking screen even while the durable `logoutPending` marker is still set, i.e. even for a
+  // broadcast that could be forged rather than the genuine confirmation. A gate keyed on
+  // `isLogoutPending()` looked cheap (the real flow clears the marker synchronously before
+  // broadcasting) but rests on an assumption — that a localStorage write is reliably visible to
+  // another tab before a BroadcastChannel message posted after it — that was tested empirically in
+  // two real Chromium tabs (task-14-report.md) and found FALSE: a tight loop of
+  // `localStorage.setItem(seq)` immediately followed by `channel.postMessage({seq})`, 3000
+  // iterations, produced real ordering violations on every run (2/3000, then 52/3000). Shipping that
+  // gate would sometimes reject the genuine confirming broadcast too, reintroducing the #103 stuck
+  // screen — strictly worse than this residual, which has no durable or credential impact. If this
+  // test ever needs to change to assert the tab STAYS blocked instead, the ordering assumption above
+  // must be re-verified in real tabs first, not just re-implemented.
+  it('accepted residual: a bare logout still ends signing-out even while the marker is still set', () => {
+    const { deliver } = fakeRuntime();
+    subscribeToAuthChannel();
+    establishSession(ownerSession);
+    markLogoutPending({ userId: ownerSession.userId, tenantId: ownerSession.tenantId });
+    deliver({ type: 'signing-out' });
+    expect(isLogoutPending()).toBe(true); // the durable marker is still set — a real sign-out is mid-flight
+
+    deliver({ type: 'logout' }); // indistinguishable, at this layer, from a forged broadcast
 
     expect(useSessionStore.getState()).toMatchObject({ status: 'anonymous', me: null });
   });

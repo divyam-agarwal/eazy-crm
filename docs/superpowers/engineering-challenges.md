@@ -6865,3 +6865,64 @@ site that actually has the problem, ask what *else* routes through that utility 
 fix is free, and prefer scoping the change as narrowly as the actual root cause (this one was "IPv6 to
 a specific class of unreachable host," not "IPv6, ever") — or, failing that, reverting it the moment
 the narrow job it was needed for is done.
+
+---
+
+## Challenge 105 — A "free" cross-tab ordering gate rested on an assumption that turned out to be false, and only two real browser tabs could prove it
+
+**Phase:** Implementation (F0b, Task 14 fix round 1 — closing a narrower gap the #103 fix opened)
+
+### The problem
+
+Fixing challenge #103 (a `logout` broadcast must end a `signing-out` tab's blocking screen even
+though `me` is already null there) also let a *forged* `logout` through: `AuthMessage`'s `logout`
+carries no payload at all, so any same-origin script can `postMessage({type:'logout'})` and drop the
+P14/Security-1 blocking screen early, on a shared counter phone, while the real sign-out POST is still
+retrying. A gate looked cheap and free: `logout.ts`'s real flow calls `clearLogoutPending()` (a
+`localStorage` write) *synchronously before* `broadcastLogout()`, so the theory was that any tab
+receiving `logout` could check `isLogoutPending()` — if the durable marker is still set, the message
+arrived too early to be the genuine confirmation (reject it); if it's already cleared, trust it. Zero
+network cost, unlike the server-verification path `login` already requires (Challenge #90).
+
+### Why it's hard
+
+The gate's entire safety property rests on one unverified claim: that a `localStorage` write which
+happens-before a `BroadcastChannel.postMessage()` call, in one tab, is *reliably visible* to another
+tab's storage *before* that other tab's message handler for that exact post runs. This is not
+something a single-process unit test (a fake channel, an in-memory `Map`) can test at all — the two
+mechanisms only diverge in a REAL multi-process browser, where `localStorage` change notifications and
+`BroadcastChannel` messages are, in Chromium, genuinely different IPC paths with no documented
+ordering guarantee relative to each other. Reasoning about JS's single-threaded, synchronous execution
+within one tab (the write completes before the post is even issued) says nothing about the order two
+*separate* IPC messages arrive at a *different* process.
+
+### Solution
+
+Test the assumption directly, empirically, in two real tabs, before writing a single line of the
+gate — using the E2E harness this exact task built. A throwaway spec drove both tabs to the same
+origin and ran a tight, zero-delay loop in tab A: `localStorage.setItem('probe-key', String(seq))`
+immediately followed by `channel.postMessage({ seq })`, 3000 iterations. Tab B's `onmessage` handler
+read `localStorage.getItem('probe-key')` on every message and flagged a violation whenever the stored
+value was *behind* the just-delivered `seq` — i.e. the write that, in tab A's own program order,
+strictly preceded that specific post had not yet propagated to tab B when tab B received it. Two
+independent runs both found real violations (2/3000, then 52/3000; first violation each time only one
+or two sequence numbers behind). The assumption is false, reproducibly, not a one-off scheduling fluke.
+Per the plan (a gate that sometimes rejects the *genuine* confirmation is strictly worse than the
+spoofable signal it would replace — it reintroduces the #103 stuck screen), the gate was **not**
+shipped. The residual is documented instead, in code (`session.ts`) and a locking unit test
+(`session.test.ts`) that asserts the *current, accepted* behavior rather than protection that doesn't
+exist — severity is bounded to a UI signal only: no durable marker is cleared early, the cookie is
+never touched client-side, a resumed boot still finishes a real pending logout, and the next real
+login still revokes server-side regardless of what any tab's UI showed in the meantime.
+
+### Lesson
+
+"This looks safe because of program order within one execution context" is not evidence about
+ordering *across* execution contexts, and the gap between those two claims is exactly where a
+same-process reasoning chain (however careful) and a distributed-systems one (two real processes, two
+real IPC paths) diverge — the only way to close that gap is to run it on the real thing and count. The
+second lesson is about what to do with a rejected assumption: the response here was not "find a
+cleverer gate" but to document the accepted residual explicitly, in the exact place a future
+contributor would reach for the naive fix, with the empirical result and the reason it's not safe to
+reintroduce — so the next person who has this same "looks free" idea inherits the answer instead of
+re-discovering the race the hard way, in production, on a shared phone.
