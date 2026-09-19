@@ -140,28 +140,26 @@ export function SignupPage() {
         {/* R65: `attempt` must be a real counter (RHF's submitCount), never a constant -- otherwise
             the alert stays silent on a second, identical failure (the common case on flaky 4G). */}
         <FormAlert message={formMessage} attempt={submitCount} />
-        {/* Same purpose as /login's permanently-mounted `role="status"` span (nothing tells a
-            screen-reader user their tap registered during a 2-5s round trip on patchy 4G), but
-            mounted only while pending rather than always-on: this page ALSO needs a `role="status"`
-            region for the lost-response hint below, and the two must never coexist in the DOM at
-            once (screen.getByRole('status') would then be ambiguous, and in practice two
-            simultaneous "status" regions is confusing for a screen-reader user too). React 19 batches
-            the state updates from a settled submit together with RHF's own `isSubmitting` flip, so
-            this unmounts in the same render that the hint (if any) appears -- they don't overlap. */}
-        {isSubmitting && (
-          <span role="status" className="sr-only">
-            {t('signup.submitting')}
-          </span>
-        )}
-        {maybeCreatedSlug && (
-          <p role="status" className="rounded-md border p-3 text-sm">
+        {/* Fix round 1 (Important, a11y): a PERMANENTLY-mounted `role="status"` region, same as
+            /login's and FormAlert's, not one created fresh when content arrives. A region inserted
+            into the DOM together with its content is exactly the case the WAI-ARIA "insert the
+            container first, then add content" guidance exists for -- many AT/browser pairs only
+            announce a MUTATION inside a region that already existed, so a freshly-mounted status
+            span with text already in it can go unannounced. The two messages this region carries
+            (the pending announcement and the lost-response hint) still never coexist -- `isSubmitting`
+            is false by the time `maybeCreatedSlug` is set (React 19 batches that state update together
+            with RHF's own `isSubmitting` flip) -- so one node keeps `findByRole('status')` singular
+            while also pre-existing its content, satisfying both constraints at once. */}
+        <div role="status" className={maybeCreatedSlug ? 'rounded-md border p-3 text-sm' : 'sr-only'}>
+          {isSubmitting && t('signup.submitting')}
+          {maybeCreatedSlug && (
             <Trans
               t={t}
               i18nKey="signup.maybeCreated"
               components={{ Link: <Link to="/login" state={{ workspace: maybeCreatedSlug }} className="underline" /> }}
             />
-          </p>
-        )}
+          )}
+        </div>
         <TextField
           id="signup-business"
           autoComplete="organization"

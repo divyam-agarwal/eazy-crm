@@ -33,6 +33,14 @@ const ZOD_MSG =
 const NOOP_LOCKS_MSG =
   'noopLocks is a deliberately non-exclusive LockProvider kept only for a recorded red run (Task 15). ' +
   'Production must go through createSessionRuntime, which picks webLocks/createInMemoryLocks.';
+const RADIX_SCROLL_LOCK_MSG =
+  "Radix's Select/Dialog/Popover/AlertDialog primitives pull in react-remove-scroll, which injects a " +
+  "runtime <style> tag the CSP (style-src 'self', vite.config.ts) refuses (plan decision P9, Task 7 — " +
+  'see src/components/form/SelectField.tsx, a native <select> for exactly this reason). radix-ui is ' +
+  "one umbrella package, so these are one import away from any file that already imports Label or " +
+  'Slot from it (src/components/ui/label.tsx, button.tsx) — nothing but convention stopped that before ' +
+  'this rule (Task 11 fix round 1). A future task that genuinely needs a Radix overlay needs a CSP ' +
+  'exception and a review first, not a stray import here.';
 
 // Every zod entry point that resolves to the full (non-mini) runtime, per zod 4.6.5's own `exports`
 // map (checked directly — see ZOD_MSG) and measured, not inferred from the name or the shape of its
@@ -53,6 +61,14 @@ const NOOP_LOCKS_PATH = {
   name: '@/features/auth/session/lockProvider',
   importNames: ['noopLocks'],
   message: NOOP_LOCKS_MSG,
+};
+// P9 is enforced by convention only until this rule exists: `radix-ui` exports Label and Slot (both
+// legitimately used, see src/components/ui/) from the SAME module specifier as Select/Dialog/Popover/
+// AlertDialog, so the ban is on specific named imports, not on the module itself.
+const RADIX_SCROLL_LOCK_PATH = {
+  name: 'radix-ui',
+  importNames: ['Select', 'Dialog', 'Popover', 'AlertDialog'],
+  message: RADIX_SCROLL_LOCK_MSG,
 };
 
 export default tseslint.config(
@@ -82,11 +98,18 @@ export default tseslint.config(
   { files: ['**/*.{js,mjs}'], languageOptions: { globals: globals.node } },
   // R67: bare 'zod' is banned everywhere non-test code lives, including src/api — zod is used for
   // schema validation, not HTTP, so it isn't part of the api-layer's fetch allowance below.
+  //
+  // Task 11 fix round 1 (Minor #2): the Radix scroll-lock family is banned in this same block, not
+  // just the broader one below, for the identical last-match-wins-wholesale reason the OPENAPI_FETCH_PATH
+  // comment already explains — src/api is excluded from the broader block, so without repeating it
+  // here a file under src/api would be the one place left where `Select`/`Dialog` still typechecked
+  // and linted clean. Unlikely to matter in practice (src/api has no JSX), but the whole point of this
+  // rule is closing every remaining gap convention alone left open, not just the likely ones.
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: TESTS,
     rules: {
-      'no-restricted-imports': ['error', { paths: ZOD_HEAVY_PATHS }],
+      'no-restricted-imports': ['error', { paths: [...ZOD_HEAVY_PATHS, RADIX_SCROLL_LOCK_PATH] }],
     },
   },
   {
@@ -103,7 +126,13 @@ export default tseslint.config(
       // importing openapi-fetch directly. ESLint flat config resolves a repeated rule id per file by
       // taking the LAST matching config wholesale, not merging arrays, so every block that narrows
       // `no-restricted-imports` further must repeat the restrictions the narrower fileset still owes.
-      'no-restricted-imports': ['error', { paths: [...ZOD_HEAVY_PATHS, OPENAPI_FETCH_PATH] }],
+      //
+      // Task 11 fix round 1 (Minor #2, P9): RADIX_SCROLL_LOCK_PATH bans importing Select/Dialog/
+      // Popover/AlertDialog from 'radix-ui' — its Select pulls in react-remove-scroll, which injects a
+      // runtime <style> tag the CSP refuses. Label and Slot (both legitimately used under
+      // src/components/ui/) are NOT in this list — the ban is on specific named imports from the
+      // shared 'radix-ui' module, not the module itself.
+      'no-restricted-imports': ['error', { paths: [...ZOD_HEAVY_PATHS, OPENAPI_FETCH_PATH, RADIX_SCROLL_LOCK_PATH] }],
     },
   },
   // R24: bootstrap.ts is the one file allowed to choose which LockProvider production runs with.
@@ -112,7 +141,10 @@ export default tseslint.config(
   {
     files: ['src/app/bootstrap.ts'],
     rules: {
-      'no-restricted-imports': ['error', { paths: [...ZOD_HEAVY_PATHS, OPENAPI_FETCH_PATH, NOOP_LOCKS_PATH] }],
+      'no-restricted-imports': [
+        'error',
+        { paths: [...ZOD_HEAVY_PATHS, OPENAPI_FETCH_PATH, NOOP_LOCKS_PATH, RADIX_SCROLL_LOCK_PATH] },
+      ],
     },
   },
   {

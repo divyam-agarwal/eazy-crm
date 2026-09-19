@@ -293,6 +293,43 @@ describe("R67: only zod's mini entry points may be imported, never a full-runtim
   });
 });
 
+// Task 11 fix round 1 (Minor #2): P9 rejected Radix `Select` because its `react-remove-scroll`
+// dependency injects a runtime <style> tag the CSP refuses — but `radix-ui` is one umbrella package,
+// so `Select`, `Dialog`, `Popover`, `AlertDialog` and `react-remove-scroll` are already in
+// node_modules and one import away from any file that already imports the legitimately-used `Label`/
+// `Slot` from the same specifier. Before this rule, only convention prevented that.
+describe("P9: Radix's scroll-locking overlay primitives are never imported", () => {
+  it.each([
+    ['Select', 'src/components/ui/x.tsx', "import { Select } from 'radix-ui';\nexport const S = Select;\n"],
+    ['Dialog', 'src/components/ui/x.tsx', "import { Dialog } from 'radix-ui';\nexport const D = Dialog;\n"],
+    ['Popover', 'src/components/ui/x.tsx', "import { Popover } from 'radix-ui';\nexport const P = Popover;\n"],
+    ['AlertDialog', 'src/components/ui/x.tsx', "import { AlertDialog } from 'radix-ui';\nexport const A = AlertDialog;\n"],
+  ])('rejects importing %s from radix-ui', async (_label, path, code) => {
+    const { ids } = await lintOnce(path, code);
+    expect(ids).toContain('no-restricted-imports');
+  });
+
+  it('rejects Select imported inside src/api too (non-vacuity for the narrower zod-only block)', async () => {
+    const { ids } = await lintOnce('src/api/x.ts', "import { Select } from 'radix-ui';\nexport const S = Select;\n");
+    expect(ids).toContain('no-restricted-imports');
+  });
+
+  it('rejects Select imported into bootstrap.ts too (non-vacuity for its own repeated block)', async () => {
+    const { ids } = await lintOnce('src/app/bootstrap.ts', "import { Select } from 'radix-ui';\nexport const S = Select;\n");
+    expect(ids).toContain('no-restricted-imports');
+  });
+
+  it('allows Label and Slot from radix-ui (non-vacuity — these are the real, shipped usages)', async () => {
+    const label = await lintOnce('src/components/ui/x.tsx', "import { Label } from 'radix-ui';\nexport const L = Label;\n");
+    expect(label.fatal).toEqual([]);
+    expect(label.ids).not.toContain('no-restricted-imports');
+
+    const slot = await lintOnce('src/components/ui/y.tsx', "import { Slot } from 'radix-ui';\nexport const S = Slot;\n");
+    expect(slot.fatal).toEqual([]);
+    expect(slot.ids).not.toContain('no-restricted-imports');
+  });
+});
+
 describe('JSX gates', () => {
   it('rejects an <img> without alt', async () => {
     const { ids } = await lintOnce('src/features/auth/X.tsx', 'export const X = () => <img src="/a.png" />;\n');
