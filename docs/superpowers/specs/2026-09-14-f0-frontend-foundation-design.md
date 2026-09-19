@@ -208,8 +208,8 @@ String>` beside `fields` (omitted when null, like `fields`). Existing consumers 
 ## 3.8 Guards
 
 - **Only `refresh` and `logout` authenticate with `easycrm_rt`** — an ArchUnit (or source-scan) test
-  fails if any other handler binds the cookie for authentication. Login/accept's revoke path (§3.1) goes
-  through one named method the rule permits.
+  fails if any other handler binds the cookie for authentication. Signup/login/accept's revoke path
+  (§3.1) goes through one named method the rule permits.
 
 ## 3.9 F0a tests (written first)
 
@@ -406,6 +406,36 @@ One `applyApiError(response, form)` used by every form in F0–F3:
   `vite preview` server sends it so violations surface in F0. No inline scripts, including the splash
   (CSS only) and any theme script.
 - `<meta name="referrer" content="no-referrer">` **globally in `index.html`**, not per route.
+
+**Residual risks accepted in F0b, each recorded with its reasoning (ruling ids in the F0b plan):**
+
+1. **Forged `easycrm-auth` broadcasts can disrupt sibling tabs** — a same-origin script can post a fake
+   `login` or `logout`/`signing-out` message and force another tab to reload or hold it on the P14
+   blocking screen. Accepted: same-origin XSS is already a total compromise (the attacker can already
+   read the in-memory token and call the API directly, per the residual risk above); a forged broadcast
+   adds only a denial-of-service annoyance, not a new capability. (R53)
+2. **A `logoutPending` `localStorage` write failure silently degrades P14 to its pre-fix, in-memory-only
+   behaviour** — in private/incognito mode, under storage quota pressure, or on eviction, the durable
+   marker never gets written, so a sign-out that fails after that point behaves as if P14 did not exist.
+   Accepted: making the write blocking (refusing to start sign-out without it) would break sign-out
+   entirely in private mode, which is worse than the narrower risk it would close. (R57)
+3. **The durable marker carries `{userId, tenantId}`, not just a boolean flag** — a deliberate, narrow
+   exception to "a flag, never tenant data" (§4.4). Boot needs to tell a real different-principal login
+   apart from a forged `login` broadcast before it can safely finish a resumed logout, and that
+   comparison requires knowing which principal the pending logout was *for*. The exception is scoped to
+   exactly the two identifiers needed for that comparison. (R60)
+4. **A forged bare `logout` broadcast can drop the P14 blocking screen without server verification** —
+   unlike `login` (Challenge #90), `logout` carries no payload to verify against the server, so a
+   same-origin script can end a tab's blocking screen early while the real sign-out POST is still
+   retrying. Accepted only after the obvious mitigation — gating `logout` on the `logoutPending`
+   `localStorage` marker already being cleared — was **measured and rejected**: two independent runs in
+   real Chromium tabs found that a `localStorage` write is not reliably visible to another tab before a
+   `BroadcastChannel` message that followed it (2/3000, then 52/3000 ordering violations), so the gate
+   would sometimes reject the *genuine* confirmation and reintroduce the #103 stuck-screen bug. Bounded:
+   the residual is a UI signal only — no durable marker is cleared early, the refresh cookie is never
+   touched client-side, a resumed boot still finishes a real pending logout, and the next real login
+   still revokes server-side regardless of what any tab showed in the meantime. (R95-AMENDED, Challenge
+   #105)
 
 ---
 
@@ -624,3 +654,54 @@ lost-response E2E; per-gate red runs; `FrontendWorkflowTest`; axe; two-backend E
 **Not adopted:** a non-blocking throttled LCP check on `/invite/:token` in F0 (performance Q1) — F0-14
 stands; the per-route budget plus axe and E2E cover F0's risk, and F2 builds the throttled harness against
 its first heavy screen.
+
+## Plan review, 2026-09-19
+
+All five frontend specialist lenses (architecture, performance, security, a11y-i18n, testing) reviewed
+[`plans/2026-09-16-f0b-frontend-foundation.md`](../plans/2026-09-16-f0b-frontend-foundation.md); **all
+five returned "Ready with fixes."** The fixes became **P14–P19** (Part 10 below) plus smaller items
+marked in the plan with their finding ids (`Security-1`, `Architecture-3`, `Performance-1`, `A11y-2`,
+`Testing-1`, and others). The one **Critical** finding: a failed sign-out could sign the previous user
+back in — `signing-out` lived only in the tab that started it while the refresh cookie it guards is
+durable and shared by every tab, so another tab told a plain `logout` would show `/login`, and a reload
+there would silently refresh and re-establish the old session. Its proof lives in two places: the
+two-real-tab, real-backend E2E test in Task 14, and the boot unit test in Task 6 that asserts a pending
+logout is finished before any refresh is attempted.
+
+---
+
+# Part 10 — Amendments from the F0b plan (2026-09-16)
+
+`docs/superpowers/plans/2026-09-16-f0b-frontend-foundation.md` resolved these; each row there has its
+reasoning.
+
+- **P1** `AuthResponse`, `MeResponse`, `InvitationPreviewResponse`, `SignupStatusResponse`,
+  `ApiErrorResponse` and `ApiError` declare `required` (§4.4's known contract gap, fixed in the backend).
+- **P2** Boot retry: a 429 honours `Retry-After` (1–60 s); otherwise 2 s → 5 s → 15 s → 30 s (§4.4).
+- **P3** The bare client's header is enforced at runtime and by the contract's required header parameter.
+- **P4** Request middleware is openapi-fetch's `fetch` option with a byte snapshot per attempt (§4.4 item 2).
+- **P5** A fifth status, `signing-out`, models §4.4's logout-failure state.
+- **P6** A boot result arriving after an interactive sign-in is discarded.
+- **P7** The splash is outside `#root`, hidden by an external stylesheet (§4.4, §4.9).
+- **P8** No toast container in F0 (§4.2): no F0 failure is background, and Sonner's runtime `<style>`
+  conflicts with `style-src 'self'`. F1 adds it with its first background failure.
+- **P9** Hand-written field components and a native `<select>` instead of shadcn `Form`/Radix `Select` (§5.1).
+- **P10** E2E runs `java -jar` twice on one `bootJar`, not `bootRun` twice (§6.4, §6.5).
+- **P11** E2E test 6 asserts at most one refresh in flight across tabs (challenge #85) (§6.4).
+- **P12** Boundary lint uses `import-x/no-restricted-paths` zones (§4.3).
+- **P13** The dependency ledger is measured from the production build (§4.2).
+- **P14** A pending logout is durable (`localStorage`) and finished at boot before any refresh; other
+  tabs are told `signing-out`, not `logout`, until the server confirms 204 (§4.4).
+- **P15** Login, signup, invitation accept and logout take the same Web Lock as refresh, because each
+  writes the shared refresh cookie (§4.4, and F0a's `AuthController` stale-cookie revoke).
+- **P16** The session's read side (`Me`, `Role`, status, `useMe`) lives in `src/session/`, below
+  `features/`, so F1's role-aware UI needs no exception to the layer rule (§4.3, §5).
+- **P17** TanStack Query uses `networkMode: 'always'`: offline requests fail into the error UI rather
+  than pausing invisibly (§4.5).
+- **P18** The per-route JS budget lands with the scaffold and every task re-runs it (§4.2, §6.5).
+- **P19** Each gate task ends by breaking one named line and confirming the named test goes red (§6.5).
+- **P20** `applyApiError` (§4.6) resolves a field message through **four** levels, not the three §4.6
+  describes: `errors.fields.<field>.<CODE>` → `errors.fields.<CODE>` → `errors.codes.<code>` → server
+  text. The per-field level (keyed on the field name, not just the constraint code) exists because a
+  bare code like `SIZE` carries no min/max, so a field-specific key can state the actual limit — this
+  was never declared in §4.6 and is recorded here for the first time (ruling R30).

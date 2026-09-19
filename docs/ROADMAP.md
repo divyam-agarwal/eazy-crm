@@ -1,7 +1,16 @@
 # EasyCRM — Execution Roadmap
 
-**Date:** 2026-09-03 · **last updated 2026-09-19**
+**Date:** 2026-09-03 · **last updated 2026-09-20**
 **Status:** Living document. Supersedes no design doc; sequences all of them.
+
+**2026-09-20 — latest.** **F0b (the frontend itself) is built and verified on branch `f0b-frontend`
+(`.claude/worktrees/f0b-frontend`), head `77104bf` before this session's docs commit — NOT merged, NOT
+pushed.** 688 backend tests (0 failures, was 677), 303 frontend tests across 33 files, 11/11 E2E PASS
+against two real backends, coverage floor set (97/92/96/98, from a measured 97.41/92.51/96.81/98.44),
+all four routes under the 200 KB budget with headroom (`/signup` 23.0 KB tightest, entry chunk 55.4 KB).
+`docs/superpowers/HANDOFF.md`'s top section has full detail, the manual walkthrough results (including
+the answered R64 Devanagari-clipping question — no clipping found), and notes for F1. **Item 4
+(frontend) is DONE through F0; next is F1 (master data).**
 
 **2026-09-19 — latest.** **The F0b plan is reviewed and revised, and `main` is pushed at `2b8c23e`** (two
 docs-only commits; CI on them not yet checked). All five frontend specialist reviewers returned "Ready with
@@ -101,8 +110,9 @@ Wave 1.6 merged.**
 | Schema | 35 Flyway migrations, latest `V35__refresh_token_grace.sql` (F0a, 2026-09-16) |
 | Wedge | enquiry → versioned GST quotation → order — **complete end to end and hardened**, plus activity/follow-up, nightly auto-expiry, PDF render and WhatsApp share |
 | Multi-user | Invitations, accept, revoke, pending list; members list / change-role / disable / enable |
-| Tests | **677 (642 root + 35 primitives), 0 failures** — F0a added 51 (2026-09-16, unpushed); Wave 1.6 added 22 |
+| Tests | **688 (backend), 0 failures** — F0b's `f0b-frontend` branch (not merged); was 677 before it (F0a added 51, 2026-09-16; Wave 1.6 added 22) |
 | Browser auth | **F0a (2026-09-16):** refresh token only in the httpOnly `easycrm_rt` cookie; race-safe rotation + 30 s single-use lost-response grace; `X-EasyCRM-Client` required on refresh/logout; identity on every session response; stale-cookie revocation on login/signup/accept; `session` rate-limit bucket; `fieldCodes`; signup switch. See [F0 spec](superpowers/specs/2026-09-14-f0-frontend-foundation-design.md) Part 3 |
+| Frontend | **F0b (2026-09-20, branch `f0b-frontend`, not merged/pushed):** React + TypeScript SPA — login, signup, `/invite/:token` (anonymous, signed-in, invalid), app shell. 303 Vitest tests / 33 files, coverage floor 97/92/96/98, 11/11 Playwright E2E against two real backends, four routes each under the 200 KB gzip budget. See `docs/superpowers/HANDOFF.md` top section |
 
 ## 1.2 Tenant isolation — the thing that is actually finished
 
@@ -127,11 +137,12 @@ test-scope `VisibilityContract` keeping the two interpreters in agreement.
 
 ## 1.4 What does not exist at all
 
-**Frontend** (zero lines) · **Dockerfile** · **Terraform / any IaC** · **any AWS account resource** ·
+**Dockerfile** · **Terraform / any IaC** · **any AWS account resource** ·
 **dev, staging or prod environment** · **CD pipeline** · **structured logging, metrics or tracing** ·
 **load tests** · **chaos tests** · **no domain, no website, no public presence of any kind** ·
-**password reset** · **`/invite/{token}` page** (the token works;
-nothing serves the URL that gets pasted into WhatsApp) · **outbox, SNS/SQS, any second service**.
+**password reset** · **outbox, SNS/SQS, any second service**. (Frontend F0 exists now, on an
+unmerged branch — see §1.1; F1–F3 master data / wedge / daily work are still ahead. `/invite/{token}`
+now has a real page, built in F0b.)
 
 ## 1.5 Known live defects and hazards
 
@@ -436,7 +447,7 @@ has no schema and cannot dedupe without one) → **SP8** service extraction, `do
 | Track | Have | Left |
 |---|---|---|
 | **Application** | Wedge end-to-end, multi-user, activity/follow-up, auto-expiry, PDF + share, **buyer snapshot (H1 closed)**, 677 tests (F0a, unpushed) | Cursor pagination, `SALES_MANAGER` tier (H6), password reset, self-service profile |
-| **Frontend** | No frontend code yet. F0 spec approved and reviewed; **F0a backend prep merged and pushed**: cookie auth, `application/json` contract, `fieldCodes`. **F0b plan written (2026-09-16), not yet reviewed** | F0b (plan reviewed and revised 2026-09-19, P14-P19 applied; Node 24 installed; next: build -- scaffold, client, login/signup/invite, shell, CI) → F1–F3. `/invite/{token}` first |
+| **Frontend** | **F0 DONE** (branch `f0b-frontend`, built and verified 2026-09-20, not merged/pushed): login, signup, `/invite/:token` (all three states), app shell, session lifecycle with cross-tab logout/refresh handling, 303 frontend tests, 11/11 E2E, coverage floor, CI wired. F0a backend prep merged and pushed | Merge/push `f0b-frontend` (owner's call), then **F1 (master data) → F2 (the wedge) → F3 (daily work + team)** |
 | **Public presence** | Nothing — no domain, no site | Domain (~₹1,000/yr), Cloudflare Pages + TLS, one-page site, WhatsApp CTA |
 | **Build/CI** | Wave 1, OpenAPI contract + guard, oasdiff changelog, Wave 1.5 supply chain (green in CI since 2026-09-13), **Wave 1.6 module boundaries — four hand-written boundary gates plus Modulith, C4 docs drift-guarded**, specialist reviewer registry drift guard (2026-09-14) | Blocking oasdiff, branch protection, 32 SpotBugs findings |
 | **Local dev** | Gradle + Testcontainers + ngrok | Dockerfile, compose stack, seed data |
@@ -458,7 +469,7 @@ Ranked. **Effort** is relative, not calendar.
 | ~~**2**~~ | ~~**Wave 1.5 — supply chain**~~ — **DONE 2026-09-12, merged fast-forward at `7f6a700`** (eleven commits, `5053d42`..`7f6a700`; 604 tests, 0 failures). `gitleaks`, `actionlint` and `squawk` block; Dependabot opens weekly PRs; OWASP Dependency-Check reports without blocking (D1, flip trigger = branch protection). None is wired into `./gradlew check` — `SupplyChainWorkflowTest`'s 13 assertions are what make that safe, and they guard against `if:`, `continue-on-error`, `\|\| true`, a shallow `fetch-depth` and floating tags, not merely against a step's absence. **Still unpushed, so CI has never run any of it.** | Cheapest real security value. Public repo, JWT auth, bcrypt, GST data. Finishes a programme already half-built | S | — |
 | ~~**3**~~ | ~~**Wave 1.6 — module boundaries + cycle fix**~~ — **DONE 2026-09-13**, [spec](superpowers/specs/2026-09-13-wave-1.6-module-boundaries-design.md) · [plan](superpowers/plans/2026-09-13-wave-1.6-module-boundaries.md). Twelve commits; **598 tests, 0 failures**; `clean check` green end to end. **H4 closed:** `platform.visibility` deleted rather than inverted (its returns are domain aggregates, so no port in `platform` could name them — unlike `iam.AssignedWorkload`, which returns a `long`), the rule now derived independently per module from the JWT claim for split-readiness. The H4 gate is a hand-written ArchUnit direction rule, **not** `verify()`, because declaring `platform` OPEN suppresses all 12 cycles (challenge #75). A second rule registers cross-domain repository reads with an exit per edge (item 3b), Modulith is adopted for module detection and C4 docs with its blind spot documented, and the generated docs are committed and drift-guarded. Challenges #75–79 | S–M | — |
 | **3b** | **Cross-service data access design** (Layer 2) — **owed, does not exist** | Wave 1.6 closes Layer 1 (package acyclicity) and *freezes* Layer 2 rather than fixing it. Layer 2 is the actual extraction work and **no gate can see it** — a cross-service read is not a cycle. Four direct reads exist (`sales → crm.ContactRepository`, `sales → catalog.{Product,PriceListItem}Repository`, `sales`/`iam` → `tenant.TenantRepository`), plus the `viaCustomer` **cross-service SQL join** that Wave 1.6 relocates into `sales` where it looks local. Decide port-vs-event-vs-freeze per edge, and the `quotation`/`sales_order` owner denormalisation. **Ahead of SP8, which has no design for these edges** — the service-scope doc that names them is stale by its own §3.2. Layer 3 needs nothing: zero FK constraints in all 34 migrations | M | 3 |
-| **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse. **Taken NEXT, ahead of H7, at the owner's direction (2026-09-14).** Decomposed into F0–F3 (D-d settled, see Phase 1). **F0 spec written and specialist-reviewed (2026-09-14); F0a (backend auth prep) DONE and merged to `main` at `186adc4` on 2026-09-16, pushed and green in CI — [plan](superpowers/plans/2026-09-14-f0a-backend-auth-prep.md); F0b (the frontend itself) plan WRITTEN 2026-09-16 — [plan](superpowers/plans/2026-09-16-f0b-frontend-foundation.md); next: specialist review of the plan, then build.** | **L** | DNS provider (rest of D-g) before any public link ships |
+| **4** | **Frontend** | The biggest product step and the only one a backend slice cannot finish. The contract is ready and guarded; building now means the contract shapes the client rather than the reverse. **Taken NEXT, ahead of H7, at the owner's direction (2026-09-14).** Decomposed into F0–F3 (D-d settled, see Phase 1). **F0a (backend auth prep) DONE, merged and pushed (2026-09-16) — [plan](superpowers/plans/2026-09-14-f0a-backend-auth-prep.md); F0b (the frontend itself) BUILT AND VERIFIED on branch `f0b-frontend` (2026-09-20), not yet merged/pushed — [plan](superpowers/plans/2026-09-16-f0b-frontend-foundation.md); next: merge (owner's call), then F1 (master data) brainstorm → spec → plan.** | **L** | DNS provider (rest of D-g) before any public link ships |
 | **4a** | **Platform admin role** — an operator role above tenants (not a tenant `OWNER`), with authenticated endpoints for operational toggles that today need a restart. First consumer: the signup switch (`easycrm.signup.enabled`, F0 spec F0-3), which is a property changed by env var + restart until this exists. Added 2026-09-14 at the owner's request | Operational control without restarting the server. Needs its own design: how the role is provisioned (it cannot come from signup or invitations), where runtime flags are stored (the flag must be read per request, not at boot), audit of every toggle, and how it coexists with RLS — a cross-tenant operator is exactly what `@TenantId` + RLS are built to refuse | M | F0a |
 | **5** | **Containerise** | Small, unblocks Trivy and every AWS item | S | — |
 | **6** | **Wave 2 — observability** | Prerequisite for scaling, for reading load tests, and for seeing H2/H3 at all | M | — |
@@ -482,16 +493,14 @@ are done and pushed; D-g's name and hostname are settled (`easycustomerrelations
 
 0. ~~**Push `main`, or decide not to (2026-09-16).**~~ **DONE 2026-09-16:** pushed at `2d9a2aa`, and CI run
    `35014714570` is green on check, supply-chain and dependency-check.
-1. **Item 4, the frontend — F0b next. Its plan is WRITTEN and REVIEWED (2026-09-19):**
-   [`plans/2026-09-16-f0b-frontend-foundation.md`](superpowers/plans/2026-09-16-f0b-frontend-foundation.md).
-   All five frontend specialist reviewers ran on the plan and their fixes are applied (P14-P19; HANDOFF's
-   top section has the reasoning), and Node 24 is installed. Next: build it in a `f0b-frontend`
-   worktree with subagent-driven development, giving each subagent the Node-24 activation line. The instruction below to "write the F0b plan" is complete. D-d (the decomposition) is settled: F0 foundation
-   + auth + invite page → F1 master data → F2 the wedge → F3 daily work + team, with the import wizard
-   and owner analytics deferred because no backend exists for them. **F0's spec is approved and
-   reviewed; F0a (its backend half) is merged. Write the F0b plan** (spec Parts 4–6) against the
-   regenerated `docs/api/openapi.yaml` — HANDOFF.md's 2026-09-16 section lists the gaps the plan must
-   carry (refresh client header, `AuthResponse` required fields, retry-vs-`Retry-After`, oasdiff wording).
+1. **Item 4, the frontend — F1 next. F0b is BUILT AND VERIFIED (2026-09-20)** on branch `f0b-frontend`
+   ([`plans/2026-09-16-f0b-frontend-foundation.md`](superpowers/plans/2026-09-16-f0b-frontend-foundation.md)),
+   not yet merged or pushed — that's the owner's call. D-d (the decomposition) is settled and F0 is now
+   done: F0 foundation + auth + invite page → **F1 master data (next)** → F2 the wedge → F3 daily work +
+   team, with the import wizard and owner analytics deferred because no backend exists for them. Next
+   step: merge/push `f0b-frontend` when the owner is ready, then run F1 through
+   `brainstorming → writing-plans → subagent-driven-development` the same way F0 did. HANDOFF.md's top
+   section has the full F0b verification record and notes for F1 to inherit.
 2. **H7 — freeze the seller on a sent quotation.** Still a live correctness bug of H1's exact class and
    still small; the owner chose to defer it behind F0, not to drop it. The seller is not frozen and the
    *tax presentation* is computed against the live tenant `stateCode`, so a tenant changing registered
@@ -505,6 +514,8 @@ are done and pushed; D-g's name and hostname are settled (`easycustomerrelations
 (`docs/reviewers/registry.md`, imported into `CLAUDE.md`, drift-guarded in CI). Five frontend lenses
 exist; they reviewed F0's spec (all five) and F0a's code (security lens). In the F0a session they were
 not callable by `subagent_type`; a `general-purpose` agent following the agent file verbatim worked.
+**That was fixed by the time F0b was built (2026-09-20): all five are callable by `subagent_type`
+directly** — see HANDOFF.md's top section.
 
 **What changed on 2026-09-12:** the domain-and-marketing-site item was item 2 and is now item 16.
 The reasoning that put it at 2 — that it is the only item that acquires a customer — still holds,

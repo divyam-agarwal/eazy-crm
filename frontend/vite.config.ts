@@ -50,6 +50,13 @@ export default defineConfig({
       reporter: ['text-summary', 'html'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/api/schema.d.ts', 'src/test/**', 'src/**/*.test.{ts,tsx}', 'src/**/*.typecheck.ts', 'src/main.tsx', 'src/components/ui/**'],
+      // Task 17 Step 1 (spec §6.1): floor taken from the measured baseline (Statements 97.41 /
+      // Branches 92.51 / Functions 96.81 / Lines 98.44 on 303 tests / 33 files), each floored to a
+      // whole percent — mirrors how the backend's JaCoCo floors were set from a measured baseline.
+      // A whole-percent floor catches a real regression without failing on run-to-run noise from
+      // the fractional part. Proven to bite: temporarily setting lines to 100 produced
+      // "ERROR: Coverage for lines (98.44%) does not meet global threshold (100%)".
+      thresholds: { statements: 97, branches: 92, functions: 96, lines: 98 },
     },
   },
 });

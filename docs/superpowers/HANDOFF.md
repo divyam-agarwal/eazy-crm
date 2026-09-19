@@ -1,5 +1,171 @@
 # EasyCRM — Handoff
 
+## 2026-09-20 — START HERE: F0b is built on branch `f0b-frontend`; next is F1
+
+**State.** F0b (the frontend itself — scaffold, API client, session lifecycle, login/signup/invite
+pages, app shell, coverage floor, CI) is **built and verified in the worktree**
+`.claude/worktrees/f0b-frontend`, branch **`f0b-frontend`**, head `77104bf` before this session's docs
+commit. **Not merged, not pushed** — pushing and merging are the owner's call
+(`superpowers:finishing-a-development-branch` still to run). Verify with three separate invocations:
+```
+git rev-parse --short f0b-frontend      # 77104bf, or later after this session's commit
+git rev-parse --short main              # 389f23b
+git rev-list --count main..f0b-frontend # 34 (this branch's own commits over main)
+```
+`main` and `origin/main` are in sync (both `389f23b`) — nothing from this branch has reached `origin`.
+
+**Correction to the standing caveat below and in every earlier section of this file:** every prior
+entry says the five frontend specialist reviewers were "not callable by `subagent_type`" and prescribes
+a `general-purpose`-agent-reads-the-file-verbatim fallback. **That is now obsolete.** Across this
+entire F0b build (16 implementation tasks plus this closing one) the five lenses —
+`frontend-review-architecture`, `frontend-review-performance`, `frontend-review-security`,
+`frontend-review-a11y-i18n`, `frontend-review-testing` — were dispatched **by name**, as real
+`subagent_type` values, every time a review was requested, including the plan review recorded below.
+The fallback is dead weight for this repo; a future session should call them directly and drop the
+fallback instructions from its own report.
+
+**Baselines, all measured this session:**
+- **Backend: 688 tests, 0 failures**, `./gradlew clean check` → `BUILD SUCCESSFUL` (was 677 before
+  F0b; +11 net — F0b's own backend-side additions, chiefly `OpenApiRequiredFieldsTest` (P1) and
+  `FrontendWorkflowTest`'s six CI-guard assertions (Task 16)). Count is the sum of every
+  `build/test-results/test/*.xml` `tests="…"` attribute across both Gradle modules, not a claim.
+- **Frontend: 303 tests, 33 files, all green** (`pnpm test:coverage`).
+- **Coverage floor (Task 17 Step 1), set from this exact measured run, each floored to a whole
+  percent:** Statements 97 (measured 97.41%), Branches 92 (92.51%), Functions 96 (96.81%), Lines 98
+  (98.44%). Proven to bite: temporarily setting `lines: 100` in `vite.config.ts` produced `ERROR:
+  Coverage for lines (98.44%) does not meet global threshold (100%)`; restored, reran green.
+- **E2E: 11/11 PASS** (`pnpm e2e`, two real backends on :18080/:18081, two `vite preview` instances on
+  :4173/:4174) — `cross-tab-logout` (3), `guards` (axe + CSP) (2), `invite-accept`, `invite-invalid`,
+  `invite-signed-in`, `signup-reload-logout`, `refresh-rotation` (2).
+- **Per-route gzipped JS (`pnpm budget`, budget 200 KB/route), headroom tightest first:**
+  `/signup` 177.0 KB (**23.0 KB** headroom) · `/invite/:token` 176.0 KB (**24.0 KB**) · `/login` 172.7 KB
+  (**27.3 KB**) · shared entry (`index.html`) 144.6 KB (**55.4 KB**, inherited by all four routes). The
+  baseline-diff column (challenge #102) printed `+0.0 KB` on every route against `budget-baseline.json`
+  — no drift since it was last checkpointed. **Largest standing lever if a route needs headroom:**
+  react-router's data API, ≈17.2 KB gzipped, deliberately kept for `errorElement` and route-level
+  `lazy:` rather than the plain component-mode router (P9-adjacent decision, not separately numbered).
+- `pnpm lint`, `pnpm typecheck`, `pnpm gen:api && git diff --exit-code -- src/api/schema.d.ts` (no
+  drift) all clean.
+
+**The recorded red runs (Tasks 15–16), one line each — these are what make the gates trustworthy, not
+just present:**
+- Task 15 Step 4, P11 (`maxInFlight` cross-tab refresh serialization): rebound `noopLocks`, ran the
+  existing E2E assertion four times — reliably red (`Expected: <= 1, Received: 2`) every time; reverted.
+- Task 15 Step 4, P15 (login/signup/accept/logout sharing refresh's Web Lock): removed
+  `withCookieLock(...)` from `useLogin.ts`, ran a throwaway two-tab spec three times — reliably a `401`
+  on the next refresh (the shared cookie jar was left holding a dead token); restored the lock, ran
+  twice more — reliably `200`. Neither binding survived past its recorded run (challenge #106).
+- Task 16, `jobsAreBlocking`: added `continue-on-error: true` to the `frontend` job — red.
+- Task 16, `gateStepsAreUnconditional`: added `if: false` to one gate step — red (checked-count
+  assertion `assertEquals(12, checked)` is the non-vacuity proof this isn't skipped silently).
+- Task 16, `onlyUploadsAreConditional`: changed the bundle-report upload's condition from `!cancelled()`
+  to `failure()` — red. Getting this assertion to pass at all required its own red/green cycle
+  (challenge #107): `${{ !cancelled() }}` (GitHub's own recommended escaping) parses through SnakeYAML
+  to a different literal string than the bare, single-quoted `'!cancelled()'` the guard asserts on.
+- Task 16, `gateBodies`: narrowed the E2E step to `pnpm e2e --grep cross-tab` — red (the "must run every
+  project and test" assertion catches a silently narrowed CI run, not just a missing one).
+- Task 16, `continueOnErrorIsOnlyOnRegisteredGates`: added a new, unregistered step carrying only
+  `continue-on-error: true` (no `if:`, not in `GATES`) — red, closing the exact blind spot
+  `gateStepsAreUnconditional` and `onlyUploadsAreConditional` each miss on their own.
+- Task 16, `postgresImageIsPinned`: floated the E2E Postgres tag to `postgres:16-alpine` — red.
+
+**How to run this locally:**
+```
+cd backend && docker compose up -d && SPRING_PROFILES_ACTIVE=dev ./gradlew bootRun   # backend + db
+cd frontend && fnm exec --using=24 -- pnpm dev                                       # frontend
+```
+E2E prerequisites, in order: `cd backend && ./gradlew bootJar`; `cd frontend && pnpm build`;
+`pnpm exec playwright install chromium` (already cached on this machine at
+`~/Library/Caches/ms-playwright`); then `pnpm e2e`. Every `pnpm` command needs the Node 24 activation
+from the section below — an agent's non-interactive shell still starts on the system Node.
+
+**The manual walkthrough (Task 17 Step 2/2b) — full detail in
+[`.superpowers/sdd/2026-09-16-f0b-frontend-foundation/task-17-report.md`](../../.superpowers/sdd/2026-09-16-f0b-frontend-foundation/task-17-report.md)
+on the `f0b-frontend` branch. Headline findings:**
+- **R64's open question is answered: no Devanagari clipping found**, in either `Input` or
+  `SelectField`'s fixed `h-9` (36px) box, at the font-size/line-height (16px/24px) `text-base` actually
+  computes to below the `md:` breakpoint — tested with representative strings and worst-case stacked
+  conjuncts/chandrabindu (श्री, गुरुद्वारा, हूँ, मूँछ). **Caveat, read before trusting this fully:** this
+  session's browser automation could not shrink the real rendering viewport (`window.innerWidth` stayed
+  pinned at 1920 despite the resize tool reporting success) or trigger real browser page-zoom, so the
+  320px/200%-zoom conditions were reproduced by forcing the exact computed font metrics a real narrow
+  viewport would apply, rather than by an actual device-toolbar emulation. The result is a strong
+  signal, not a substitute for one real DevTools pass before F1 ships Hindi content into these same
+  primitives.
+- **The P14/Security-1 critical path was verified by hand, live, against a real stopped/restarted
+  backend: PASS.** Signed out with the backend killed → blocking "Sign-out did not complete — retrying"
+  screen shown; reloaded while still down → still blocking, not signed back in; restarted the backend →
+  the retry completed on its own and landed on `/login`. This is the scenario P14 exists for, and it
+  behaved exactly as designed.
+- Tab order verified correct on `/login` (Workspace → Email → Password → Show password → Sign in →
+  Create a workspace) and into `/signup` (Business name → Workspace name → State); wrong password
+  announces a focused `role="alert"`; the alert's contrast was measured live in the browser (Canvas 2D
+  compositing the actual `oklch()`/`oklab()` computed colors, not a manual formula) at **6.79:1**,
+  clearing the 4.5:1 AA minimum. Password-toggle-with-Space works on both `/login` and `/signup`. All
+  three invite states work end-to-end (anonymous accept-with-Enter, signed-in "Sign out and accept",
+  invalid token) against a real backend-minted token. `AppShell`'s header uses `flex flex-wrap`
+  (verified by reading the code, not by narrowing a real viewport — same tooling caveat as above).
+- **One sub-item could not be verified as asked:** arrow-key selection on the native `<select>` while
+  it's actually open is a well-known gap in low-level CDP `Input.dispatchKeyEvent` against OS-rendered
+  select popups (Playwright's own docs recommend `selectOption()` instead of real key simulation for
+  exactly this reason) — not an app defect, since `SelectField` is a plain native `<select>` (P9) and
+  the browser's own arrow-key handling for a focused, open select is standard, ubiquitous behaviour this
+  automation session simply couldn't drive. Worked around with a direct `.value` + `change` event to
+  keep the walkthrough moving; a human should still confirm this one sub-item by hand.
+
+**Notes for F1, so the next slice inherits these decisions rather than rediscovering them:**
+- `src/api/types.ts` keeps all 8 re-exports through F0b. **F1's first non-auth schema is the moment to
+  split it**: features own their own type aliases, and `api/types.ts` keeps only what `src/session/`
+  needs (R43).
+- Two copy items queued for F1's i18n pass: `errors.fields.*` and `validation.*` currently duplicate the
+  same English strings with nothing keeping the two in sync; and length-constraint error messages state
+  the rule ("must be at least 8 characters") but not the value the user actually entered (R45).
+- `SelectField` is a native `<select>`, not shadcn's `Form`/Radix `Select`, **for a CSP reason, not just
+  a low-end-Android one**: Radix's `Select` pulls in `react-remove-scroll`, which injects a runtime
+  `<style>` tag that `style-src 'self'` refuses. A lint rule (R83, R86) now blocks that import family —
+  F1 should not "fix" a perceived regression by reaching for Radix `Select` again.
+- Only `zod/mini` is allowed, never bare `zod`: a bare import costs ~92 KB gzip against `zod/mini`'s
+  ~5 KB, and `@hookform/resolvers`' own README examples lead you to the expensive import. Lint-enforced
+  (R67, R73) — a new form in F1 that fails this lint should fix the import, not disable the rule.
+- **P20** (Part 10 of the F0 spec): `applyApiError` actually resolves a field message through **four**
+  levels — `errors.fields.<field>.<CODE>` → `errors.fields.<CODE>` → `errors.codes.<code>` → server
+  text — not the three §4.6 originally described. This was implemented but never declared as a spec
+  amendment until this session (ruling R30); F1 form work should read the four-level order from Part 10,
+  not from §4.6's older prose.
+- Task 12's `InvitePage` and `RootLayout` both assert "a status-region update is a *mutation*, not a
+  fresh insertion" (so a screen reader doesn't announce it as brand-new content), but by different
+  means: `RootLayout` asserts it directly, by DOM node identity across renders; `InvitePage`'s test
+  proves the same property only *incidentally*, via a duplicate-element error the testing library throws
+  if the node were re-inserted rather than mutated. If `InvitePage`'s status region is ever refactored,
+  its test may stop catching a regression here even though it still passes — worth tightening to a
+  direct identity assertion if that region changes.
+- The plan's own "expected major versions" list was wrong and is superseded by what was actually
+  installed and passed the environment probe: **vite 8.3.0, @vitejs/plugin-react 6.1.1, vitest 5.0.1,
+  typescript 5.9.3** (pinned to `^5`, not `^6`, because `typescript-eslint` 8 caps at `<6.1.0`). The
+  plan's original trio (vite 7 / vitest 5 / typescript-eslint 3-ish) fails the environment probe outright
+  — don't re-attempt it in F1.
+- **A cold-start E2E flake was seen once** (a 6.1 s wait against a 5000 ms `toBeVisible`), never
+  reproduced in 8+ subsequent runs by three different people/sessions. Mitigated by raising that one
+  assertion's timeout to 15 s rather than chasing a repro. CI's first run of any given day is always a
+  cold start (fresh runner, cold caches) — watch that specific run if this flake ever resurfaces.
+- **P11's non-flakiness is empirical, not structural.** `maxInFlight`'s cross-tab overlap assertion
+  relies on two real network requests naturally overlapping in time, not a forced hold — 6/6 consistent
+  red runs against `noopLocks` (challenge #106), but a sufficiently loaded CI runner could in principle
+  serialize the two requests by accident and produce a false pass. If this test ever flakes, that's the
+  first hypothesis, not a broken lock.
+
+**Carried forward, still open (unchanged from before F0b, plus nothing new this session):** F0a's
+follow-ups (grace-use audit, logout-vs-grace race, `IssuedSession.toString()`, a class-level arch test,
+`CustomerService` `fieldCodes` before F1), H7 (freeze the seller on a sent quotation), item 3b
+(cross-service data access design), the DNS provider (rest of D-g), the skipped test-tooling Dependabot
+group (Testcontainers 2 / JUnit 6 — does not compile), and P8 (the toast container arrives with F1's
+first background failure).
+
+**Next: F1 (master data).** Brainstorm → spec → plan, same as F0 did. `superpowers:using-git-worktrees`
+for a fresh worktree; do not build F1 inside `f0b-frontend`.
+
+---
+
 ## 2026-09-19 — START HERE: the F0b plan is reviewed and revised, Node 24 is installed; **build F0b next**
 
 **State.** No application code changed. All five frontend specialist reviewers reviewed
@@ -8,6 +174,11 @@ returned "Ready with fixes"**, and the fixes are applied. **`main` is pushed at 
 (`7e24783` = the plan revision, `2b8c23e` = this handoff + roadmap; both docs-only). Reviewers were
 **still not callable by `subagent_type`** — the fallback (a `general-purpose` agent told to read
 `.claude/agents/frontend-review-<lens>.md` and follow it verbatim) worked again.
+
+> **Correction (2026-09-20, see the top section):** this "not callable by `subagent_type`" note was
+> carried across three sessions and turned out to be stale — every review across the F0b build that
+> followed this one dispatched the five lenses by name. Left as-written below for the historical
+> record of what this session actually observed; do not repeat the fallback in new work.
 
 Verify (separate invocations):
 ```

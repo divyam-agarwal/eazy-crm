@@ -322,6 +322,11 @@ Offline order capture is **P5** (a distinct offline-first architecture — PWA/C
 
 Typed API errors → RHF `setError` per field; global error boundary; toasts for transient failures. **Vitest + Testing Library + MSW**; **Playwright** for four critical paths — login, enquiry→quote→send, import wizard on the dirty CSV, cross-tenant 404. The 404 runs in CI as an E2E regression test.
 
+> **F0 notes (2026-09-16).** English only for now, i18n-ready and enforced by lint and types (F0 spec
+> F0-6); the cross-tenant 404 E2E path moves to F1 and throttled Lighthouse to F2 (F0-14). The browser
+> refresh model is an httpOnly cookie with Web-Locks-serialized rotation and a 30 s single-use grace
+> window for lost responses (F0 spec §3.3, §4.4).
+
 ---
 
 ## 6. Backend Module Structure

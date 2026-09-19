@@ -6693,6 +6693,14 @@ very unlikely to be the commit that caused most of the growth.
 
 ### Why it's hard
 
+**Task 17 triage note.** This entry is kept, sharpened here rather than removed: diffing a bundle
+against a committed baseline is standard practice elsewhere (`size-limit`, `bundlesize` both do it),
+so the *mechanism* isn't the finding. The finding is project-specific — a shared entry chunk that
+every route downloads means a route's own commits are not the only thing that can move its number,
+so a route-scoped "did I regress" review has no way to see debt landing from a sibling task's diff.
+That's the failure an absolute-only gate hides, and it's what the baseline closes; the paragraphs
+below describe that failure, not a case for adopting a known tool.
+
 The naive fix — "just lower the budget so it's tighter" — doesn't address the actual failure mode:
 a tighter ceiling still only fires once, on whichever commit happens to be unlucky enough to cross
 it, and still says nothing about which of the (potentially many) preceding commits actually put the
@@ -6801,70 +6809,48 @@ listening to a real `BroadcastChannel`, actually produces.
 
 ---
 
-## Challenge 104 — `playwright install`'s own Happy-Eyeballs fallback aborts itself on a sandbox that silently drops outbound IPv6, and "fixing" it broke `vite preview` a different way
+## Challenge 104 — A green Gradle build proves nothing about what `java -jar` will find on `PATH`
 
 **Phase:** Implementation (F0b, Task 14 — E2E harness bring-up, before any spec ran)
 
+**Task 17 triage note.** This entry originally bundled two problems from the same investigation: a
+committed, generalizable JDK-resolution fix (kept below, and re-titled to lead with it) and an
+uncommitted, one-time local sandbox workaround for `playwright install` hanging over IPv6. The second
+half read as an environment journal — nothing about it shipped, it doesn't recur (the throwaway
+`node_modules` patch was reverted the same session), and it isn't specific to this codebase — so it's
+compressed to the one paragraph of context below instead of keeping its own Problem/Why/Solution
+treatment.
+
 ### The problem
 
-`pnpm exec playwright install chromium` failed every attempt with `Request to
-https://cdn.playwright.dev/... timed out after 30000ms`, even though `curl` fetched the same 190 MB
-file in 13 seconds and a plain Node `https.get` reached the same host instantly. The dev sandbox
-turned out to silently black-hole outbound IPv6 TCP connections (not refuse them — a raw
-`net.createConnection` over IPv6 to a real external host just hung, forever, with no error). DNS
-resolution for the AAAA record was fast and correct; only the *connection* over that address hung.
+`java -jar build/libs/*.jar` failed with `UnsupportedClassVersionError` even though `./gradlew
+bootJar` had just succeeded on the same machine. `java` on `PATH` was Java 21; the boot jar was
+compiled for Java 25. Gradle's own toolchain resolution finds and uses a matching JDK independently of
+whatever `java` the invoking shell would run — so a green `./gradlew bootJar` is evidence the *build*
+had a Java 25 toolchain available, and no evidence at all about what `java -jar` will find when run
+directly afterward from the same shell.
 
-### Why it's hard
-
-Playwright-core's own downloader uses a hand-rolled Happy-Eyeballs `lookup()` (RFC 8305: try IPv6 and
-IPv4 in parallel, prefer whichever answers) passed to `https.request` alongside `autoSelectFamily:
-true`. Node's `autoSelectFamily` implementation, on losing the IPv6 race, emits a `'timeout'` event on
-the *request* object as part of its own internal fallback bookkeeping — not a real request timeout.
-Playwright's downloader treats any `'timeout'` event as fatal and aborts the whole request right then,
-which cancels the fallback before IPv4 ever gets a turn. Three layers had to be separated to see this:
-(1) DNS resolves fine — `dns.promises.lookup` for both families returned in 16ms; (2) a raw
-`net.connect` with the *same* Happy-Eyeballs `lookup` genuinely falls back and connects over IPv4 in
-~5s, proving the fallback mechanism itself works; (3) only wrapping that exact logic in `https.request`
-and using its own `.setTimeout()` handler reproduced the abort — the bug is in how the *caller*
-reacts to Node's internal timeout signal, not in DNS or in Happy Eyeballs itself.
-
-The first fix — patch the vendored `dualStackLookup` in `node_modules` to return only the IPv4
-address, so the race never starts — did get the browser downloaded. But it applied to *every* network
-operation in that playwright-core copy, not just the one-time download, and later broke bringing up
-the actual E2E harness: `vite preview` (Task 2's given command, no `--host` flag) bound only to the
-IPv6 loopback address `::1` on this machine, while Playwright's own `webServer` availability check,
-now patched to IPv4-only, polled `127.0.0.1` and got `ECONNREFUSED` for 60 seconds straight — a
-process that was actually up and serving, on an address nothing was checking. Blanket-disabling IPv6
-"fixed" a hang against a blackholed *external* host by breaking a working connection to a *local*
-one — loopback IPv6 was never blackholed in this sandbox; only routed IPv6 was.
+*(Context: this surfaced during the same session's fight to get `pnpm exec playwright install
+chromium` working — the dev sandbox was silently black-holing outbound IPv6 connections, which made
+Playwright's Happy-Eyeballs download fallback hang. That was worked around with a throwaway,
+session-local patch to the vendored `dualStackLookup` in `node_modules`, reverted immediately after
+the browser was downloaded — nothing from that part is committed or reusable, and it is not expected
+to recur outside this one sandbox.)*
 
 ### Solution
 
-Patch `dualStackLookup` only for the duration of `playwright install chromium` (a one-time,
-throwaway edit to the local `node_modules` copy — nothing committed, nothing that ships), then revert
-it immediately afterward so the E2E run itself uses Node's original, unmodified Happy-Eyeballs
-behavior — which handles loopback correctly (IPv6 loopback isn't blocked, so it wins the race
-normally) and never touches an external host again once Chromium is already on disk. The permanent,
-committed fix lives in `run-backend.sh` instead, solving an unrelated but adjacent problem the same
-investigation surfaced: `java` on `PATH` (Java 21) couldn't load the boot jar's Java 25 bytecode
-(`UnsupportedClassVersionError`) even though `./gradlew bootJar` succeeded, because Gradle's toolchain
-resolution finds a matching JDK independently of `PATH` — a green Gradle build proves nothing about
-what `java -jar` will find. The launcher now resolves Java 25 explicitly via `/usr/libexec/java_home
--v 25`, falling back to `$JAVA_HOME` and then plain `java`, rather than trusting the invoking shell's
-default.
+`run-backend.sh` now resolves Java 25 explicitly before invoking `java -jar`: `/usr/libexec/java_home
+-v 25`, falling back to `$JAVA_HOME`, and only then to plain `java` on `PATH`. This makes the E2E
+harness's own launcher independent of whatever the invoking shell's default JDK happens to be, instead
+of inheriting an assumption that "the build passed" implies "the runtime will match."
 
 ### Lesson
 
-A fix scoped wider than the bug it targets can trade one failure for a different one that only shows
-up later, in a system the original bug never touched — patching a *shared* network utility to solve a
-problem specific to *one* caller (a one-time download from an external CDN) is exactly that trap, and
-the tell was that the second failure (`vite preview` unreachable) produced a symptom — `ECONNREFUSED`,
-not a hang — that looked unrelated enough to investigate from scratch rather than connect back to the
-same patch. The general habit: when a fix touches a shared/vendored utility instead of the one call
-site that actually has the problem, ask what *else* routes through that utility before trusting the
-fix is free, and prefer scoping the change as narrowly as the actual root cause (this one was "IPv6 to
-a specific class of unreachable host," not "IPv6, ever") — or, failing that, reverting it the moment
-the narrow job it was needed for is done.
+A build tool's own toolchain resolution and the invoking shell's `PATH` are two independent sources of
+truth for "which JDK," and a green build only confirms the first one. Any script that builds with one
+and then runs the *artifact* with the other must resolve the runtime JDK explicitly and by the same
+logic — never assume the shell that happened to have a passing build also has a matching `java` on
+`PATH`.
 
 ---
 
@@ -7038,3 +7024,30 @@ starts — the config-file parser (YAML) and the expression runtime (GitHub Acti
 satisfying one can silently fail the other's test without the workflow itself being wrong. When a guard
 test reads the raw parsed structure (as this one must, to catch a step being softened), pick the syntax
 whose parsed form is also the form worth asserting on, not just the syntax a style guide recommends.
+
+---
+
+## Recurring pattern — Challenges 92, 96 and 105: a plausible assumption turned out false when measured
+
+**Task 17 note (2026-09-20).** Three separate challenges in this slice share one shape, worth naming
+because it recurred rather than being a one-off:
+
+- **#92** assumed alpha-compositing an OKLCH-derived colour pair in linear light matched what a
+  browser does — plausible, backed by a cross-check that landed close to the target — and was wrong
+  in a specific, measurable way (browsers composite `rgba()` in gamma-encoded sRGB).
+- **#96** assumed banning a package by its default import specifier was enough to keep it out of the
+  bundle — plausible, and the obvious entry point — and was wrong because the same code has other,
+  unblocked entry points.
+- **#105** assumed a `localStorage` write that happens-before a `BroadcastChannel.postMessage()` call
+  in one tab is reliably visible to another tab before that post's handler runs — plausible, reasoned
+  from single-tab program order — and was measured false in two real browser tabs (2/3000, then
+  52/3000 violations).
+
+Each looked safe on paper for the same underlying reason: the reasoning was sound *within* one frame
+(a formula, a static analysis, a single execution context) but the claim being made was about a
+different frame (a browser's actual rendering pipeline, the full set of module entry points, two
+separate OS processes). The lesson worth keeping visible across the project, not just inside any one
+entry: when a safety argument works by analogy or by reasoning within a frame narrower than the claim
+itself, that gap is exactly where "looks free" or "looks close enough" assumptions hide, and the only
+reliable close is to measure the actual, wider frame the claim is really about — a real browser, a
+real bundle, or two real tabs — before trusting the argument.
