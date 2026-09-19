@@ -1,5 +1,5 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
-import { withImportRetry } from './lazyImport';
+import { withImportRetry } from '@/lib/lazyImport';
 import { RequireSession } from './RequireSession';
 import { RootLayout } from './RootLayout';
 import { RouteErrorBoundary } from './RouteErrorBoundary';

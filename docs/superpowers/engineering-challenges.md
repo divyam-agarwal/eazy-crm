@@ -6198,3 +6198,69 @@ solve different halves of the same async operation — pending vs. rejected — 
 opt-in by simply rendering a component. A wrapper like `withImportRetry` that turns "give up after 3
 tries" into a real, catchable error is what makes an *existing* error boundary (built for a completely
 different kind of failure — loader errors) actually reachable from a Suspense-triggering rejection too.
+
+---
+
+## Challenge 95 — Two ESLint gate fixtures that "pass" without the rule ever running, hiding behind assertions that looked like they tested it
+
+**Phase:** Implementation (F0b, Task 9)
+
+### The problem
+
+Task 9 wires up `import-x/no-restricted-paths` (layer boundaries) and `eslint-plugin-i18next`'s
+`no-literal-string` (ban raw JSX text outside i18n), each proven red by a fixture per the "every gate
+seen failing once, for the right reason" standing rule. Two of the given fixtures compiled, ran, and
+asserted the expected rule id — and still tested nothing, for two unrelated reasons neither visible
+from reading the assertion:
+
+1. **`stops src/session importing a feature`** linted a snippet importing
+   `@/features/auth/pages/LoginPage` — a file that does not exist until Task 10. `no-restricted-paths`
+   resolves every import specifier before checking it against a zone (`resolve(importPath, context)`
+   in the rule's source); when resolution fails it returns immediately, before the zone check ever
+   runs. An unresolvable import and an *allowed* import are indistinguishable in the rule's output —
+   both produce zero messages for that rule. The assertion `toContain('import-x/no-restricted-paths')`
+   would have reported a real, informative failure here (empty array does not contain the id) — but
+   only by accident: if the fixture path had instead pointed at an existing file that the zone
+   happened to permit, the exact same "resolution never even ran" defect would have produced a
+   *passing* assertion for the wrong reason, indistinguishable from the rule correctly allowing it.
+
+2. **`rejects literal JSX text in features and app`** used `export const X = () => <p>Hello</p>;` —
+   copied from the brief verbatim, and shaped exactly like the plugin's own React examples. Tracing
+   `no-literal-string`'s source (`VariableDeclarator` handler) turned up a convention: any
+   ALL-CAPS-named declaration (`/^[A-Z_-]+$/`) is treated as a hand-written constant
+   (`const A_B = 'test'`) and the *entire declaration's subtree* — JSX included — is pushed onto an
+   "exempt scope" stack for the rest of that node's traversal. A single uppercase letter satisfies that
+   regex. `const X = ...` is therefore invisibly exempt from the rule, for a reason that has nothing to
+   do with i18n and everything to do with a naming convention nobody chose on purpose. This one *did*
+   pass initially — silently, exactly the failure mode `R-standing` exists to catch, except it slipped
+   past because the test still asserted the right rule id and simply got an empty array back, which
+   reads identically to "the rule doesn't fire yet" rather than "the rule can never fire on this input."
+
+Both are instances of the same shape: an ESLint rule can go quiet for a reason entirely orthogonal to
+whether it "works," and `toContain(ruleId)` cannot distinguish "the rule ran and allowed it" from "the
+rule never got the chance to run." Testing-8's `fatal`-tracking patch (R21) only guards the inverse
+case — an *allow* assertion passing because the snippet failed to parse. Neither guard catches a
+*reject* assertion whose target silently failed to resolve, or a plugin-internal exemption unrelated to
+parsing.
+
+### The solution
+
+Fixed both fixtures at the source rather than adding a third meta-guard: pointed the session-zone
+fixture at `@/features/auth/session/accessToken`, a file that exists today and is already used
+elsewhere in the same test file, and renamed the literal-string fixture's component from `X` to
+`Greeting` (any name that isn't all-caps). Both are now failing-when-they-should-fail for a reason
+traceable to the rule actually running, verified by re-deriving the failure from the rule's own source
+rather than trusting that a matching rule id meant the rule executed as intended. Documented both as
+inline comments at the fixture site so a future edit doesn't reintroduce either shape by copying a
+`const X = ...` or an as-yet-unwritten path from elsewhere in the plan.
+
+### Lesson
+
+A gate fixture proves the rule fires by matching a rule id — but a matching *absence* of that id proves
+nothing on its own; it is consistent with both "correctly allowed" and "silently never evaluated." The
+distinguishing move is the same in both cases found here: read the rule's own source (or its
+`context.report` call sites) for what makes it *decline to run at all* — an unresolvable import, a
+naming convention treated as an exemption, a mode flag that changes which AST nodes it visits — not
+just what makes it fire. That check has to happen once per rule, by hand, the same way R21's `fatal`
+check had to be added by hand for the allow-case failure mode; no assertion shape catches every way a
+rule can go quiet before you've read what "quiet" actually means for that specific rule.

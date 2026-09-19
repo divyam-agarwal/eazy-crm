@@ -1,7 +1,7 @@
 import i18next, { type i18n } from 'i18next';
 import resourcesToBackend from 'i18next-resources-to-backend';
 import { initReactI18next } from 'react-i18next';
-import { withImportRetry } from '@/app/lazyImport';
+import { withImportRetry } from '@/lib/lazyImport';
 
 export const NAMESPACES = ['common', 'auth'] as const;
 

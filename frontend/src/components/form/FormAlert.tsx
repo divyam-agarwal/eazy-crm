@@ -28,7 +28,6 @@ export function FormAlert({ message, attempt }: { message: string | null; attemp
     ref.current?.focus();
     ref.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
     // `attempt` is intentionally in the deps though unused in the body — see the doc comment above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message, attempt]);
 
   return (
