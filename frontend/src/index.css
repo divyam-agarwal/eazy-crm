@@ -31,10 +31,10 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  /* A11y-2: `text-destructive` (the token above) on `bg-destructive/10` measures ~4.39:1 against
+  /* A11y-2: `text-destructive` (the token above) on `bg-destructive/10` measures ~3.99:1 against
      the page background — under the 4.5:1 AA minimum for 14px text (see docs/superpowers task-7
      report for the measurement script). `--destructive-strong` is a darker text-only red that
-     measures ~7.53:1 against that same tint; FormAlert uses it instead of `--destructive`. */
+     measures ~6.84:1 against that same tint; FormAlert uses it instead of `--destructive`. */
   --destructive-strong: oklch(0.45 0.18 27);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
