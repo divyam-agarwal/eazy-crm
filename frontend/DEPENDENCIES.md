@@ -9,6 +9,7 @@ dependency adds a row here in the same change.**
 |---|---|---|---|---|
 | react | 19.3.0 | entry | | UI runtime |
 | react-dom | 19.3.0 | entry | | UI runtime |
+| openapi-fetch | 0.17.0 | entry | | Typed fetch client generated from the OpenAPI contract (Task 3) |
 
 Version column filled from the resolved `package.json` majors; the gzipped-measured column is
 still Task 13's job (`pnpm deps:sizes`), not filled at install time. Dev-only dependencies are not

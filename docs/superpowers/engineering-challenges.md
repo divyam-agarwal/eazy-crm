@@ -5442,3 +5442,100 @@ only its placement isolates whether the annotation or the placement's merge path
 reading the generator's source. And a global "add the response this class already answers implicitly"
 customizer is a closer fit than annotation-per-operation for anything answered by *infrastructure*
 (filters, resolvers) rather than by a controller or handler method — there is no method to annotate.
+
+## Challenge 85 — `AbortSignal.any()` is born already-aborted and never re-fires `abort` for a listener attached afterward, so a fetch layer that only awaits before building the signal can hang forever
+
+**Phase:** Implementation (F0b, Task 3)
+
+### The problem
+
+`authFetch.ts`'s `createAuthFetch` snapshots the incoming `Request` (`await snapshot(request)`),
+then builds a per-attempt request whose signal is `AbortSignal.any([callerSignal, AbortSignal.timeout(ms)])`
+and hands it to the injected `fetchImpl`. The test `"aborts when the CALLER's signal aborts, not only on
+timeout"` — which calls `doFetch(request)`, then synchronously calls `caller.abort()` right after, mirroring
+a real cleanup-on-unmount pattern — hung for the full 10 s Vitest timeout every single run, not
+intermittently.
+
+### Why it's hard
+
+Nothing about the code looks wrong: it is the literal implementation the task brief specified, and eight
+other tests exercising the same `build()`/timeout machinery passed immediately. The bug is a genuine race,
+but a *deterministic* one, not a flaky one — that combination is what makes it easy to misdiagnose as "the
+mock is wrong" rather than "the implementation is wrong". `await snapshot(request)` is unavoidably at least
+one microtask tick even when `snapshot`'s body has no internal `await` (the GET/HEAD branch skips
+`arrayBuffer()` entirely) — calling an async function and awaiting its result always defers by a tick. So
+`doFetch(request); caller.abort();`, both synchronous statements in the test body, resolve in that order:
+`caller.abort()` always completes before `createAuthFetch`'s continuation reaches `build()`. By the time
+`AbortSignal.any([callerSignal, timeout])` runs, `callerSignal` is already aborted. Per the WHATWG spec,
+`AbortSignal.any()` computes its result as already-aborted *synchronously at construction* when a source is
+already aborted, but does **not** dispatch a transition — no `abort` event ever fires on the returned
+signal. The test's `fetchImpl` mock only listens for that event (`request.signal.addEventListener('abort',
+...)`) to reject its pending promise; since the event never fires, the promise never settles.
+Verified empirically with an isolated Node repro before touching the implementation:
+`AbortSignal.any([alreadyAbortedController.signal, timeout])` reports `.aborted === true` immediately, and
+a listener attached 500 ms later never observes an `'abort'` event.
+
+### The solution
+
+Added a small `send()` wrapper in `authFetch.ts` that checks `request.signal.aborted` *synchronously*
+before ever calling `fetchImpl`, throwing `request.signal.reason` immediately if it is already true — the
+same defensive check native `fetch()` performs internally (native `fetch()` never relies solely on the
+event either). Applied at both the first-attempt and retry call sites, and in `createBareFetch`. This adds
+no new exported surface and does not change any test's assertions (none of the affected tests check
+whether `fetchImpl` was invoked), it just closes the gap between "signal became aborted before we looked"
+and "signal aborts while we're waiting".
+
+### Lesson
+
+Any code that combines an externally-owned `AbortSignal` with a freshly-created one via `AbortSignal.any()`
+— or that otherwise builds a signal on the far side of an `await` from when the caller could have aborted —
+must check `.aborted` synchronously at the point of use, not only listen for the event. The event fires on
+a *transition*; if the input already made that transition before your combinator saw it, there is no event
+left to observe, only a static already-true value. This is invisible in code review (`build()` reads as
+straightforwardly correct) and invisible in most tests (anything that awaits before aborting won't trigger
+the gap); it only surfaces in the specific "abort immediately after issuing the request" pattern — which is
+also the single most common real-world cancellation pattern (React effect cleanup, a superseded query).
+
+## Challenge 86 — A prose comment that happens to start with `// @ts-expect-error` is a real compiler directive, not documentation
+
+**Phase:** Implementation (F0b, Task 3)
+
+### The problem
+
+`src/test/openapiHttp.typecheck.ts` is a never-executed, compile-time-only file: it exists solely so that
+if `openapiHttp`'s typing ever silently degraded to `any`, its `@ts-expect-error` lines would become
+"unused" and fail `tsc`. The file's own leading explanatory comment, written across two lines, was:
+```
+// Compile-time proof that openapiHttp is typed. If typing silently degraded to `any`, these
+// @ts-expect-error lines would become unused and `tsc` would fail. Never executed.
+```
+`pnpm typecheck` failed with `error TS2578: Unused '@ts-expect-error' directive` — pointing not at either
+of the two real `@ts-expect-error` lines further down, but at line 2 of the file's own prose description.
+
+### Why it's hard
+
+The comment is plainly documentation — it is explaining, in English, what `@ts-expect-error` directives are
+for. But TypeScript's directive scanner does not parse comments for intent; it matches any comment line
+that begins with the literal token `// @ts-expect-error` (optionally followed by more text) and treats it
+as a suppression applied to the next statement, full stop. That next statement here was the `import { http
+} from './openapiHttp'` on line 3 — which has no type error — so the "directive" was unused, and unused
+`@ts-expect-error` is itself a compile error (by design, so stale suppressions get cleaned up). The failure
+message names the line with the phantom directive, which reads as a red herring: it looks like a problem
+with the import, when the actual defect is the wording of the sentence one line above it.
+
+### The solution
+
+Reworded the comment so no line starts with `// @ts-expect-error` while keeping the same explanation:
+"the expect-error directives below would become unused" instead of restating the exact pragma token at the
+start of a comment line. No behavioral change; `pnpm typecheck` passes clean afterward with both real
+`@ts-expect-error` lines still consumed (proving they're still load-bearing).
+
+### Lesson
+
+`@ts-expect-error`/`@ts-ignore` are lexically scanned, not semantically parsed — TypeScript cannot tell the
+difference between "this comment is a directive" and "this comment is prose that happens to start with the
+same three words". Any file whose entire purpose is to document or demonstrate these directives (exactly
+the kind of file most likely to want to *talk about* them in nearby prose) is at elevated risk of this
+collision. The general rule: never start a comment line with the literal text `@ts-expect-error` or
+`@ts-ignore` unless you mean it as a real directive on the following statement — rephrase, or break the
+token up (e.g. "expect-error directive") when writing about the mechanism itself.
