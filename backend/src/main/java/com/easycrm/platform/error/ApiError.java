@@ -1,6 +1,7 @@
 package com.easycrm.platform.error;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,7 +22,11 @@ import java.util.Map;
  *
  * <p>{@code fieldCodes} maps a field to a stable reason code (docs/api/error-codes.md); omitted
  * when there are none.
+ *
+ * <p>{@code code} and {@code message} are marked required in the contract; {@code fields} and
+ * {@code fieldCodes} stay optional because NON_NULL omits them.
  */
+@Schema(requiredProperties = {"code", "message"})
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ApiError(String code, String message, Map<String, Object> fields, Map<String, String> fieldCodes) {
 

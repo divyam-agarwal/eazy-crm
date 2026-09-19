@@ -5370,3 +5370,75 @@ repository" until someone already knows the API's two-accessor split. A brief th
 `getMethodCallsFromSelf()`-only test as the literal, verbatim thing to write can still ship an incomplete
 guard; the fix is checking a new caller/target guard against the codebase's own prior art for the same
 ArchUnit method-vs-reference distinction, not just against "does it compile and pass today."
+
+## Challenge 84 — springdoc silently drops an advice-level `@ApiResponse` for the one exception Spring's own MVC contract already owns
+
+**Phase:** Implementation (F0b, Task 1)
+
+### The problem
+
+`ApiExceptionHandler.invalid(MethodArgumentNotValidException)` carries
+`@ApiResponse(responseCode = "400", ...)`, exactly like the sibling handlers for 401/403/404/409/422 on
+the same `@RestControllerAdvice` class — and those five all propagate correctly to every operation's
+generated response map. 400 did not: `grep` on the committed contract found `400` nowhere, on any
+operation, even though the annotation was right there on the handler. Nothing about the annotation
+looked different from its siblings; the failure was silent (no warning, no error, `updateOpenApiSnapshot`
+just never emitted it) and would have stayed invisible indefinitely, because nothing else in the suite
+compared documented status codes against actual handler behaviour. Separately, 429 (answered by
+`RateLimitFilter`, a servlet filter that runs before Spring Security and before any controller or advice)
+was documented nowhere at all — there is no method or exception handler for springdoc to scan in the
+first place, so no annotation placement fixes it.
+
+### Why it's hard
+
+The obvious diagnosis — "the annotation is malformed" or "springdoc doesn't scan this class" — is wrong
+and looks right until tested: the other five `@ApiResponse`s on the *same class* work. The actual cause
+only surfaces by isolating the one variable that differs: exception type.
+`MethodArgumentNotValidException` is the one exception among the six handled here that Spring's own
+`ResponseEntityExceptionHandler`/`ExceptionHandlerExceptionResolver` contract already assigns a built-in
+resolution path to (bean-validation failures on `@Valid @RequestBody`) — springdoc's advice-scanning walks
+`@ExceptionHandler` methods to attribute a status code to a response, and for this one exception type that
+attribution is preempted before reaching the custom annotation. Confirmed empirically, not by reading
+springdoc internals: temporarily moving the identical `@ApiResponse(responseCode = "400", ...)` directly
+onto `AuthController.login` (a per-operation placement, not advice-level) made 400 appear immediately in
+the regenerated snapshot. Same annotation, same value, different placement, different outcome — that is
+the signature of an advice-merging gap, not an annotation mistake, and it would not have been findable by
+staring at `ApiExceptionHandler` alone.
+
+### The solution
+
+A `GlobalOpenApiCustomizer` bean (`ErrorResponsesCustomizer`, `backend/src/main/java/com/easycrm/
+platform/openapi/ErrorResponsesCustomizer.java`) that runs after springdoc has already built the full
+operation graph from every controller and advice, and adds a `400` and a `429` response (referencing
+`ApiErrorResponse`, with a `Retry-After` header documented on 429) to any operation that does not already
+declare one. This is the one mechanism that closes both gaps with a single bean: it does not depend on
+springdoc's per-exception advice-merging behaviour at all (sidestepping the 400 gap), and it has no
+requirement that the documented status originate from a method or exception handler in the first place
+(closing the 429 gap, which no annotation placement could reach). Applied application-wide rather than
+scoped to `/api/v1/auth/**`, because both underlying behaviours — the rate limiter and bean-validation on
+any `@Valid @RequestBody` — apply application-wide; scoping the fix to one prefix would have just
+re-hidden the same gap everywhere else. `OpenApiRequiredFieldsTest`/`OpenApiMediaTypesTest` pin only the
+auth/invitation slice the frontend actually mocks.
+
+One implementation trap along the way: naming the `@Bean` factory method `errorResponsesCustomizer()` —
+matching the enclosing `@Configuration` class's own decapitalized name — collided with Spring's implicit
+self-registration of the configuration class under that same bean name, failing context startup with
+`BeanDefinitionOverrideException` on every test that loads the full context. Renamed the bean method to
+`errorResponsesOpenApiCustomizer()`; the class name and the bean name must not coincide.
+
+### Lesson
+
+An `@ApiResponse` on an `@ExceptionHandler` is not a first-class contract statement the way a per-operation
+`@ApiResponse` is — its presence in the generated document depends on springdoc's advice-merging path
+choosing to consult it for that exception type, and Spring's own MVC exception-handling contract can win
+that race silently for exceptions it already has an opinion about (`MethodArgumentNotValidException` here;
+plausibly others engineered the same way). A codebase that documents error responses primarily through
+advice-level annotations should not assume "the annotation exists" implies "the annotation appears in the
+contract" — the two came apart for exactly one exception type out of six on the same class, with no error,
+warning, or test failure marking the gap. The diagnostic technique that found it (move the annotation to a
+per-operation site and see whether the *same* annotation with the *same* value now appears) generalizes:
+when one of several structurally identical annotations behaves differently from its siblings, changing
+only its placement isolates whether the annotation or the placement's merge path is at fault, faster than
+reading the generator's source. And a global "add the response this class already answers implicitly"
+customizer is a closer fit than annotation-per-operation for anything answered by *infrastructure*
+(filters, resolvers) rather than by a controller or handler method — there is no method to annotate.

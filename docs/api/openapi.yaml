@@ -64,6 +64,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseActivityResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -95,6 +102,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - activity-controller
     post:
@@ -112,6 +130,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ActivityResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -143,6 +168,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - activity-controller
   /api/v1/activities/{id}:
@@ -168,6 +204,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ActivityResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -199,6 +242,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - activity-controller
   /api/v1/auth/invitations/{token}:
@@ -217,6 +271,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/InvitationPreviewResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -248,6 +309,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - public-invitation-controller
@@ -274,6 +346,13 @@ paths:
                 $ref: "#/components/schemas/AuthResponse"
           description: member created; the refresh token is set as the httpOnly easycrm_rt
             cookie
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -305,6 +384,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - public-invitation-controller
@@ -324,6 +414,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -355,6 +452,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - auth-controller
@@ -378,6 +486,13 @@ paths:
       responses:
         "204":
           description: signed out; the easycrm_rt cookie is cleared
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -410,6 +525,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - auth-controller
@@ -423,6 +549,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/MeResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -454,6 +587,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - auth-controller
   /api/v1/auth/refresh:
@@ -479,6 +623,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -511,6 +662,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - auth-controller
@@ -531,6 +693,13 @@ paths:
                 $ref: "#/components/schemas/AuthResponse"
           description: workspace created; the refresh token is set as the httpOnly
             easycrm_rt cookie
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -562,6 +731,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - auth-controller
@@ -575,6 +755,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/SignupStatusResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -606,6 +793,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - auth-controller
@@ -650,6 +848,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseCustomerResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -681,6 +886,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - customer-controller
     post:
@@ -698,6 +914,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -729,6 +952,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - customer-controller
   /api/v1/customers/{customerId}/contacts:
@@ -750,6 +984,13 @@ paths:
                 items:
                   $ref: "#/components/schemas/ContactResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -781,6 +1022,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - contact-controller
     post:
@@ -805,6 +1057,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ContactResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -836,6 +1095,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - contact-controller
   /api/v1/customers/{customerId}/contacts/{contactId}:
@@ -857,6 +1127,13 @@ paths:
       responses:
         "200":
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -888,6 +1165,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - contact-controller
     put:
@@ -918,6 +1206,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ContactResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -949,6 +1244,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - contact-controller
   /api/v1/customers/{id}:
@@ -968,6 +1274,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -999,6 +1312,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - customer-controller
     put:
@@ -1023,6 +1347,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1054,6 +1385,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - customer-controller
   /api/v1/customers/{id}/activate:
@@ -1073,6 +1415,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1104,6 +1453,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - customer-controller
   /api/v1/customers/{id}/deactivate:
@@ -1123,6 +1483,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1154,6 +1521,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - customer-controller
   /api/v1/enquiries:
@@ -1221,6 +1599,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseEnquiryResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1252,6 +1637,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - enquiry-controller
     post:
@@ -1269,6 +1665,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1300,6 +1703,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - enquiry-controller
   /api/v1/enquiries/{id}:
@@ -1319,6 +1733,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1350,6 +1771,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - enquiry-controller
     patch:
@@ -1374,6 +1806,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1405,6 +1844,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - enquiry-controller
   /api/v1/enquiries/{id}/advance:
@@ -1430,6 +1880,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1461,6 +1918,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - enquiry-controller
   /api/v1/enquiries/{id}/lose:
@@ -1486,6 +1954,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/EnquiryResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1517,6 +1992,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - enquiry-controller
   /api/v1/follow-ups:
@@ -1596,6 +2082,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseFollowUpResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1627,6 +2120,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - follow-up-controller
     post:
@@ -1644,6 +2148,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1675,6 +2186,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - follow-up-controller
   /api/v1/follow-ups/summary:
@@ -1687,6 +2209,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/FollowUpSummaryResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1718,6 +2247,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - follow-up-controller
   /api/v1/follow-ups/{id}:
@@ -1737,6 +2277,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1768,6 +2315,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - follow-up-controller
     patch:
@@ -1792,6 +2350,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1823,6 +2388,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - follow-up-controller
   /api/v1/follow-ups/{id}/cancel:
@@ -1848,6 +2424,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1879,6 +2462,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - follow-up-controller
   /api/v1/follow-ups/{id}/complete:
@@ -1904,6 +2498,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/FollowUpResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1935,6 +2536,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - follow-up-controller
   /api/v1/invitations:
@@ -1949,6 +2561,13 @@ paths:
                 items:
                   $ref: "#/components/schemas/PendingInvitationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -1980,6 +2599,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - invitation-controller
     post:
@@ -1997,6 +2627,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/InvitationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2028,6 +2665,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - invitation-controller
   /api/v1/invitations/{id}:
@@ -2043,6 +2691,13 @@ paths:
       responses:
         "200":
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2074,6 +2729,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - invitation-controller
   /api/v1/members:
@@ -2088,6 +2754,13 @@ paths:
                 items:
                   $ref: "#/components/schemas/MemberResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2119,6 +2792,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - member-controller
   /api/v1/members/{id}/disable:
@@ -2138,6 +2822,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2169,6 +2860,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - member-controller
   /api/v1/members/{id}/enable:
@@ -2188,6 +2890,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2219,6 +2928,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - member-controller
   /api/v1/members/{id}/role:
@@ -2244,6 +2964,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2275,6 +3002,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - member-controller
   /api/v1/orders:
@@ -2329,6 +3067,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseOrderResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2360,6 +3105,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - order-controller
   /api/v1/orders/{id}:
@@ -2379,6 +3135,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2410,6 +3173,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - order-controller
   /api/v1/orders/{id}/cancel:
@@ -2435,6 +3209,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2466,6 +3247,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - order-controller
   /api/v1/orders/{id}/close:
@@ -2485,6 +3277,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2516,6 +3315,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - order-controller
   /api/v1/orders/{id}/dispatch:
@@ -2535,6 +3345,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2566,6 +3383,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - order-controller
   /api/v1/price-lists:
@@ -2609,6 +3437,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponsePriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2640,6 +3475,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-controller
     post:
@@ -2657,6 +3503,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2688,6 +3541,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-controller
   /api/v1/price-lists/{id}:
@@ -2707,6 +3571,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2738,6 +3609,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-controller
     put:
@@ -2762,6 +3644,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2793,6 +3682,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-controller
   /api/v1/price-lists/{id}/activate:
@@ -2812,6 +3712,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2843,6 +3750,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-controller
   /api/v1/price-lists/{id}/deactivate:
@@ -2862,6 +3780,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2893,6 +3818,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-controller
   /api/v1/price-lists/{priceListId}/items:
@@ -2914,6 +3850,13 @@ paths:
                 items:
                   $ref: "#/components/schemas/PriceListItemResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -2945,6 +3888,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-item-controller
     post:
@@ -2969,6 +3923,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceListItemResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3000,6 +3961,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-item-controller
   /api/v1/price-lists/{priceListId}/items/{itemId}:
@@ -3021,6 +3993,13 @@ paths:
       responses:
         "200":
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3052,6 +4031,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - price-list-item-controller
   /api/v1/products:
@@ -3095,6 +4085,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3126,6 +4123,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - product-controller
     post:
@@ -3143,6 +4151,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3174,6 +4189,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - product-controller
   /api/v1/products/{id}:
@@ -3193,6 +4219,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3224,6 +4257,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - product-controller
     put:
@@ -3248,6 +4292,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3279,6 +4330,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - product-controller
   /api/v1/products/{id}/activate:
@@ -3298,6 +4360,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3329,6 +4398,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - product-controller
   /api/v1/products/{id}/deactivate:
@@ -3348,6 +4428,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3379,6 +4466,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - product-controller
   /api/v1/quotations:
@@ -3434,6 +4532,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseQuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3465,6 +4570,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
     post:
@@ -3482,6 +4598,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3513,6 +4636,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}:
@@ -3532,6 +4666,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3563,6 +4704,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
     patch:
@@ -3587,6 +4739,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3618,6 +4777,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/accept:
@@ -3642,6 +4812,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3673,6 +4850,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/expire:
@@ -3692,6 +4880,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3723,6 +4918,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/items:
@@ -3748,6 +4954,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3779,6 +4992,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/pdf:
@@ -3805,6 +5029,13 @@ paths:
                 type: string
                 format: byte
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3836,6 +5067,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/reject:
@@ -3855,6 +5097,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3886,6 +5135,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/revise:
@@ -3905,6 +5165,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3936,6 +5203,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/send:
@@ -3955,6 +5233,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -3986,6 +5271,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/share:
@@ -4005,6 +5301,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShareResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -4036,6 +5339,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/versions:
@@ -4057,6 +5371,13 @@ paths:
                 items:
                   $ref: "#/components/schemas/QuotationVersionResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -4088,6 +5409,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/quotations/{id}/versions/{versionNo}:
@@ -4113,6 +5445,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/QuotationVersionResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -4144,6 +5483,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - quotation-controller
   /api/v1/tenant:
@@ -4156,6 +5506,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/TenantResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -4187,6 +5544,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - tenant-controller
     patch:
@@ -4204,6 +5572,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/TenantResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -4235,6 +5610,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       tags:
       - tenant-controller
   /public/q/{token}:
@@ -4254,6 +5640,13 @@ paths:
                 type: string
                 format: byte
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body; fields/fieldCodes
+            name the offending inputs
         "401":
           content:
             application/json:
@@ -4285,6 +5678,17 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
           description: semantically invalid request; `fields` names the offending
             inputs
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: rate limit exceeded; Retry-After names the wait in seconds
+          headers:
+            Retry-After:
+              description: seconds to wait before retrying
+              schema:
+                type: string
       security: []
       tags:
       - public-share-controller
@@ -4443,11 +5847,16 @@ components:
           additionalProperties: {}
         message:
           type: string
+      required:
+      - code
+      - message
     ApiErrorResponse:
       type: object
       properties:
         error:
           $ref: "#/components/schemas/ApiError"
+      required:
+      - error
     AuthResponse:
       type: object
       properties:
@@ -4465,6 +5874,13 @@ components:
         userId:
           type: string
           format: uuid
+      required:
+      - accessToken
+      - email
+      - role
+      - tenantId
+      - tenantSlug
+      - userId
     CancelRequest:
       type: object
       properties:
@@ -4844,6 +6260,10 @@ components:
           type: string
         role:
           type: string
+      required:
+      - businessName
+      - email
+      - role
     InvitationResponse:
       type: object
       properties:
@@ -4982,6 +6402,12 @@ components:
         userId:
           type: string
           format: uuid
+      required:
+      - email
+      - role
+      - tenantId
+      - tenantSlug
+      - userId
     MemberResponse:
       type: object
       properties:
@@ -5515,6 +6941,8 @@ components:
       properties:
         open:
           type: boolean
+      required:
+      - open
     TenantProfileRequest:
       type: object
       properties:

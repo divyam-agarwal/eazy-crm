@@ -74,6 +74,59 @@ class OpenApiMediaTypesTest {
         assertTrue(json >= 400, "only " + json + " application/json responses; the walker or document is broken");
     }
 
+    /**
+     * ApiExceptionHandler.invalid carries {@code @ApiResponse(responseCode = "400", ...)}, but
+     * springdoc does not merge that advice-level annotation into an operation's response map for
+     * {@code MethodArgumentNotValidException} (Spring's own exception-handling contract for that
+     * type wins) — so 400 was documented nowhere, and 429 (RateLimitFilter, which answers before
+     * any controller or advice runs) was documented nowhere at all. Both matter to the frontend:
+     * {@code applyApiError} has a 400 branch (bean-validation → fieldCodes) and a 429 branch
+     * (Retry-After), and openapi-msw can only type a response the contract documents. Fixed by
+     * ErrorResponsesCustomizer, a global OpenApiCustomizer bean.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void authOperationsDocument400And429WithRetryAfter() throws Exception {
+        var paths = paths();
+        var authOperations = paths.entrySet().stream()
+                .filter(e -> e.getKey().toString().startsWith("/api/v1/auth"))
+                .toList();
+        assertFalse(authOperations.isEmpty(), "walked zero /api/v1/auth/** paths (non-vacuity)");
+
+        for (var pathEntry : authOperations) {
+            for (var opEntry : ((Map<String, Object>) pathEntry.getValue()).entrySet()) {
+                if (!(opEntry.getValue() instanceof Map<?, ?> opMap)) continue;
+                String route = pathEntry.getKey() + " " + opEntry.getKey();
+                var responses = (Map<String, Object>) opMap.get("responses");
+                assertNotNull(responses, route + " has no responses");
+
+                var badRequest = (Map<String, Object>) responses.get("400");
+                assertNotNull(badRequest, route + " does not document 400");
+                assertEquals(
+                        "#/components/schemas/ApiErrorResponse",
+                        ((Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) badRequest.get("content"))
+                                                .get("application/json"))
+                                        .get("schema"))
+                                .get("$ref"),
+                        route + " 400 schema");
+
+                var tooManyRequests = (Map<String, Object>) responses.get("429");
+                assertNotNull(tooManyRequests, route + " does not document 429");
+                assertEquals(
+                        "#/components/schemas/ApiErrorResponse",
+                        ((Map<String, Object>)
+                                        ((Map<String, Object>) ((Map<String, Object>) tooManyRequests.get("content"))
+                                                        .get("application/json"))
+                                                .get("schema"))
+                                .get("$ref"),
+                        route + " 429 schema");
+                var headers = (Map<String, Object>) tooManyRequests.get("headers");
+                assertNotNull(headers, route + " 429 does not document the Retry-After header");
+                assertTrue(headers.containsKey("Retry-After"), route + " 429 headers " + headers.keySet());
+            }
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> post(String route) throws Exception {
         Map<String, Object> path = (Map<String, Object>) paths().get(route);

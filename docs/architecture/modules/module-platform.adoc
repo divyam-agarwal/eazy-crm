@@ -19,6 +19,7 @@ _Others_
 * `c.e.p.job.TenantJobRunner`
 * `c.e.p.money.MoneyAutoConfiguration`
 * `c.e.p.openapi.DevApiDocsSecurityConfig`
+* `c.e.p.openapi.ErrorResponsesCustomizer`
 * `c.e.p.openapi.OpenApiConfig`
 * `c.e.p.pdf.PdfEngine`
 * `c.e.p.ratelimit.RateLimitConfig`
