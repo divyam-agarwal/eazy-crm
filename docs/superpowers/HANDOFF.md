@@ -1,6 +1,57 @@
 # EasyCRM — Handoff
 
-## 2026-09-16 (later) — START HERE: `main` is pushed and green; the F0b plan is written, not yet reviewed or built
+## 2026-09-19 — START HERE: the F0b plan is reviewed and revised; build is next
+
+**State.** No application code changed. All five frontend specialist reviewers reviewed
+[`plans/2026-09-16-f0b-frontend-foundation.md`](plans/2026-09-16-f0b-frontend-foundation.md); **all five
+returned "Ready with fixes"**, and the fixes are applied at **`7e24783`** (docs only; `main` is otherwise
+`2d9a2aa`, green in CI). They were **still not callable by `subagent_type`** — the fallback (a
+`general-purpose` agent told to read `.claude/agents/frontend-review-<lens>.md` and follow it verbatim)
+worked again.
+
+**What the review changed — new plan decisions P14–P19, each named in the plan with its finding id:**
+
+- **P14 (the one Critical, security).** A failed sign-out could sign the previous user back in.
+  `signing-out` lived only in the tab that started it, while the cookie it guards is durable and shared by
+  every tab; other tabs were told `logout`, so they showed `/login` and a reload re-established the
+  session. Now: a durable `localStorage['easycrm.logoutPending']` marker that **boot settles before it
+  refreshes**, a `signing-out` broadcast, and a retry that stops as soon as any tab signs in — otherwise
+  the retry logs the *new* user out. Verified against `AuthController` before accepting.
+- **P15.** Login, signup, accept and logout now take the **same Web Lock as refresh**. Confirmed in the
+  code: `AuthController:53,64` and `PublicInvitationController:61` call `cookie.read(request).ifPresent(auth::logout)`,
+  and `RefreshTokenService.revoke` revokes an already-rotated token's **successor** — so an unlocked login
+  racing a boot refresh leaves the jar holding a dead cookie and kills the new session ~15 min later. This
+  is also the client-side mitigation for the logout-vs-grace backend follow-up below.
+- **P16.** The session **read** side moves to `src/session/` (below `features/`), the write side stays in
+  `features/auth`. Without it F1's role-aware UI would have to weaken the layer lint or prop-drill `me`.
+- **P17.** `networkMode: 'always'` — TanStack Query's default *pauses* requests when the browser reports
+  offline, so the error UI never runs and `/invite/:token` would show its skeleton forever.
+- **P18.** The per-route JS budget lands in Task 2, not Task 13; every task re-runs it.
+- **P19.** Every gate task ends by breaking one named line and recording the red run — nearly every
+  "Expected: FAIL" in the first draft failed only at *import*, which proves nothing (challenges #75–79).
+
+**Smaller, also applied:** forward the caller's `AbortSignal` through `authFetch`; catch an unknown role
+at boot (ROADMAP 4a's platform-admin role would otherwise strand the splash forever); focus + scroll the
+form alert and darken its text (measured ~3.99:1, under AA); a real-wiring test for refresh-on-401; Task 8
+becomes test-first and its booting test can now fail; preload only the `common` i18n namespace; hash
+`splash.css`; document **400 and 429** in the contract so the mocks can be typed; a general required-fields
+rule with a frozen legacy baseline; E2E for the principal switch and the failed sign-out; a latch instead
+of a fixed 1.5 s wait in the cross-tab refresh test. **Challenge #86** (durable pending logout) is drafted
+in Task 17 alongside #84 and #85.
+
+### Next, in order
+
+1. **Install Node 24** — the Mac still has v25.2.1 and no version manager; Task 2 stops on it. Suggested:
+   `brew install fnm && fnm install 24`. Do not change the owner's global Node without asking.
+2. **Build F0b**: worktree `f0b-frontend` + `superpowers:subagent-driven-development`, as F0a ran. Do not
+   push; that is the owner's call.
+3. Optionally push `7e24783` first (docs only) so the build branches from a CI-checked tree.
+
+Everything in the section below still holds, except that "not yet reviewed" is now done.
+
+---
+
+## 2026-09-16 (later) — `main` is pushed and green; the F0b plan is written (SUPERSEDED above: it is now reviewed and revised)
 
 **State.** No application code changed in this session.
 - **`main` pushed:** `ce1db36..2d9a2aa`, at the owner's direction. **CI run `35014714570` is green on all
