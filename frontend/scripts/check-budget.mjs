@@ -25,6 +25,7 @@ const HTML_ENTRY = 'index.html';
 export const ROUTE_ENTRIES = {
   '/login': 'src/features/auth/pages/LoginPage.tsx',
   '/signup': 'src/features/auth/pages/SignupPage.tsx',
+  '/invite/:token': 'src/features/auth/pages/InvitePage.tsx',
 };
 
 /**

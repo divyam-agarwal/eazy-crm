@@ -42,6 +42,20 @@ export const appRoutes: RouteObject[] = [
         errorElement: <RouteErrorBoundary />,
       },
       {
+        // R71: the same local-Suspense pattern as /login and /signup — this route's own boundary
+        // catches an i18n-namespace suspend instead of bubbling to RootLayout's `fallback={null}`.
+        path: 'invite/:token',
+        lazy: () =>
+          withImportRetry(() => import('@/features/auth/pages/InvitePage')).then((m) => ({
+            Component: () => (
+              <Suspense fallback={<RouteSkeleton />}>
+                <m.InvitePage />
+              </Suspense>
+            ),
+          })),
+        errorElement: <RouteErrorBoundary />,
+      },
+      {
         element: <RequireSession />,
         children: [
           {

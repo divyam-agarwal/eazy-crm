@@ -6531,3 +6531,72 @@ opt out of the void-element table on purpose, or pick a name that couldn't plaus
 HTML5 tag at all — and add at least one `getByRole('link', { name: ... })`-shaped assertion per
 distinct Trans usage, since `toBeInTheDocument()` on the container element alone (or not testing the
 link at all, as `/login` shipped) will not catch this.
+
+---
+
+## Challenge 100 — A route-level layout gate meant to protect the whole app was unmounting the one page whose spec required it to survive
+
+**Phase:** Implementation (F0b, Task 12)
+
+### The problem
+
+`RootLayout` gates every route behind `status === 'signing-out'`: while a logout is pending it swaps
+the entire `<Outlet/>` for a single shared `SignOutPendingScreen`, so no protected screen keeps showing
+stale, about-to-be-wrong data while the server confirms the sign-out. That gate was built (Task 6) for
+the *protected* shell, where losing the current page mid-logout is not just acceptable but the point.
+
+`/invite/:token`'s "Sign out and accept" button (spec §5.1) calls the exact same `sessionControls().
+logout()` — the only logout entry point the app has — but its contract is the opposite: run the logout,
+*then show the anonymous accept form on the same page*, not detour through a global blocking screen and
+back. Because `RootLayout` sits above every route indiscriminately, clicking that button would flip
+`status` to `'signing-out'`, RootLayout would swap `InvitePage`'s whole subtree for
+`SignOutPendingScreen`, and when the POST resolved and `status` reached `'anonymous'`, RootLayout would
+swap `<Outlet/>` back in — mounting a **brand-new** `InvitePage` instance. Any local state the page had
+accumulated before the click (a `maybeAccepted` hint from an earlier lost accept response, an
+`acceptLost` ref tracking a network failure) would be gone, and the user would see a jarring flash of an
+unrelated screen in the middle of a flow the spec describes as staying on one page throughout.
+
+The tempting fix is a special case inside `InvitePage` itself — a local `signingOut` boolean the sign-
+out button sets before calling `logout()`, checked in the render to show its own in-page message instead
+of trusting global `status`. That looked necessary right up until checking what actually re-renders
+InvitePage's *parent*: `RootLayout` reads `status` too, and its swap of `<Outlet/>` happens on the exact
+same store update `InvitePage` would be reacting to — a local flag on the child cannot prevent the
+parent from unmounting it first.
+
+### The solution
+
+The unmount has to be prevented one level up, in `RootLayout` itself: `status === 'signing-out'` is no
+longer sufficient on its own to justify swapping in the blocking screen — it also has to not be the one
+route that owns rendering its own signing-out state. `RootLayout` now checks
+`location.pathname.startsWith('/invite/')` alongside `status`, and skips the swap for that route,
+letting `<Outlet/>` (and therefore `InvitePage`) stay mounted through the whole transition. `InvitePage`
+then adds its own `status === 'signing-out'` branch — the in-page equivalent of what RootLayout used to
+show for it, keyed separately from its other branches (loading/error/signed-in/accept-form) so React
+does not reuse a DOM subtree, and thus a focus target, across them.
+
+That, in turn, made a second piece of code unnecessary: with `RootLayout` no longer racing to unmount
+the page, there was no need for `InvitePage`'s own `signingOut` local state either. `logout()`
+synchronously runs `endSession('logout')` (clears `me`, sets `status` to `'anonymous'` internally) and
+then `setStatus('signing-out')` — two `zustand` `setState` calls, back to back, with no `await` between
+them — before its first real `await` (the network POST). Under React 18+'s automatic batching this pair
+is one render, and it happens inside the button's `onClick`, so by the time React re-renders after the
+click, global `status` has already reached `'signing-out'` — there is no observable intermediate frame
+where `me` is null but `status` still reads `'authenticated'`. The sign-out button became a one-liner —
+`onClick={() => void sessionControls().logout()}` — identical to the one `AppShell` already uses,
+instead of a `useState` + `try/finally` wrapper the store's own batching had already made redundant.
+Proved by holding the mocked `/api/v1/auth/logout` response open with a controllable promise and
+asserting, mid-flight, that (a) `RootLayout`'s global heading is absent, (b) `InvitePage`'s own heading
+and its `role="status"` signing-out message are present — and, with the `RootLayout` fix reverted, that
+the exact same test fails on the global heading being present instead.
+
+### Lesson
+
+A gate built for "every route below this point" is an implicit claim that every route below it wants
+the same policy — true until one of them explicitly doesn't, and the shared mechanism has no way to say
+"except here" without being told. The fix belongs at the layer that owns the unmount (the parent doing
+the swapping), not inside the child trying to out-guess it with local state, because a child's state
+cannot survive a swap its parent decides to make one render before the child gets a say. And, same
+pattern as Challenge 98: before adding local state to smooth over a transition, check what the state
+container's own batching already guarantees about that transition's timing — here, two synchronous
+`setState` calls in the same tick meant the "intermediate flash" the local state was meant to prevent
+never actually existed as an observable render.

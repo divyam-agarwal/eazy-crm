@@ -41,7 +41,17 @@ export function RootLayout() {
   // what actually lives directly under RootLayout without such a boundary of its own (the protected
   // shell while booting — P7 — and SignOutPendingScreen, both already gated behind a resolved
   // session so real i18n-suspense here is the rare case, not the common one).
+  //
+  // R23 (Task 12 controller ruling): `/invite/:token` is exempt from this gate. Spec §5.1's
+  // "sign out and accept" button runs the §4.4 logout and then shows the anonymous state ON THE
+  // SAME PAGE — swapping in SignOutPendingScreen here would unmount InvitePage mid-flow instead,
+  // discarding its local state (`maybeAccepted`, the `acceptLost` ref) the moment `status` flips to
+  // 'signing-out', and again when it flips back. InvitePage owns its own signing-out rendering
+  // (see its `status === 'signing-out'` branch) so this route's Outlet is never swapped out.
+  const exemptFromSigningOutGate = location.pathname.startsWith('/invite/');
   return (
-    <Suspense fallback={null}>{status === 'signing-out' ? <SignOutPendingScreen /> : <Outlet />}</Suspense>
+    <Suspense fallback={null}>
+      {status === 'signing-out' && !exemptFromSigningOutGate ? <SignOutPendingScreen /> : <Outlet />}
+    </Suspense>
   );
 }
