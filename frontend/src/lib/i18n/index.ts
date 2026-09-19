@@ -1,6 +1,7 @@
 import i18next, { type i18n } from 'i18next';
 import resourcesToBackend from 'i18next-resources-to-backend';
 import { initReactI18next } from 'react-i18next';
+import { withImportRetry } from '@/app/lazyImport';
 
 export const NAMESPACES = ['common', 'auth'] as const;
 
@@ -36,7 +37,13 @@ export function initI18n(instance: i18n = i18next): Promise<unknown> {
   });
   return instance
     .use(initReactI18next)
-    .use(resourcesToBackend((lng: string, ns: string) => import(`../../locales/${lng}/${ns}.json`)))
+    .use(
+      resourcesToBackend((lng: string, ns: string) =>
+        // R47(b): a namespace chunk is its own dynamic import, same as a route chunk — retry a
+        // dropped connection instead of leaving `useTranslation`'s Suspense permanently rejected.
+        withImportRetry(() => import(`../../locales/${lng}/${ns}.json`)),
+      ),
+    )
     .init({
       lng: 'en',
       supportedLngs: ['en'],

@@ -1,4 +1,5 @@
 import type { AuthResponse } from '@/api/types';
+import { toMe } from '@/features/auth/session/toMe';
 
 export const ownerSession: AuthResponse = {
   accessToken: 'owner-access-1',
@@ -17,6 +18,9 @@ export const inviteeSession: AuthResponse = {
   email: 'asha@shop.in',
   role: 'SALES_EXEC',
 };
+
+export const ownerMe = toMe(ownerSession);
+export const inviteeMe = toMe(inviteeSession);
 
 export function errorBody(
   code: string,

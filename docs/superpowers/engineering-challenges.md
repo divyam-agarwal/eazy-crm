@@ -6133,3 +6133,68 @@ ever changed the message between renders, so it could not distinguish "keyed on 
 "keyed on the attempt"). The generalizable check: when a UI element exists to signal "something
 happened," ask whether its trigger is keyed on the *event* or on a *value the event happens to produce*
 — and if those two are ever allowed to coincide (the same error, twice), the value is the wrong key.
+
+---
+
+## Challenge 94 — One top-level Suspense boundary quietly blanks the whole app, and a rejected `import()` slips past it entirely
+
+**Phase:** Implementation (F0b, Task 8)
+
+### The problem
+
+The task-8 brief's `providers.tsx` wrapped the *entire* `<RouterProvider>` in a single
+`<Suspense fallback={null}>`. That looks harmless — `RequireSession` already renders `null` while
+booting (plan P7), so a blank screen during boot is correct — but the same boundary also catches every
+*other* suspend anywhere in the tree, for an unrelated reason: `useTranslation()` (react-i18next, Suspense
+mode) throws a pending promise whenever a namespace it needs isn't loaded yet, and namespaces load via
+`i18next-resources-to-backend`'s own `import()`, which is not guaranteed to have resolved by the time a
+component first renders (`startApp()` deliberately does not `await initI18n()` before mounting). With one
+Suspense boundary at the very top, a public route — `/login`, added in Task 10 — suspending on its
+namespace would unmount **everything**, `RootLayout` included, and render the top boundary's `fallback`.
+Spec §5 asks those routes to show a sized skeleton while they load; a single blanket boundary can only
+ever show one fallback for the whole app, so it was `null` (blank) for the routes that most need a
+skeleton, or a skeleton flashing over the *entire authenticated shell* for the routes that don't.
+
+A second, sharper problem hid in the same code: a `<Suspense>` boundary only catches a *pending* promise.
+If that promise later **rejects** — the realistic case here, since `lazy()`'s and `resourcesToBackend`'s
+`import()` calls both reject outright on a dropped 4G connection — React does not hand the rejection back
+to Suspense at all. It re-throws it as an ordinary render error on the next attempt, which propagates
+past every Suspense boundary in its way and is only caught by a true error boundary above them. Neither
+react-router's route-level `lazy()` nor react-i18next's namespace loader retries a rejected `import()`,
+so without an explicit retry, one blip during boot turned into either an app that never recovers (no
+error boundary reachable in the given code) or a route that fails on the very first flaky packet with no
+retry affordance — the opposite of the retry philosophy boot.ts already established for the refresh call.
+
+### The solution
+
+Moved the Suspense boundary from `providers.tsx` (wrapping the whole router) down into `RootLayout`,
+wrapping only `RootLayout`'s own returned content (`fallback={null}`, unchanged from before for the
+protected shell and the sign-out-pending screen). Each future public route (Tasks 10-12) nests its OWN,
+nearer `<Suspense fallback={<RouteSkeleton />}>` inside its own element — since React resolves a suspend
+at the *nearest* enclosing boundary, that local one catches the route's own namespace suspend before it
+ever reaches RootLayout's, so only that route's skeleton shows, not a blanked app. `RouteSkeleton.tsx`
+and a documented usage pattern were added now, in Task 8, even though no route uses them yet, so Tasks
+10-12 have the boundary in the right place from the start rather than reproducing the single-boundary
+mistake.
+
+Separately, added `withImportRetry` (`src/app/lazyImport.ts`): a small wrapper that retries a failed
+`import()`-returning thunk a few times with a delay before letting the rejection through for real. Wired
+into every route's `lazy:` field in `router.tsx`, and into `i18next-resources-to-backend`'s namespace
+loader in `lib/i18n/index.ts`. After retries are exhausted, the *now-real* rejection is caught by the
+route's `errorElement` (`RouteErrorBoundary`, already present on every route for loader/lazy errors) —
+the same boundary catches both a route-chunk rejection (routed there directly by react-router, no
+Suspense involved) and a namespace-chunk rejection (re-thrown by React after the local Suspense's pending
+state resolves to failure), because the error boundary sits *outside* the Suspense boundary in the tree,
+never the other way around.
+
+### Lesson
+
+`<Suspense>` composes by nearest-boundary-wins, so where you place it is not a detail — it *is* the
+fallback-scoping decision. A single top-level Suspense is the shape that always compiles and always
+"works" in the sense of not crashing, which is exactly why it survives code review: nothing about it
+looks wrong until you ask "what earlier content does this boundary also happen to be sitting above,
+that I didn't mean to blank?" The second, easier-to-miss half is that Suspense and error boundaries
+solve different halves of the same async operation — pending vs. rejected — and only one of them is
+opt-in by simply rendering a component. A wrapper like `withImportRetry` that turns "give up after 3
+tries" into a real, catchable error is what makes an *existing* error boundary (built for a completely
+different kind of failure — loader errors) actually reachable from a Suspense-triggering rejection too.
