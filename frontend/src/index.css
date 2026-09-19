@@ -1,0 +1,9 @@
+@import 'tailwindcss';
+
+/* R29 (controller ruling): system font stack with a Devanagari fallback, no webfont in F0.
+   Spec §4.2. F1 ships Hindi; this keeps CJK/Devanagari text legible without violating the CSP
+   (no @font-face, no Google Fonts link). */
+@theme {
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Devanagari', sans-serif;
+}

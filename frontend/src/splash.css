@@ -1,0 +1,30 @@
+/* Plan decision P7: the splash paints before any JS parses, and disappears the moment React renders
+   anything into #root. External file, because the CSP forbids inline <style>. */
+#root:not(:empty) + #splash {
+  display: none;
+}
+.splash {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+}
+.splash-mark {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #2563eb;
+  animation: splash-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-mark {
+    animation: none;
+  }
+}
+@keyframes splash-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
