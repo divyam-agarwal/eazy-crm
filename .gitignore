@@ -3,3 +3,8 @@
 .claude/*
 !.claude/agents/
 .superpowers/
+.tessl/
+
+# Personal, not project documentation. This file was committed to the public repo
+# once by an agent running `git add -A docs`; ignoring it makes that unrepeatable.
+docs/architecture/pre-screening-answers.md
