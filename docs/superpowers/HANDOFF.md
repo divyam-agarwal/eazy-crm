@@ -1,6 +1,6 @@
 # EasyCRM — Handoff
 
-## 2026-09-20 — START HERE: F0b is built on branch `f0b-frontend`; next is F1
+## 2026-09-20 — START HERE: F0b is merged and pushed; next is F1
 
 **The 107 controller rulings made during F0b's build** — several load-bearing for F1 and visible nowhere
 else — are preserved in
@@ -9,14 +9,16 @@ working directory they came from (`.superpowers/sdd/2026-09-16-f0b-frontend-foun
 and does not survive the slice.
 
 **State.** F0b (the frontend itself — scaffold, API client, session lifecycle, login/signup/invite
-pages, app shell, coverage floor, CI) is **built and verified in the worktree**
-`.claude/worktrees/f0b-frontend`, branch **`f0b-frontend`**, head `77104bf` before this session's docs
-commit. **Not merged, not pushed** — pushing and merging are the owner's call
-(`superpowers:finishing-a-development-branch` still to run). Verify with three separate invocations:
+pages, app shell, coverage floor, CI) is **MERGED AND PUSHED**. `main` and `origin/main` are both at
+**`6d7b970`** (fast-forward of 38 commits, `389f23b..6d7b970`). The `f0b-frontend` branch and its
+worktree are **deleted** — do not look for them. The full suite was re-run on the merged tree, not
+inherited from the branch: lint, typecheck, 307 Vitest tests / 33 files, `./gradlew clean check` with
+688 backend tests, 11/11 Playwright E2E, six routes under the 200 KB budget at +0.0 KB drift.
+**CI run `35493017772` is green on all five jobs** — the first run of the new `frontend` (58 s) and
+`e2e` (2 m 40 s) jobs on `main`, from a cold cache. Verify with two separate invocations:
 ```
-git rev-parse --short f0b-frontend      # 77104bf, or later after this session's commit
-git rev-parse --short main              # 389f23b
-git rev-list --count main..f0b-frontend # 35 (this branch's own commits over main)
+git rev-parse --short main         # 6d7b970
+git rev-parse --short origin/main  # 6d7b970
 ```
 `main` and `origin/main` are in sync (both `389f23b`) — nothing from this branch has reached `origin`.
 
@@ -96,9 +98,9 @@ E2E prerequisites, in order: `cd backend && ./gradlew bootJar`; `cd frontend && 
 `~/Library/Caches/ms-playwright`); then `pnpm e2e`. Every `pnpm` command needs the Node 24 activation
 from the section below — an agent's non-interactive shell still starts on the system Node.
 
-**The manual walkthrough (Task 17 Step 2/2b) — full detail in
-[`.superpowers/sdd/2026-09-16-f0b-frontend-foundation/task-17-report.md`](../../.superpowers/sdd/2026-09-16-f0b-frontend-foundation/task-17-report.md)
-on the `f0b-frontend` branch. Headline findings:**
+**The manual walkthrough (Task 17 Step 2/2b). Its full report lived in the git-ignored SDD workspace and
+is gone with the worktree; the headline findings were copied here before that, and are now the only
+record:**
 - **R64's open question is answered, but narrowly — read the scope before trusting it further:** no
   Devanagari clipping was found in either `Input` or `SelectField`'s fixed `h-9` (36px) box, **at
   `text-base` only** (the font-size/line-height — 16px/24px — that actually computes below the `md:`
@@ -224,7 +226,7 @@ group (Testcontainers 2 / JUnit 6 — does not compile), and P8 (the toast conta
 first background failure).
 
 **Next: F1 (master data).** Brainstorm → spec → plan, same as F0 did. `superpowers:using-git-worktrees`
-for a fresh worktree; do not build F1 inside `f0b-frontend`.
+for a fresh worktree off the current `main` (`6d7b970`).
 
 ---
 
