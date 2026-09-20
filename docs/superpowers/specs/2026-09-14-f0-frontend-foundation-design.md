@@ -617,9 +617,28 @@ includes a manual keyboard walkthrough and 320 px-width check of the four screen
 
 # Part 8 — Deployment notes recorded for item 5 / SP2
 
-Not built in F0; recorded so they are not rediscovered:
+Not built in F0; recorded so they are not rediscovered — **there is no deployment layer in this repo,
+so none of the below is fixed here; it is recorded for SP2 (`docs/ROADMAP.md`'s "SP2 — AWS foundation,
+dev environment") to pick up**:
 - Hashed assets `Cache-Control: immutable`; `index.html` `no-cache`; Brotli.
 - The §4.9 CSP, `Referrer-Policy`, and `frame-ancestors` are served by the hosting layer.
+- **(Final fix wave) The CSP today ships ONLY from `vite preview`** (`frontend/vite.config.ts`'s
+  `preview.headers`, sent so E2E can catch a real violation) — there is no `<meta
+  http-equiv="Content-Security-Policy">` fallback in `index.html`, so a deployment that serves the
+  built `dist/` some other way (a plain static host, a CDN with no custom-header support) ships with
+  **no CSP at all** unless SP2's hosting layer adds the header itself. The same list is also missing
+  **`form-action`** — worth adding when SP2 sets the real header, since none of F0's forms should ever
+  submit cross-origin.
+- **(Final fix wave) `/public/q/{token}` (`PublicShareController.java:26`, `@RequestMapping("/public/q")`)
+  is mapped OUTSIDE `/api`.** A standard SPA fallback (serve `index.html` for any path Nginx/CloudFront
+  doesn't otherwise recognize, so client-side routing works on a hard refresh) would swallow this path
+  before it ever reaches the backend, since it isn't distinguishable from a frontend route by prefix
+  alone — and once served `index.html`, `router.tsx`'s catch-all `*` route (`NotFoundPage`) would shadow
+  it, silently turning a real shared-quotation link into a 404 page. This matters more than a typical
+  routing gap: that URL shape is **already going out in sent WhatsApp messages** (share links), so it
+  cannot simply be renamed later without breaking links already in the wild. SP2's routing config
+  (Nginx/CloudFront/ALB rules or equivalent) must special-case `/public/q/*` (and `/api/*`) to the
+  backend, ahead of any catch-all SPA-fallback rule.
 - `PUBLIC_BASE_URL=https://app.easycustomerrelationship.site`; `/invite/*` must route to the SPA, `/api/*`
   to the backend.
 - **`server.forward-headers-strategy: framework` must be set** behind any proxy or CDN. Without it the

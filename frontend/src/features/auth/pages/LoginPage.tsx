@@ -55,6 +55,10 @@ export function LoginPage() {
   if (status === 'authenticated') return <Navigate to={safeNext(params.get('next')) ?? '/'} replace />;
 
   const onSubmit = form.handleSubmit(async (values) => {
+    // Challenge #98 (corrected): the refresh Web Lock SERIALIZES concurrent submits, it does not
+    // DEDUPLICATE them — a second activation while the first is still in flight still reaches the
+    // network, just after the first call's lock hold ends. This guard is the actual resubmit guard.
+    if (login.isPending) return;
     setFormMessage(null);
     try {
       establishSession(await login.mutateAsync(values));
@@ -120,10 +124,12 @@ export function LoginPage() {
             control loses focus the instant it's applied (the browser blurs it), stranding a
             keyboard user at <body> for the whole round trip. `aria-disabled` + the button's own
             `aria-disabled:pointer-events-none` styling keeps it focusable and visually inert
-            instead. Leaving it genuinely operable does NOT reopen a double-submit hole: `useLogin`
-            (P15) holds the `easycrm-refresh` Web Lock for the whole call, so a second activation
-            while the first is still pending queues behind that same lock rather than firing a
-            second POST -- see Challenge #98 and the "guards against a resubmit" test. */}
+            instead. That alone does NOT prevent a second activation from reaching the network --
+            `useLogin` (P15) holds the `easycrm-refresh` Web Lock for the whole call, but a lock
+            SERIALIZES, it does not DEDUPLICATE: a second activation while the first is pending
+            still fires a second POST, just after the first's lock hold ends. The actual guard is
+            `if (login.isPending) return;` at the top of `onSubmit` -- see Challenge #98
+            (corrected) and the "does not resubmit while pending" test. */}
         <Button type="submit" aria-disabled={isSubmitting || undefined}>
           {isSubmitting ? t('login.submitting') : t('login.submit')}
         </Button>

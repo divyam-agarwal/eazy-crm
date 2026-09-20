@@ -6409,11 +6409,12 @@ retry policy down to instant, without stubbing the function or duplicating its l
 
 ---
 
-## Challenge 98 — Switching a submit button from `disabled` to `aria-disabled` looked like it needed a new resubmit guard; the existing cookie lock already was one
+## Challenge 98 (corrected during final fix wave) — A lock was mistaken for a dedup guard, a real resubmit guard was deleted on that strength, and the false conclusion shipped in four places
 
-**Phase:** Implementation (F0b, Task 10, fix round 1)
+**Phase:** Implementation (F0b, Task 10, fix round 1) — **corrected:** final whole-branch fix wave, after
+the branch review's testing lens demonstrated the original entry's conclusion was false.
 
-### The problem
+### The problem (as it looked in fix round 1)
 
 A review flagged that `/login`'s submit button used the native `disabled` attribute while the login
 request was in flight: `disabled` forces the browser to blur a focused element the instant it's
@@ -6427,43 +6428,60 @@ looked like it was reopening a real hole: a user who double-taps (or double-pres
 pending window could now fire a second `POST /api/v1/auth/login` where the native `disabled` attribute
 used to silently prevent it.
 
-The obvious fix was a `useRef<boolean>` guard around the submit handler — cheap, and a common enough
-pattern in forms that lack it any other way. It got written, and then got tested rather than trusted:
-a test held the mock login response open (a controllable promise, not a real delay) and simulated a
-second click on the still-focused, still-`aria-disabled` button while the first was pending. With the
-`useRef` guard removed (to prove the test could tell the difference), the assertion on the request
-count **still passed at 1** — no second network call happened, guard or no guard.
+The obvious fix was a `useRef<boolean>` guard around the submit handler. It got written, then tested: a
+test held the mock login response open (a controllable promise, not a real delay), simulated a second
+click on the still-focused button while the first was pending, and asserted the request count stayed at
+1 **before the held response was ever released**. With the `useRef` guard removed, that assertion still
+passed — no second network call had happened *by that point in the test* — and the fix round concluded
+the guard was redundant with `useLogin`'s `withCookieLock` (P15) and deleted it.
 
-### The solution
+### What was actually true, and how the original write-up got it backwards
 
-Instrumented `onSubmit` directly (a temporary `console.log`) to check whether the callback was even
-being invoked a second time — it was ("ONSUBMIT CALLED" printed twice) — so the dedup was happening
-*inside* the callback, between "RHF called the handler again" and "a second `fetch()` reached MSW".
-The remaining candidate was `useLogin`'s own `mutationFn`: `sessionControls().withCookieLock(async () =>
-unwrap(await api.POST(...)))` (P15, Task 10's own R14). `withCookieLock` holds the
-`easycrm-refresh` Web Lock for the *entire* wrapped call, including the network round trip — so a
-second `mutateAsync()` invocation, called while the first is still awaiting its (deliberately held-open)
-response, queues behind the *same* lock the first call is still holding, and never reaches `fetch()` at
-all until the first one releases it. Confirmed by removing `withCookieLock` from `useLogin.ts` (not
-just the new `useRef` guard) and rerunning the identical test: the request count went to 2. The
-`useRef` guard was deleted — it wasn't wrong, it was solving a problem P15 already solves for this
-specific mutation, for a reason that has nothing to do with double-submit prevention (revoking the
-incoming refresh cookie safely) but happens to fully cover it as a side effect, for as long as
-`isSubmitting` is true (which is exactly the window `aria-disabled` communicates and exactly the window
-a genuinely fast double-activation falls inside).
+**A lock serializes; it does not deduplicate.** `withCookieLock` holds the `easycrm-refresh` Web Lock
+for the whole wrapped call, so a second `mutateAsync()` invocation queues behind the lock the first call
+is still holding — but a queued call is not a cancelled call. Once the first call's lock hold ends, the
+queued second call runs, and its `POST` reaches the network. The original entry's own solution section
+says exactly this ("queues behind the *same* lock ... and never reaches `fetch()` **until the first one
+releases it**") and then draws the opposite conclusion two sentences later ("the request count went to 2"
+was the correct observation from stripping the lock, but the test that "proved" the guard redundant
+never ran long enough to observe the queued call actually land after a real release — it stopped
+asserting the moment the *first* response was still held open).
+
+The branch review's testing lens (final fix wave) made this concrete: it added an assertion in
+`LoginPage.test.tsx` **after** `releaseLogin()` — `requestsAfterRelease` — and without a real dedup
+guard in `onSubmit`, the previously-queued second `mutateAsync()` fires its own `POST` once the lock
+releases, and the request count becomes **2**, not 1. The impact was contained today only by
+coincidence: the second response lands after `establishSession` has already navigated the user away, and
+`setFormMessage` on the (by then unmounted) `LoginPage` is a no-op — so nothing visibly breaks in F0.
+Nothing about that coincidence generalizes: `SignupPage.tsx` and `InvitePage.tsx` carry the identical
+copied comment, and the false invariant was quoted verbatim in this challenge log too. F1's
+quotation-accept → order-create flow is exactly the kind of non-idempotent write someone would trust the
+old wording of this entry to justify leaving unguarded — a second queued submit there would create a
+second order, not silently no-op.
+
+**Process note, recorded because it is the useful part of the lesson:** the controller approved deleting
+the `useRef` guard in Task 10's fix round on the strength of this demonstration — a test that only
+proved the guard redundant *while the lock was still held*, never re-checked after release. Nobody
+between the implementer, the reviewer and the controller re-ran the demonstration past the release point
+before signing off on removing a real guard. The fix (final fix wave): restore an explicit
+`if (mutation.isPending) return;` at the top of each of `LoginPage`, `SignupPage` and `InvitePage`'s
+submit handlers — `useLogin`/`useSignup`/`useAcceptInvitation`'s own `mutation.isPending` flag, no new
+state needed — extend `LoginPage.test.tsx`'s test to assert the request count past `releaseLogin()`
+(verified red without the guard: `expected 2 to be 1`), and correct the three code comments and this
+entry.
 
 ### Lesson
 
-A newly-discovered gap next to a change doesn't automatically mean the change needs new code to close
-it — it might mean an *existing* mechanism, built for an unrelated reason, already reaches there too,
-and the honest way to find out is to remove the mechanism you suspect and watch the test that "proves"
-the gap actually turn red because of it, not because of the code you were about to add. Writing the
-`useRef` guard felt like the obviously-correct completion of the `aria-disabled` swap; only testing it
-adversarially (delete the guard, does the assertion still pass?) surfaced that it was redundant. The
-general habit this argues for: before adding a guard against a race a change seems to reopen, hold the
-race open on purpose (the same controllable-promise trick as `holdCookieLock` and Challenge 97's
-`createHeldBackend`) and check what — if anything — is *already* serializing it, rather than assuming
-the absence of an explicit guard means the absence of protection.
+A demonstration that "the assertion still passes with the guard removed" only proves the guard was
+redundant *for everything the test actually waited for* — if the test stops observing before the
+mechanism under suspicion (here, a lock's queued-not-dropped call) has had a chance to complete, a
+genuine gap reads as a non-finding. Serialization and deduplication are different guarantees and get
+confused easily because they look identical for as long as you're only watching the window before the
+lock releases: both "no second call yet" and "no second call, period" render the same at that instant.
+The general habit this now argues for: when a test's claim is "X did not happen", extend the test past
+every point where X *could* still happen, not just past the point where you expect it to have happened
+already — and treat "the reviewer's demonstration passed" as one data point requiring that check, not as
+license to delete the code the demonstration was run against.
 
 ---
 

@@ -6,6 +6,7 @@ import { createInMemoryLocks } from './lockProvider';
 import { isLogoutPending, markLogoutPending } from './logoutPending';
 import { configureSession, type SessionRuntime } from './runtime';
 import { endSession, establishSession, setSessionStatus, subscribeToAuthChannel } from './session';
+import { onSessionExpired } from './sessionEvents';
 import { useSessionStore } from '@/session/sessionStore';
 
 // R-ruling on the brief's defect: the brief's `describe('establishSession')` block called
@@ -97,6 +98,23 @@ describe('subscribeToAuthChannel', () => {
     deliver({ type: 'logout' });
 
     expect(useSessionStore.getState().status).toBe('anonymous');
+  });
+
+  // I8 (final fix wave): without emitting this event, RequireSession.tsx's stateless <Navigate>
+  // was the only redirect that fired for a remote logout — landing this tab on /login with no
+  // explanation, contradicting LoginPage.tsx's own comment ("or was ended from another tab").
+  // Verified red by removing the `emitSessionExpired()` call from session.ts's `logout` branch.
+  it('emits sessionExpired when another tab logs out, so this tab can show why it landed on /login', () => {
+    const { deliver } = fakeRuntime();
+    const listener = vi.fn();
+    const unsubscribe = onSessionExpired(listener);
+    subscribeToAuthChannel();
+    establishSession(ownerSession);
+
+    deliver({ type: 'logout' });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 
   it('ends and reloads when another tab signs in as someone else', () => {

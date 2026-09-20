@@ -318,17 +318,27 @@ describe('Task 10 fix round 1', () => {
     // announcer (RootLayout.tsx), which makes an unscoped getByRole('status') ambiguous on any page.
     expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent('Signing in…');
 
-    // The button is `aria-disabled`, not `disabled` -- the browser still lets it be activated. What
-    // actually stops a second tap from firing a second POST: `useLogin` (P15) holds the
-    // `easycrm-refresh` Web Lock for the whole call, so this second `mutateAsync` queues behind the
-    // still-held lock rather than reaching the network a second time (Challenge #98). Verified by
-    // temporarily stripping `withCookieLock` from `useLogin.ts` and rerunning -- see the task report.
+    // The button is `aria-disabled`, not `disabled` -- the browser still lets it be activated. The
+    // `easycrm-refresh` Web Lock `useLogin` (P15) holds does NOT stop a second tap from firing a
+    // second POST -- a lock SERIALIZES, it does not DEDUPLICATE: a second `mutateAsync` would queue
+    // behind the still-held lock and then run once the first call's hold ends. What actually stops
+    // it is `if (login.isPending) return;` at the top of `onSubmit` (Challenge #98, corrected),
+    // which is why the assertion below is taken both DURING the hold and AFTER release -- the first
+    // alone cannot distinguish "queued" from "never queued".
     await user.click(button);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(requests).toBe(1);
 
     releaseLogin?.();
     await waitFor(() => expect(useSessionStore.getState().me?.email).toBe('ravi@shop.in'));
+    // If the second click's `mutateAsync` had been queued behind the lock (the pre-fix behaviour),
+    // it would fire its own POST once the first call's hold ends -- give it time to, then check it
+    // did not: this is the assertion the reviewer's `requestsAfterRelease = 2` demonstration exposed
+    // as missing. Verified red by temporarily removing the `isPending` guard from LoginPage.tsx.
+    const requestsAfterRelease = requests;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(requests).toBe(requestsAfterRelease);
+    expect(requests).toBe(1);
   });
 
   // Item 3 (Minor, but the reason it matters is bigger than the finding): a prior review swapped

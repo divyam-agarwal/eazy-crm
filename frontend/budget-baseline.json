@@ -1,6 +1,8 @@
 {
-  "index.html": 148080,
-  "/login": 176801,
-  "/signup": 181243,
-  "/invite/:token": 180202
+  "index.html": 136975,
+  "/login": 175869,
+  "/signup": 180424,
+  "/invite/:token": 179385,
+  "/": 150295,
+  "*": 137255
 }

@@ -94,6 +94,9 @@ export function SignupPage() {
   // A failed status check still shows the form: the server enforces the switch either way.
 
   const onSubmit = form.handleSubmit(async (values) => {
+    // Challenge #98 (corrected): the refresh Web Lock serializes concurrent submits, it does not
+    // deduplicate them. This guard is what actually stops a resubmit while one is in flight.
+    if (signup.isPending) return;
     setFormMessage(null);
     setMaybeCreatedSlug(null);
     try {
@@ -234,9 +237,10 @@ export function SignupPage() {
         />
         {/* aria-disabled, not disabled -- see LoginPage.tsx's identical comment (Task 10 fix round
             1, item 1): a native `disabled` control loses focus the instant it's applied, stranding a
-            keyboard user at <body> for the whole round trip. Leaving it genuinely operable does not
-            reopen a double-submit hole: useSignup (P15) holds the refresh Web Lock for the whole
-            call, so a second activation while the first is pending queues behind that same lock. */}
+            keyboard user at <body> for the whole round trip. The refresh Web Lock useSignup (P15)
+            holds does NOT prevent a second activation from resubmitting -- it serializes, it does
+            not deduplicate. The actual guard is `if (signup.isPending) return;` in `onSubmit` --
+            see Challenge #98 (corrected). */}
         <Button type="submit" aria-disabled={isSubmitting || undefined}>
           {isSubmitting ? t('signup.submitting') : t('signup.submit')}
         </Button>

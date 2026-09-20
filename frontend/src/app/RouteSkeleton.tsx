@@ -1,4 +1,4 @@
-import { Skeleton } from '@/components/ui/skeleton';
+import { BASIC_SKELETON_CLASS } from './basicSkeletonClass';
 
 /**
  * R47(a): the sized fallback a public route (login/signup/invite — Tasks 10-12) shows while its OWN
@@ -18,11 +18,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 export function RouteSkeleton() {
   return (
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-10" aria-hidden="true">
-      <Skeleton className="h-8 w-2/3" />
-      <Skeleton className="h-4 w-full" />
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-9 w-32" />
+      <div className={`${BASIC_SKELETON_CLASS} h-8 w-2/3`} />
+      <div className={`${BASIC_SKELETON_CLASS} h-4 w-full`} />
+      <div className={`${BASIC_SKELETON_CLASS} h-10 w-full`} />
+      <div className={`${BASIC_SKELETON_CLASS} h-10 w-full`} />
+      <div className={`${BASIC_SKELETON_CLASS} h-9 w-32`} />
     </main>
   );
 }

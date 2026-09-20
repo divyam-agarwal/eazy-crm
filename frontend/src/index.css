@@ -37,8 +37,18 @@
      measures ~6.84:1 against that same tint; FormAlert uses it instead of `--destructive`. */
   --destructive-strong: oklch(0.45 0.18 27);
   --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* I3 (final fix wave, WCAG 2.2 SC 1.4.11 — 3:1 for non-text UI): the shadcn defaults below
+     measured (composited in gamma-encoded sRGB, per Challenge #92's method, not linear light):
+     `--input` at full opacity (its only use — `border-input` on a `bg-transparent` field, where
+     that border is the sole indicator of the control's boundary) was 1.26:1 against this theme's
+     white background; `--ring` composited at the `ring-ring/50`/`outline-ring/50` opacity every
+     call site actually uses was 1.54:1. Both fail 3:1 and would have stayed invisible to every
+     automated gate on this branch — axe checks TEXT contrast only. Darkened both; re-measured
+     (same method): `--input` at oklch(0.6 0 0) is 3.95:1 full-opacity; `--ring` at oklch(0.2 0 0)
+     is 3.43:1 after the /50 composite (and higher still — 18.1:1 — at the full opacity
+     `focus-visible:border-ring` also uses). */
+  --input: oklch(0.6 0 0);
+  --ring: oklch(0.2 0 0);
 }
 
 @theme inline {

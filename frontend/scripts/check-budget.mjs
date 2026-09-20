@@ -28,16 +28,26 @@ const HTML_ENTRY = 'index.html';
 // that moves the baseline — nothing implicit rewrites it.
 export const BASELINE_PATH = 'budget-baseline.json';
 
-// Each page task adds its own entry — the missing-key throw in routeFiles() is what forces that.
-// Task 10 -> '/login', Task 11 -> '/signup', Task 12 -> '/invite/:token'. Typed with these three
-// literal keys (not a plain `Record<string, string>` index signature) so a consumer that indexes
-// `ROUTE_ENTRIES['/login']` gets `string` under `noUncheckedIndexedAccess`, not `string | undefined`
-// — this object's shape is fixed, not open-ended, so the precise type is also the honest one.
-/** @type {{ '/login': string; '/signup': string; '/invite/:token': string }} */
+// Each page task adds its own entry. NOTE (I1 correction): routeFiles()'s missing-key throw does
+// NOT force this list to stay in sync with router.tsx — it only fires in the OPPOSITE direction,
+// catching a ROUTE_ENTRIES value that names a module the build never produced (a typo, a moved
+// file, a route deleted from router.tsx but left here). It fires on a STALE entry, not a MISSING
+// one: nothing throws, and `pnpm budget` stays green, if a new route is added to router.tsx and
+// never added here — I1 itself (`/` and `*` going unmeasured for three tasks) is exactly that
+// failure mode, found by reading router.tsx against this list, not by any test going red. Typed
+// with these five literal keys (not a plain `Record<string, string>` index signature) so a consumer
+// that indexes `ROUTE_ENTRIES['/login']` gets `string | string[]` under `noUncheckedIndexedAccess`,
+// not `... | undefined` — this object's shape is fixed, not open-ended, so the precise type is also
+// the honest one. `/` has no single page module of its own (router.tsx nests `RequireSession`
+// (statically imported, already inside every other measurement) -> lazy `AppShell` -> lazy, index-
+// routed `HomePage`), so its value is the array of BOTH lazy chunks that make up its initial payload.
+/** @type {{ '/login': string; '/signup': string; '/invite/:token': string; '/': [string, string]; '*': string }} */
 export const ROUTE_ENTRIES = {
   '/login': 'src/features/auth/pages/LoginPage.tsx',
   '/signup': 'src/features/auth/pages/SignupPage.tsx',
   '/invite/:token': 'src/features/auth/pages/InvitePage.tsx',
+  '/': ['src/app/shell/AppShell.tsx', 'src/app/shell/HomePage.tsx'],
+  '*': 'src/app/NotFoundPage.tsx',
 };
 
 /**
@@ -68,15 +78,23 @@ async function loadManifest(distDir) {
  * Resolve every file (JS + CSS) an entry pulls into its initial payload: itself, its static
  * `imports`, and its `css`, followed transitively. `dynamicImports` are excluded on purpose —
  * those are separate, lazily-loaded chunks, not part of this entry's initial download.
+ *
+ * `entryKey` accepts more than one manifest key (I1: `/` has no single page module of its own —
+ * router.tsx nests a lazy `AppShell` around a lazy, index-routed `HomePage`, so its initial payload
+ * is the UNION of both chunks' files) — the array form dedupes across shared imports the same way
+ * one entry's own transitive imports already do.
  * @param {Manifest} manifest
- * @param {string} entryKey
+ * @param {string | string[]} entryKey
  * @returns {string[]}
  */
 export function routeFiles(manifest, entryKey) {
-  if (!manifest[entryKey]) {
-    throw new Error(
-      `No manifest entry for "${entryKey}". Add the route to the build (and ROUTE_ENTRIES) before budgeting it.`,
-    );
+  const entryKeys = Array.isArray(entryKey) ? entryKey : [entryKey];
+  for (const key of entryKeys) {
+    if (!manifest[key]) {
+      throw new Error(
+        `No manifest entry for "${key}". Add the route to the build (and ROUTE_ENTRIES) before budgeting it.`,
+      );
+    }
   }
   const files = new Set();
   const seen = new Set();
@@ -91,7 +109,7 @@ export function routeFiles(manifest, entryKey) {
     for (const cssFile of chunk.css ?? []) files.add(cssFile);
     for (const importedKey of chunk.imports ?? []) visit(importedKey);
   };
-  visit(entryKey);
+  for (const key of entryKeys) visit(key);
   return [...files];
 }
 
@@ -110,7 +128,7 @@ async function gzipSize(distDir, file) {
  * Measure the HTML entry (always, independent of `routes`) plus every route in `routes`, gzipped.
  * `routes` defaults to the module's ROUTE_ENTRIES; tests pass a synthetic map instead so a real
  * over-budget route doesn't need to exist yet.
- * @param {Record<string, string>} routes
+ * @param {Record<string, string | string[]>} routes
  * @param {string} distDir
  * @returns {Promise<MeasureResult[]>}
  */

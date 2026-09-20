@@ -10,7 +10,7 @@ commit. **Not merged, not pushed** — pushing and merging are the owner's call
 ```
 git rev-parse --short f0b-frontend      # 77104bf, or later after this session's commit
 git rev-parse --short main              # 389f23b
-git rev-list --count main..f0b-frontend # 34 (this branch's own commits over main)
+git rev-list --count main..f0b-frontend # 35 (this branch's own commits over main)
 ```
 `main` and `origin/main` are in sync (both `389f23b`) — nothing from this branch has reached `origin`.
 
@@ -29,14 +29,20 @@ fallback instructions from its own report.
   F0b; +11 net — F0b's own backend-side additions, chiefly `OpenApiRequiredFieldsTest` (P1) and
   `FrontendWorkflowTest`'s six CI-guard assertions (Task 16)). Count is the sum of every
   `build/test-results/test/*.xml` `tests="…"` attribute across both Gradle modules, not a claim.
-- **Frontend: 303 tests, 33 files, all green** (`pnpm test:coverage`).
+- **Frontend: 303 tests, 33 files, all green** (`pnpm test:coverage`). **Updated by the final fix wave
+  (2026-09-20, see `final-fix-report.md`): 306 tests, 33 files** — three new tests, each added to close
+  a gate the whole-branch review proved could not fail (P15's coordinator lock, the resubmit guard,
+  and the budget script's zero-files check).
 - **Coverage floor (Task 17 Step 1), set from this exact measured run, each floored to a whole
   percent:** Statements 97 (measured 97.41%), Branches 92 (92.51%), Functions 96 (96.81%), Lines 98
   (98.44%). Proven to bite: temporarily setting `lines: 100` in `vite.config.ts` produced `ERROR:
-  Coverage for lines (98.44%) does not meet global threshold (100%)`; restored, reran green.
+  Coverage for lines (98.44%) does not meet global threshold (100%)`; restored, reran green. **After
+  the final fix wave: 97.43% / 92.6% / 96.81% / 98.45% — still clears the same floor**, unchanged.
 - **E2E: 11/11 PASS** (`pnpm e2e`, two real backends on :18080/:18081, two `vite preview` instances on
-  :4173/:4174) — `cross-tab-logout` (3), `guards` (axe + CSP) (2), `invite-accept`, `invite-invalid`,
-  `invite-signed-in`, `signup-reload-logout`, `refresh-rotation` (2).
+  :41731/:41741 — deliberately not Vite's default :4173, see `e2e/playwright.config.ts`'s own comment)
+  — `cross-tab-logout` (3), `guards` (axe + CSP) (2), `invite-accept`, `invite-invalid`,
+  `invite-signed-in`, `signup-reload-logout`, `refresh-rotation` (2). Still 11/11 after the final fix
+  wave.
 - **Per-route gzipped JS (`pnpm budget`, budget 200 KB/route), headroom tightest first:**
   `/signup` 177.0 KB (**23.0 KB** headroom) · `/invite/:token` 176.0 KB (**24.0 KB**) · `/login` 172.7 KB
   (**27.3 KB**) · shared entry (`index.html`) 144.6 KB (**55.4 KB**, inherited by all four routes). The
@@ -44,6 +50,11 @@ fallback instructions from its own report.
   — no drift since it was last checkpointed. **Largest standing lever if a route needs headroom:**
   react-router's data API, ≈17.2 KB gzipped, deliberately kept for `errorElement` and route-level
   `lazy:` rather than the plain component-mode router (P9-adjacent decision, not separately numbered).
+  **Updated by the final fix wave (I1, I7 — see `final-fix-report.md`):** I7 moved `cn` out of the
+  entry chunk (`RouteSkeleton` no longer needs it), and I1 added the two previously-unmeasured lazy
+  routes. Re-measured: **entry 133.8 KB** (-10.8 KB) · `/login` 171.7 KB · `/signup` 176.2 KB ·
+  `/invite/:token` 175.2 KB · `/` 146.8 KB (new) · `*` 134.0 KB (new) — all under budget;
+  `budget-baseline.json` updated via `pnpm budget --update`.
 - `pnpm lint`, `pnpm typecheck`, `pnpm gen:api && git diff --exit-code -- src/api/schema.d.ts` (no
   drift) all clean.
 
@@ -82,16 +93,21 @@ from the section below — an agent's non-interactive shell still starts on the 
 **The manual walkthrough (Task 17 Step 2/2b) — full detail in
 [`.superpowers/sdd/2026-09-16-f0b-frontend-foundation/task-17-report.md`](../../.superpowers/sdd/2026-09-16-f0b-frontend-foundation/task-17-report.md)
 on the `f0b-frontend` branch. Headline findings:**
-- **R64's open question is answered: no Devanagari clipping found**, in either `Input` or
-  `SelectField`'s fixed `h-9` (36px) box, at the font-size/line-height (16px/24px) `text-base` actually
-  computes to below the `md:` breakpoint — tested with representative strings and worst-case stacked
-  conjuncts/chandrabindu (श्री, गुरुद्वारा, हूँ, मूँछ). **Caveat, read before trusting this fully:** this
-  session's browser automation could not shrink the real rendering viewport (`window.innerWidth` stayed
-  pinned at 1920 despite the resize tool reporting success) or trigger real browser page-zoom, so the
-  320px/200%-zoom conditions were reproduced by forcing the exact computed font metrics a real narrow
-  viewport would apply, rather than by an actual device-toolbar emulation. The result is a strong
-  signal, not a substitute for one real DevTools pass before F1 ships Hindi content into these same
-  primitives.
+- **R64's open question is answered, but narrowly — read the scope before trusting it further:** no
+  Devanagari clipping was found in either `Input` or `SelectField`'s fixed `h-9` (36px) box, **at
+  `text-base` only** (the font-size/line-height — 16px/24px — that actually computes below the `md:`
+  breakpoint), tested with representative strings and worst-case stacked conjuncts/chandrabindu (श्री,
+  गुरुद्वारा, हूँ, मूँछ). **What this did NOT test, and is still open:** `label.tsx:13`'s
+  `leading-none` (a label's line-height is far tighter than `Input`'s, and conjuncts/chandrabindu are
+  exactly where a zero-slack line-height clips); `alert.tsx:41`'s `line-clamp-1` (a single clamped
+  line is a different failure mode — truncation, not vertical clipping); the `md:text-sm` variant
+  (untested at the smaller size/line-height pair `Input`/`SelectField` also carry above the `md:`
+  breakpoint); and true viewport emulation — this session's browser automation could not shrink the
+  real rendering viewport (`window.innerWidth` stayed pinned at 1920 despite the resize tool reporting
+  success) or trigger real browser page-zoom, so the 320px/200%-zoom conditions were reproduced by
+  forcing the exact computed font metrics a real narrow viewport would apply, rather than by an actual
+  device-toolbar emulation. Treat all four as open, not as covered by this result, before F1 ships
+  Hindi content into these primitives.
 - **The P14/Security-1 critical path was verified by hand, live, against a real stopped/restarted
   backend: PASS.** Signed out with the backend killed → blocking "Sign-out did not complete — retrying"
   screen shown; reloaded while still down → still blocking, not signed back in; restarted the backend →
@@ -153,6 +169,39 @@ on the `f0b-frontend` branch. Headline findings:**
   red runs against `noopLocks` (challenge #106), but a sufficiently loaded CI runner could in principle
   serialize the two requests by accident and produce a false pass. If this test ever flakes, that's the
   first hypothesis, not a broken lock.
+
+**F1 tickets from the final whole-branch fix wave — found, deliberately NOT fixed on this branch
+(each is real but small enough to defer without blocking hand-off):**
+- `RetryableRequestError` has no branch in `api/errors.ts`'s classifier, so "refresh unavailable" renders
+  as the generic "check your connection" message instead of its own wording.
+- `UnreachableScreen.tsx:29` uses the native `disabled` attribute (the a11y fix applied to the three
+  auth-page submit buttons — `aria-disabled` — was never carried here).
+- `test/fixtures.ts:26`'s `errorBody()` has no type link to the generated contract, so it can silently
+  drift from the real `ApiErrorResponse` shape.
+- `check-budget.mjs:250`'s `import.meta.url === file://${process.argv[1]}` direct-run check no-ops on a
+  path containing a space (the URL is percent-encoded, the raw path is not).
+- `errors.fields.businessName.SIZE` and `slug.SIZE` are unreachable — `SignupRequest.java` has `@Size`
+  on `password` only — and `slug.PATTERN` drops the 3–64 length constraint from its message.
+- The i18n lint zone omits `src/components/**` and misses `aria-label`/`placeholder`/`title` attributes,
+  so a hardcoded string in any of those three attributes, or anywhere under `components/`, is invisible
+  to the enforcement Task 9 built.
+- `establishSession` is called from three pages (`LoginPage`, `SignupPage`, `InvitePage`) rather than
+  from inside each mutation itself, so a fourth caller could forget it.
+
+**Deployment gaps recorded for SP2 (final fix wave) — there is no deployment layer in this repo, so
+these are recorded, not fixed, and SP2 (`docs/ROADMAP.md`'s "SP2 — AWS foundation, dev environment")
+owns them:**
+- **The CSP ships ONLY from `vite preview`** (`frontend/vite.config.ts`'s `preview.headers`, there so
+  E2E can catch a real violation) — no `<meta http-equiv="Content-Security-Policy">` fallback exists in
+  `index.html`, so a deployment that serves `dist/` any other way ships with **no CSP at all** unless
+  SP2's hosting layer sets the header. The list is also missing **`form-action`**.
+- **`/public/q/{token}` is mapped OUTSIDE `/api`** (`PublicShareController.java:26`,
+  `@RequestMapping("/public/q")`). A standard SPA fallback rule (serve `index.html` for any
+  unrecognized path) would swallow it before the backend ever sees it, and once served `index.html`,
+  `router.tsx`'s catch-all `*` route (`NotFoundPage`) would shadow it — turning a shared-quotation link
+  into a 404. That URL shape is **already in sent WhatsApp messages**, so it cannot be renamed later
+  without breaking links already out in the wild. SP2's routing config must special-case `/public/q/*`
+  (alongside `/api/*`) ahead of any catch-all SPA-fallback rule. Recorded in spec Part 8 too.
 
 **Carried forward, still open (unchanged from before F0b, plus nothing new this session):** F0a's
 follow-ups (grace-use audit, logout-vs-grace race, `IssuedSession.toString()`, a class-level arch test,
@@ -291,6 +340,10 @@ git rev-list --count origin/main..main
    `subagent_type` in this session either.** Use the fallback: a `general-purpose` agent told to read
    `.claude/agents/frontend-review-<lens>.md` and follow it verbatim. Check every finding against the code and the
    spec before editing the plan (`superpowers:receiving-code-review`).
+   > **Correction (2026-09-20, see the top section):** this "not callable by `subagent_type`" note was
+   > carried across three sessions and turned out to be stale — every review across the F0b build that
+   > followed this one dispatched the five lenses by name. Left as-written above for the historical
+   > record of what this session actually observed; do not repeat the fallback in new work.
 2. **Install Node 24 on the owner's Mac first.** The Mac has Node v25.2.1 and no version manager. The plan pins
    `engines.node >=24 <25` with `engine-strict`, so Task 2 stops and asks. Suggested: `brew install fnm && fnm
    install 24`. Do not change their global Node without asking.
@@ -356,6 +409,10 @@ The 2026-09-16 section still holds:
 **Resolved since then:** "Push `main`" is done. The registry-import question is **answered: yes**. A fresh session
 receives `docs/reviewers/registry.md` through `CLAUDE.md`. **The reviewer agents are still not callable by name**,
 so use the fallback above.
+> **Correction (2026-09-20, see the top section):** this "not callable by name" note was carried
+> across three sessions and turned out to be stale — every review across the F0b build that followed
+> this one dispatched the five lenses by name. Left as-written above for the historical record of what
+> this session actually observed; do not repeat the fallback in new work.
 
 ---
 
@@ -435,6 +492,10 @@ known gaps, not surprises:
 6. **The named reviewer agents were NOT callable by `subagent_type` in the F0a session** (they weren't in
    the session's agent list). The fallback worked: a `general-purpose` agent told to read
    `.claude/agents/<name>.md` and follow it verbatim. Try the name first in a fresh session.
+   > **Correction (2026-09-20, see the top section):** confirmed — every review across the F0b build
+   > dispatched the five lenses by name with no fallback needed. Left as-written above for the
+   > historical record of what the F0a session actually observed; do not repeat the fallback in new
+   > work.
 
 ### Follow-ups found by F0a's reviews — deliberately NOT fixed (none blocks F0b)
 
@@ -508,6 +569,9 @@ mid-brainstorm.** Three things happened, none of them backend code:
 - **Are the reviewer agents callable by name?** Claude Code loads agent definitions at session start. If
   `subagent_type: frontend-review-security` is rejected, dispatch a `general-purpose` agent with the agent
   file's body as its prompt — same review.
+  > **Correction (2026-09-20, see the top section):** answered — yes, they are. Every review across
+  > the F0b build that followed this one dispatched the five lenses by name with no fallback needed.
+  > Left as-written above for the historical record; do not treat this as still an open question.
 - (Resolved, for the record: the same probe reported that a subagent **does** have the Agent tool, so the
   registry's rule is "if you *cannot* dispatch, name the specialists", not "subagents never dispatch".)
 

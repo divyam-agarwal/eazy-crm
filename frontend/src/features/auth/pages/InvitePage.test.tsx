@@ -236,15 +236,22 @@ describe('InvitePage', () => {
     // is ambiguous here (RootLayout's own hoisted region is also present, always empty on this route).
     expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent('Joining…');
 
-    // A second activation does not fire a second POST: useAcceptInvitation (P15) holds the refresh
-    // lock for the whole call, so this queues behind the still-held lock rather than reaching the
-    // network again.
+    // A second activation does not fire a second POST. The refresh lock useAcceptInvitation (P15)
+    // holds does NOT prevent this on its own -- it serializes, it does not deduplicate (Challenge
+    // #98, corrected): a queued second `mutateAsync` would still reach the network once the first
+    // call's lock hold ends. What actually stops it is `if (accept.isPending) return;` in
+    // `onSubmit`, so the assertion is taken both during the hold and after release.
     await user.click(button);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(requests).toBe(1);
 
     releaseAccept?.();
     await waitFor(() => expect(useSessionStore.getState().status).toBe('authenticated'));
+    // If the second click's `mutateAsync` had been queued behind the lock (the pre-fix behaviour),
+    // it would fire its own POST once the first call's hold ends -- give it time to, then check it
+    // did not.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(requests).toBe(1);
   });
 
   // Fix round 1 (item 2, a11y/R80): a cold preview failure (the FIRST time the error branch renders,

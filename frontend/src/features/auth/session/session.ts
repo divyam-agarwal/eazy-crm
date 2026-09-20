@@ -5,6 +5,7 @@ import type { Me, SessionStatus } from '@/session/types';
 import { clearAccessToken, setAccessToken } from './accessToken';
 import { clearLogoutPending } from './logoutPending';
 import { sessionRuntime } from './runtime';
+import { emitSessionExpired } from './sessionEvents';
 import { toMe } from './toMe';
 
 export type EndReason = 'logout' | 'expired' | 'principal-changed' | 'remote-logout';
@@ -114,6 +115,14 @@ export function subscribeToAuthChannel(): () => void {
     if (message.type === 'logout') {
       if (!me && status !== 'signing-out') return;
       endSession('remote-logout');
+      // I8 (final fix wave): without this, `RequireSession.tsx`'s stateless `<Navigate>` (triggered
+      // by `status` reaching 'anonymous') was the only redirect that fired, landing this tab on
+      // `/login` with no explanation of why it was signed out — contradicting LoginPage.tsx's own
+      // comment, which already claimed a remote sign-out carries a reason. Emitting the event here
+      // gives `RootLayout`'s listener a chance to win the race with its own reason-carrying
+      // `navigate(..., { state: { reason: 'expired' } })` instead, so this tab shows the same
+      // "Your session ended" message a local expiry does, rather than a silent drop onto /login.
+      emitSessionExpired();
       return;
     }
 

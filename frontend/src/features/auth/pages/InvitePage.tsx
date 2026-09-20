@@ -172,6 +172,9 @@ export function InvitePage() {
       );
     } else {
       const onSubmit = form.handleSubmit(async (values) => {
+        // Challenge #98 (corrected): the refresh Web Lock serializes concurrent submits, it does
+        // not deduplicate them. This guard is what actually stops a resubmit while one is in flight.
+        if (accept.isPending) return;
         setFormMessage(null);
         setMaybeAccepted(false);
         try {
@@ -241,9 +244,10 @@ export function InvitePage() {
             />
             {/* aria-disabled, not disabled — see LoginPage.tsx's identical comment: a native
                 `disabled` control loses focus the instant it's applied, stranding a keyboard user at
-                <body> for the whole round trip. useAcceptInvitation (P15) holds the refresh lock for
-                the whole call, so a second activation queues behind that lock rather than reaching
-                the network again. */}
+                <body> for the whole round trip. The refresh lock useAcceptInvitation (P15) holds
+                does NOT stop a second activation from reaching the network again -- it serializes,
+                it does not deduplicate. The actual guard is `if (accept.isPending) return;` in
+                `onSubmit` -- see Challenge #98 (corrected). */}
             <Button type="submit" aria-disabled={isSubmitting || undefined}>
               {isSubmitting ? t('invite.submitting') : t('invite.submit')}
             </Button>

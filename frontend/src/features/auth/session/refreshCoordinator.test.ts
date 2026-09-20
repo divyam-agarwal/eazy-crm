@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { ownerSession } from '@/test/fixtures';
+import { holdCookieLock } from '@/test/locks';
 import { createInMemoryLocks, type LockProvider } from './lockProvider';
 import { REFRESH_FORBIDDEN_MESSAGE, type RefreshCallResult } from './refreshCall';
 import { createRefreshCoordinator } from './refreshCoordinator';
@@ -63,6 +64,33 @@ describe('refresh coordinator', () => {
     await Promise.all([tabA.refresh('token-1'), tabB.refresh('token-1')]);
 
     expect(maxInFlight).toBe(1);
+  });
+
+  // P15 (spec §4.4): every path that rotates the refresh cookie must hold the SAME named lock
+  // (REFRESH_LOCK = 'easycrm-refresh') as every other cookie-writing path — login, signup, invite,
+  // logout and boot all go through `holdCookieLock()` in their own tests. This coordinator is the
+  // one path P15 exists for (the 401 -> refresh race), and until this test existed nothing proved it
+  // uses that same lock NAME rather than merely serializing against itself: swapping the imported
+  // REFRESH_LOCK for a private string literal inside refreshCoordinator.ts left every other test in
+  // this file green, because they all share one in-memory LockProvider instance and never contend
+  // against a lock held from OUTSIDE the coordinator under a name the coordinator does not also use.
+  it('holds REFRESH_LOCK — the same lock every other cookie-writing path holds — before calling callRefresh', async () => {
+    const hold = holdCookieLock();
+    await hold.acquired;
+    const { deps, coordinator: c } = coordinator({
+      locks: hold.locks,
+      call: async () => ({ kind: 'ok', body: ownerSession }),
+    });
+
+    const refreshPromise = c.refresh('token-1');
+    // Real time, not a fake timer: only a call genuinely queued behind the externally-held
+    // REFRESH_LOCK can fail to have run by then (see start.test.ts's identical reasoning).
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(deps.callRefresh).not.toHaveBeenCalled();
+
+    hold.release();
+    await expect(refreshPromise).resolves.toBe('refreshed');
+    expect(deps.callRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('does not refresh when the token already changed since the failing request', async () => {

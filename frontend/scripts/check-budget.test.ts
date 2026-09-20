@@ -207,36 +207,77 @@ describe('CLI — over budget on a real route (Task 13)', () => {
     manifest[ROUTE_ENTRIES['/login']] = { file: 'assets/login.js', imports: [] };
     manifest[ROUTE_ENTRIES['/signup']] = { file: 'assets/signup.js', imports: [] };
     manifest[ROUTE_ENTRIES['/invite/:token']] = { file: 'assets/invite.js', imports: [] };
+    const [appShellKey, homePageKey] = ROUTE_ENTRIES['/'];
+    manifest[appShellKey] = { file: 'assets/app-shell.js', imports: [] };
+    manifest[homePageKey] = { file: 'assets/home-page.js', imports: [] };
+    manifest[ROUTE_ENTRIES['*']] = { file: 'assets/not-found.js', imports: [] };
     const root = await makeProjectRoot(manifest, {
       'assets/index.js': 'console.log(1)',
       'assets/login.js': 'console.log(1)',
       'assets/signup.js': big,
       'assets/invite.js': 'console.log(1)',
+      'assets/app-shell.js': 'console.log(1)',
+      'assets/home-page.js': 'console.log(1)',
+      'assets/not-found.js': 'console.log(1)',
     });
     const run = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
     expect(run.status).toBe(1);
     expect(run.stdout).toMatch(/✗ \/signup: .* — budget 200 KB/);
     expect(run.stdout).toMatch(/✓ \/login: /);
     expect(run.stdout).toMatch(/✓ \/invite\/:token: /);
+    expect(run.stdout).toMatch(/✓ \/: /);
+    expect(run.stdout).toMatch(/✓ \*: /);
     expect(run.stderr).toMatch(/1 entry over budget/);
   });
 });
 
-// The CLI always measures the HTML entry plus every real ROUTE_ENTRIES route (main() calls
-// measure() with no arguments), so every baseline-delta fixture below must give each of them a
-// manifest entry too — not just 'index.html' — or routeFiles() throws on the missing routes.
+// I1: the CLI always measures the HTML entry plus every real ROUTE_ENTRIES route, including '/'
+// (AppShell + HomePage) and '*' — previously unmeasured for three tasks (main() calls measure()
+// with no arguments), so every baseline-delta fixture below must give each of them a manifest entry
+// too — not just 'index.html' — or routeFiles() throws on the missing routes.
 const REAL_ROUTES_MANIFEST: Record<string, unknown> = {
   'index.html': { file: 'assets/index.js', imports: [], css: [] },
 };
 REAL_ROUTES_MANIFEST[ROUTE_ENTRIES['/login']] = { file: 'assets/login.js', imports: [] };
 REAL_ROUTES_MANIFEST[ROUTE_ENTRIES['/signup']] = { file: 'assets/signup.js', imports: [] };
 REAL_ROUTES_MANIFEST[ROUTE_ENTRIES['/invite/:token']] = { file: 'assets/invite.js', imports: [] };
-const REAL_ROUTES_FILES = {
+for (const key of ROUTE_ENTRIES['/']) {
+  REAL_ROUTES_MANIFEST[key] = { file: `assets/${key.split('/').pop()}.js`, imports: [] };
+}
+REAL_ROUTES_MANIFEST[ROUTE_ENTRIES['*']] = { file: 'assets/not-found.js', imports: [] };
+const REAL_ROUTES_FILES: Record<string, string> = {
   'assets/index.js': 'x'.repeat(2_000),
   'assets/login.js': 'y',
   'assets/signup.js': 'y',
   'assets/invite.js': 'y',
+  'assets/not-found.js': 'y',
 };
+for (const key of ROUTE_ENTRIES['/']) {
+  REAL_ROUTES_FILES[`assets/${key.split('/').pop()}.js`] = 'y';
+}
+
+// I2 (final fix wave): spec §6.5 names this guard explicitly, and it was deleted in a prior review
+// round with 18/18 tests still green — the only test touching it exercised `summarize()` directly
+// (`totalFiles === 0`), a property of a pure function, never `main()`'s own check-and-exit-1 branch.
+// This spawns the real CLI (as the other CLI describes do) against a manifest that gives every real
+// ROUTE_ENTRIES key (plus the HTML entry) a chunk with no `file`, `css`, or `imports` — so `measure()`
+// resolves zero files across the board — and proves `main()` itself, not just `summarize()`, treats
+// that as a failure. Verified red by temporarily removing the `totalFiles === 0` branch from
+// `main()` in check-budget.mjs and rerunning: `run.status` came back `0`, not `1`.
+describe('CLI — resolves zero files (I2, spec §6.5)', () => {
+  it('exits 1 and reports "resolved zero files" when every route resolves nothing', async () => {
+    const manifest: Record<string, unknown> = { 'index.html': { imports: [], css: [] } };
+    manifest[ROUTE_ENTRIES['/login']] = { imports: [], css: [] };
+    manifest[ROUTE_ENTRIES['/signup']] = { imports: [], css: [] };
+    manifest[ROUTE_ENTRIES['/invite/:token']] = { imports: [], css: [] };
+    for (const key of ROUTE_ENTRIES['/']) manifest[key] = { imports: [], css: [] };
+    manifest[ROUTE_ENTRIES['*']] = { imports: [], css: [] };
+    const root = await makeProjectRoot(manifest, {});
+    const run = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toMatch(/resolved zero files/);
+  });
+});
 
 describe('CLI — baseline delta (R87)', () => {
   it('prints a delta against a committed baseline, and does not fail the build on drift alone', async () => {

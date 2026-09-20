@@ -33,7 +33,7 @@ factory), and `caseInput` (`/login`, `/signup`).
 | i18next-resources-to-backend | 1.2.3 | entry | 0.63 KB³ | — | Dynamic `import()` loader so each locale/namespace is its own chunk |
 | openapi-fetch | 0.17.0 | entry | 3.36 KB | — | Typed fetch client generated from the OpenAPI contract (Task 3) |
 | class-variance-authority | 0.7.1 | /login, /signup, /invite/:token | 0.66 KB | — | shadcn primitives — variant class composition (`cva()`) |
-| cn | 0.3.0 | entry | 13.06 KB | — | Compiled drop-in replacement for `clsx` + `tailwind-merge` — the shadcn `cn()` utility (`src/lib/utils.ts`). This project uses `cn`, not a separate `tailwind-merge` dependency |
+| cn | 0.3.0 | /login, /signup, /invite/:token | 13.06 KB | — | Compiled drop-in replacement for `clsx` + `tailwind-merge` — the shadcn `cn()` utility (`src/lib/utils.ts`). This project uses `cn`, not a separate `tailwind-merge` dependency. **I7 (final fix wave):** previously also "entry" via `RouteSkeleton` (statically imported by `router.tsx`) rendering the shadcn `Skeleton`, which imports `cn` purely to merge a fixed base class with static size utilities — 12.97 KB gz of the entry chunk spent on a loading placeholder. `RouteSkeleton` now composes its own `BASIC_SKELETON_CLASS` (`src/app/basicSkeletonClass.ts`, same pattern as `BASIC_BUTTON_CLASS`) with a template string instead, so `cn` no longer ships in the entry — only in the three lazy routes that already import it for real reasons |
 | radix-ui | 1.6.7 | /login, /signup, /invite/:token | 3.29 KB⁴ | — | shadcn primitives — meta-package; the actual code that ships is whichever `@radix-ui/react-*` primitives are imported (see ⁴) |
 | lucide-react | 1.47.0 | /login, /signup, /invite/:token | 4.60 KB | — | Password toggle icons |
 | @tanstack/query-core | 5.103.1 | entry, /login, /signup, /invite/:token | 18.40 KB | @tanstack/react-query | Query engine `@tanstack/react-query` re-exports; this is most of that package's real weight |
@@ -102,6 +102,12 @@ that 168.8 → 172.6 KB drift — a human did that, by reading the three prior t
 it does going forward is make the *next* route to erode visible at the commit that causes it,
 instead of months later when some unrelated change finally trips 200 KB. `budget-baseline.json` is
 updated only by an explicit `pnpm budget --update` — nothing implicit rewrites it.
+
+**Final fix wave (2026-09-20) update:** I7 moved `cn` out of the entry chunk (see that row above).
+Re-measured route totals: **index.html (entry) 133.8 KB** (down from 144.6 KB — the ~10.8 KB gzip win
+I7 predicted), **/login 171.7 KB, /signup 176.2 KB, /invite/:token 175.2 KB**, plus two routes I1 added
+to the budget script that were previously unmeasured: **/ 146.8 KB, \* 134.0 KB** (all gzipped, budget
+200 KB per route; `budget-baseline.json` updated to match via `pnpm budget --update`).
 
 Dev-only dependencies are not listed: they never reach a user.
 
