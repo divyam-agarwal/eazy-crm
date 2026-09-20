@@ -9,8 +9,15 @@ deleted. Full verification was re-run on the merged tree, not inherited from the
 307 frontend tests / 33 files, `./gradlew clean check` with 688 backend tests, 11/11 E2E, all six routes
 under the 200 KB budget at +0.0 KB drift. **CI run `35493017772` is green on all five jobs** — the first
 ever run of the new `frontend` (58 s) and `e2e` (2 m 40 s) jobs on `main`, cold cache included, so the
-feared cold-start E2E flake did not materialise. **Item 4 (frontend) is DONE through F0; next is F1
-(master data).**
+feared cold-start E2E flake did not materialise. **Item 4 (frontend) is DONE through F0.**
+
+**Nothing is in flight** — no branch, no worktree, no uncommitted application code. The next slice is a
+clean start, and the choice is between **F1 (master data)**, which is the owner's stated direction, and
+**H7**, which is a live correctness bug and is smaller. In pure risk order H7 goes first; the owner
+deferred it behind F0 once, and that was a decision about F0, not a standing verdict on H7 — so put the
+choice to them rather than inheriting it. `docs/superpowers/HANDOFF.md`'s **"Next session: start here"**
+block has the full briefing, including the traps (Node 24 activation, post-merge-only CI) that cost this
+session time.
 
 **2026-09-20 — what this session built.** F0b (the frontend itself) built and verified on branch
 `f0b-frontend`. 688 backend tests (0 failures, was 677), 307 frontend tests across 33 files, 11/11 E2E PASS
@@ -59,9 +66,11 @@ frontend lenses in `.claude/agents/`, a registry imported into `CLAUDE.md`, and 
 first in the `check` job (`d019524`). **`d019524` was pushed together with the docs commit that records it; its CI result was not checked
 at the time of writing** — confirm the `check` job (and its new first step) is green. Verify with the commands below. §6.1 has the order.
 
-**Code baseline (2026-09-16):** local `main` at `186adc4` — **677 tests (642 root + 35 primitives), 0 failures**,
-verified by `./gradlew clean check` on the exact merged tree; **unpushed**. *The paragraphs below describe the pushed
-state before F0a.* **Previous baseline:** `main` at `f81362b` — **626 tests (598 root + 28 primitives), 0 failures**, verified by `./gradlew clean
+**Code baseline (2026-09-20, current):** `main` == `origin/main` at `6d7b970` — **688 backend tests,
+0 failures** (`./gradlew clean check` on the merged tree), plus **307 frontend Vitest tests** and
+**11 Playwright E2E**, all green in CI run `35493017772`. *Historical baselines follow; they record
+earlier states and are not claims about today.* **Previous:** local `main` at `186adc4` — 677 tests
+(642 root + 35 primitives), 0 failures, unpushed at the time. **Previous baseline:** `main` at `f81362b` — **626 tests (598 root + 28 primitives), 0 failures**, verified by `./gradlew clean
 check` from clean on the merged result. Wave 1.5 (item 2) merged fast-forward on 2026-09-12 and
 the `supply-chain` branch was deleted; 591 before it, plus 13 in `SupplyChainWorkflowTest`. (The
 buyer-snapshot branch merged the same way on 2026-09-08; the baseline before that was 586.)
@@ -107,8 +116,9 @@ pass when it starts. **Nothing here replaces a spec.**
 
 # Part 1 — Where we are today
 
-**Verified at `f81362b`, not assumed — `main` and `origin/main` are in sync as of 2026-09-13 with
-Wave 1.6 merged.**
+**Verified at `6d7b970`, not assumed — `main` and `origin/main` are in sync as of 2026-09-20 with F0b
+merged and CI green.** (The paragraphs further down that describe an unpushed `main` are historical
+records of earlier states; this line is the current one.)
 
 ## 1.1 Application
 

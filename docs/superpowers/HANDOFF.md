@@ -20,7 +20,13 @@ inherited from the branch: lint, typecheck, 307 Vitest tests / 33 files, `./grad
 git rev-parse --short main         # 6d7b970
 git rev-parse --short origin/main  # 6d7b970
 ```
-`main` and `origin/main` are in sync (both `389f23b`) — nothing from this branch has reached `origin`.
+**Dead references, read this before chasing a link.** Everything below that cites
+`.superpowers/sdd/2026-09-16-f0b-frontend-foundation/…` — `final-fix-report.md`, `task-N-report.md`,
+`progress.md`, `rulings.md` — **no longer exists**. That directory is git-ignored, lived only in the
+now-deleted worktree, and was never committed anywhere. What mattered from it was copied out before
+deletion: the 107 rulings into
+[`2026-09-20-f0b-ruling-record.md`](./2026-09-20-f0b-ruling-record.md), and the walkthrough and fix-wave
+findings into this section. Do not go looking for the originals; there is nothing to find.
 
 **Correction to the standing caveat below and in every earlier section of this file:** every prior
 entry says the five frontend specialist reviewers were "not callable by `subagent_type`" and prescribes
@@ -37,10 +43,10 @@ fallback instructions from its own report.
   F0b; +11 net — F0b's own backend-side additions, chiefly `OpenApiRequiredFieldsTest` (P1) and
   `FrontendWorkflowTest`'s six CI-guard assertions (Task 16)). Count is the sum of every
   `build/test-results/test/*.xml` `tests="…"` attribute across both Gradle modules, not a claim.
-- **Frontend: 303 tests, 33 files, all green** (`pnpm test:coverage`). **Updated by the final fix wave
-  (2026-09-20, see `final-fix-report.md`): 307 tests, 33 files** — four new tests, each added to close
-  a gate the whole-branch review proved could not fail (P15's coordinator lock, the resubmit guard, the
-  budget script's zero-files check, and RootLayout's invite-route exemption from `onSessionExpired`).
+- **Frontend: 307 tests, 33 files, all green** (`pnpm test:coverage`) — this is the number to compare
+  against; it was 303 before the final fix wave added four, each closing a gate the whole-branch review
+  had proved could not fail (P15's coordinator lock, the resubmit guard, the budget script's zero-files
+  check, and RootLayout's invite-route exemption from `onSessionExpired`).
 - **Coverage floor (Task 17 Step 1), set from this exact measured run, each floored to a whole
   percent:** Statements 97 (measured 97.41%), Branches 92 (92.51%), Functions 96 (96.81%), Lines 98
   (98.44%). Proven to bite: temporarily setting `lines: 100` in `vite.config.ts` produced `ERROR:
@@ -51,18 +57,16 @@ fallback instructions from its own report.
   — `cross-tab-logout` (3), `guards` (axe + CSP) (2), `invite-accept`, `invite-invalid`,
   `invite-signed-in`, `signup-reload-logout`, `refresh-rotation` (2). Still 11/11 after the final fix
   wave.
-- **Per-route gzipped JS (`pnpm budget`, budget 200 KB/route), headroom tightest first:**
-  `/signup` 177.0 KB (**23.0 KB** headroom) · `/invite/:token` 176.0 KB (**24.0 KB**) · `/login` 172.7 KB
-  (**27.3 KB**) · shared entry (`index.html`) 144.6 KB (**55.4 KB**, inherited by all four routes). The
-  baseline-diff column (challenge #102) printed `+0.0 KB` on every route against `budget-baseline.json`
-  — no drift since it was last checkpointed. **Largest standing lever if a route needs headroom:**
-  react-router's data API, ≈17.2 KB gzipped, deliberately kept for `errorElement` and route-level
-  `lazy:` rather than the plain component-mode router (P9-adjacent decision, not separately numbered).
-  **Updated by the final fix wave (I1, I7 — see `final-fix-report.md`):** I7 moved `cn` out of the
-  entry chunk (`RouteSkeleton` no longer needs it), and I1 added the two previously-unmeasured lazy
-  routes. Re-measured: **entry 133.8 KB** (-10.8 KB) · `/login` 171.8 KB · `/signup` 176.2 KB ·
-  `/invite/:token` 175.2 KB · `/` 146.8 KB (new) · `*` 134.1 KB (new) — all under budget;
-  `budget-baseline.json` updated via `pnpm budget --update`.
+- **Per-route gzipped JS (`pnpm budget`, budget 200 KB/route) — current figures, all six routes,
+  tightest headroom first:** `/signup` 176.2 KB (**23.8 KB** headroom) · `/invite/:token` 175.2 KB
+  (**24.8 KB**) · `/login` 171.8 KB (**28.2 KB**) · `/` 146.8 KB · `*` 134.1 KB · shared entry
+  (`index.html`) 133.8 KB. The baseline-diff column (challenge #102) prints `+0.0 KB` on every route
+  against the committed `budget-baseline.json`. Two things got it here in the final fix wave: I1
+  registered the two lazy routes (`/`, `*`) that were **being built but never measured**, and I7 moved
+  `cn` out of the entry chunk (`RouteSkeleton` no longer needs it), worth −10.8 KB to every route at
+  once. **Largest standing lever if a route needs headroom:** react-router's data API, ≈17.2 KB gzipped,
+  deliberately kept for `errorElement` and route-level `lazy:` rather than the plain component-mode
+  router (P9-adjacent decision, not separately numbered).
 - `pnpm lint`, `pnpm typecheck`, `pnpm gen:api && git diff --exit-code -- src/api/schema.d.ts` (no
   drift) all clean.
 
@@ -225,8 +229,49 @@ follow-ups (grace-use audit, logout-vs-grace race, `IssuedSession.toString()`, a
 group (Testcontainers 2 / JUnit 6 — does not compile), and P8 (the toast container arrives with F1's
 first background failure).
 
-**Next: F1 (master data).** Brainstorm → spec → plan, same as F0 did. `superpowers:using-git-worktrees`
-for a fresh worktree off the current `main` (`6d7b970`).
+---
+
+### Next session: start here
+
+**There is no work in flight.** No branch, no worktree, no uncommitted application code, nothing
+half-done. `main` == `origin/main`, CI is green, and the two untracked files in `git status`
+(`.tessl/`, `docs/architecture/pre-screening-answers.md`) predate F0b and belong to the owner — leave
+them alone.
+
+**Sequencing — ask the owner, don't assume.** Two candidates are both legitimately "next", and the
+roadmap ranks them differently on purpose:
+1. **F1 (master data)** is the owner's stated programme direction (item 4, frontend-first since
+   2026-09-14) and the natural continuation of F0.
+2. **H7 (freeze the seller on a sent quotation)** is a **live correctness bug** in shipped behaviour,
+   of H1's exact class, and is *small*. A tenant that changes registered state flips an already-`SENT`
+   quotation between CGST/SGST and IGST on re-render — through the public share link the buyer is
+   already holding. It has been deferred twice, each time deliberately, never because it stopped
+   mattering.
+   
+   In pure risk order H7 goes first. The owner chose F0 ahead of it once already; that choice was
+   about F0, not a standing verdict on H7. **Put the choice to them rather than inheriting it.**
+
+**If F1:** brainstorm → spec → plan → `superpowers:subagent-driven-development`, the same pass F0 ran.
+Fresh worktree off `main` via `superpowers:using-git-worktrees`. Read, in this order: the "Notes for F1"
+and "F1 tickets" blocks above, then
+[`2026-09-20-f0b-ruling-record.md`](./2026-09-20-f0b-ruling-record.md)'s F1-binding index — it exists so
+F1 doesn't relitigate decisions that already cost a review cycle each.
+
+**Things that will bite an unwarned agent:**
+- **`pnpm` needs Node 24 explicitly.** A non-interactive agent shell starts on the system Node
+  (v25.2.1) even though `~/.zshrc` activates fnm — the hook never runs. Prefix **every** frontend
+  command: `fnm exec --using=24 -- pnpm <cmd>`. `eval "$(fnm env)"` may be refused by the sandbox.
+- **CI is post-merge, and a feature-branch push fires nothing.** The workflow triggers on
+  `push: [main]` and `pull_request`, and this repo has never used a PR for real work. So CI cannot
+  vet a branch before you merge it — run the gates locally, and expect the first signal on `main`.
+- **CI is five jobs now**, not three: `check`, `supply-chain`, `dependency-check`, plus F0b's
+  `frontend` and `e2e`. `dependency-check` takes ~16 minutes and dominates wall-clock; the other four
+  finish in under three.
+- **Specialist reviewers are callable by `subagent_type` directly** — see the correction above. Every
+  section of this file older than 2026-09-20 tells you otherwise and is wrong.
+- **Mutation-test your green checks.** Sixteen assertions that measured nothing were found across F0b,
+  every one by breaking the code and watching the test stay green — never by reading it. Budget for
+  this; it is the single highest-yield verification technique this project has found.
 
 ---
 
