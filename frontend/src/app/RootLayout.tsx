@@ -34,16 +34,36 @@ export function RootLayout() {
   const location = useLocation();
   const matches = useMatches();
   const locationRef = useRef(location);
+  const exempt = matches.some((m) => survivesSignOut(m.handle));
+  // Final fix wave, item 1 (Important — the reviewer's own error, not a defect introduced by I8):
+  // R23/F0-10 exempt this route from RootLayout's global gates so a sign-out here never loses the
+  // invite link; the 'signing-out' swap below already respects `exempt`, but this listener didn't,
+  // and I8's new `emitSessionExpired()` call on remote logout gave it a real, non-forged trigger — a
+  // colleague signed in on /invite/:token, another tab on the same shared counter phone completes an
+  // ordinary sign-out, the broadcast reaches `me`-truthy `subscribeToAuthChannel`, and the resulting
+  // event used to yank this tab to /login regardless. A ref, same pattern as `locationRef` above:
+  // `exempt` is derived from `matches`, which only changes across a real navigation, so recomputing
+  // it inside the listener via a stale closure would be wrong for the OPPOSITE reason `locationRef`
+  // exists — read the CURRENT route's exemption, not the one captured when the effect last ran.
+  const exemptRef = useRef(exempt);
 
   useEffect(() => {
     locationRef.current = location;
   }, [location]);
+
+  useEffect(() => {
+    exemptRef.current = exempt;
+  }, [exempt]);
 
   // The HTTP layer never calls the router (spec §4.4): it raises this event, and the router listens, so
   // F2 can swap navigation for a re-login dialog that preserves an in-progress quotation.
   useEffect(
     () =>
       onSessionExpired(() => {
+        // See the `exemptRef` comment above: a route that owns its own signing-out/anonymous
+        // rendering (spec §5.1's sign-out-and-accept) must be left alone here — it falls through to
+        // its own in-page anonymous state instead of being redirected away from the link it's on.
+        if (exemptRef.current) return;
         const { pathname, search } = locationRef.current;
         const next = safeNext(pathname + search) ?? '/';
         // A11y-5: carry WHY. Without it the user is dropped on an empty login page mid-task and
@@ -74,8 +94,8 @@ export function RootLayout() {
   // discarding its local state (InvitePage's `maybeAccepted`, its `acceptLost` ref) the moment
   // `status` flips to 'signing-out', and again when it flips back. Such a route owns its own
   // signing-out rendering (see InvitePage.tsx's `status === 'signing-out'` branch) so its Outlet is
-  // never swapped out here.
-  const exempt = matches.some((m) => survivesSignOut(m.handle));
+  // never swapped out here. (`exempt` itself is computed once, above, and shared with the
+  // `onSessionExpired` listener via `exemptRef`.)
   const blocked = status === 'signing-out' && !exempt;
   return (
     <>

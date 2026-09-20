@@ -105,8 +105,8 @@ updated only by an explicit `pnpm budget --update` — nothing implicit rewrites
 
 **Final fix wave (2026-09-20) update:** I7 moved `cn` out of the entry chunk (see that row above).
 Re-measured route totals: **index.html (entry) 133.8 KB** (down from 144.6 KB — the ~10.8 KB gzip win
-I7 predicted), **/login 171.7 KB, /signup 176.2 KB, /invite/:token 175.2 KB**, plus two routes I1 added
-to the budget script that were previously unmeasured: **/ 146.8 KB, \* 134.0 KB** (all gzipped, budget
+I7 predicted), **/login 171.8 KB, /signup 176.2 KB, /invite/:token 175.2 KB**, plus two routes I1 added
+to the budget script that were previously unmeasured: **/ 146.8 KB, \* 134.1 KB** (all gzipped, budget
 200 KB per route; `budget-baseline.json` updated to match via `pnpm budget --update`).
 
 Dev-only dependencies are not listed: they never reach a user.

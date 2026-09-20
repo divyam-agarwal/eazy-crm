@@ -7069,3 +7069,77 @@ entry: when a safety argument works by analogy or by reasoning within a frame na
 itself, that gap is exactly where "looks free" or "looks close enough" assumptions hide, and the only
 reliable close is to measure the actual, wider frame the claim is really about — a real browser, a
 real bundle, or two real tabs — before trusting the argument.
+
+---
+
+## Challenge 108 — A fix that adds a global behaviour silently bypassed a per-route exemption a previous fix had already established
+
+**Phase:** Implementation (F0b, final whole-branch fix wave)
+
+### The problem
+
+I8 (this same fix wave) made `session.ts`'s remote-`logout` handler call `emitSessionExpired()` so a
+tab signed out from elsewhere would land on `/login` with a reason, instead of a silent drop. Correct
+in general — but `RootLayout.tsx`'s `onSessionExpired` listener navigates **unconditionally**, and the
+same file already computes `exempt` (via `survivesSignOut(m.handle)`) two lines below the listener, for
+exactly the opposite reason: R23/F0-10 exempt `/invite/:token` from RootLayout's global gates because
+its "sign out and accept" flow (spec §5.1) must survive a sign-out on the SAME page, not detour through
+a blocking screen or, now, a redirect. The listener had never been taught about that exemption because
+at the time it was written (well before F0-10), nothing could reach it while an exempt route was
+mounted — `sessionExpired` only ever fired from a 401 on an authenticated request, and F0-10's whole
+point is that `/invite/:token` renders correctly whether or not the visitor is authenticated. I8 was the
+first change to give the event a trigger that fires with an exempt route on screen and a `me` that was
+genuinely truthy: a colleague on `/invite/:token`, signed in, while another tab on the same shared
+counter phone completes an ordinary, legitimate sign-out. No forgery needed. The broadcast reaches
+`subscribeToAuthChannel`'s `logout` branch (`me` truthy, so it does not no-op), which now calls
+`emitSessionExpired()` — and the listener, ignorant of `exempt`, yanks the tab to `/login`, losing the
+invite link the whole design exists to keep intact.
+
+### Why it's hard
+
+Both `RootLayout`'s two mechanisms — the `signing-out` screen swap and the `sessionExpired` redirect —
+read from the same session-lifecycle events, live in the same component, and are conceptually "the same
+kind of thing" (a global session-state gate short-circuiting whatever a route wanted to render). But
+they were built at different times, for different triggers, and only one of them was ever taught the
+exemption. Nothing about adding a new call site for an *existing*, already-reviewed event
+(`emitSessionExpired`) looks like it touches routing policy — the diff is entirely inside `session.ts`,
+nowhere near `RootLayout.tsx` — so a reviewer (and the person requesting the change) can reasonably
+believe "this event already exists and already redirects correctly" without re-checking whether every
+consumer of that event still agrees with a rule established in a completely different task, months of
+elapsed feature-time apart in the plan's timeline, for a completely different mechanism. The bug also
+needs no forged message and no adversarial input — a wholly legitimate, expected cross-tab sign-out is
+enough — so it is not the kind of thing a security-only review pass would be primed to look for.
+
+### Solution
+
+Computed `exempt` once per render (already done, for the `signing-out` swap) and mirrored it into a
+`useRef` — `exemptRef`, alongside the file's existing `locationRef` pattern — updated in a `useEffect`
+keyed on `exempt`. The `onSessionExpired` listener now checks `exemptRef.current` first and returns
+without navigating when the current route owns its own signing-out/anonymous rendering, leaving that
+route to fall through to its own in-page state exactly as F0-10 specifies. A `useRef` rather than a
+plain closure variable, for the same reason `locationRef` already is one: the listener is registered in
+an effect keyed only on `navigate` (stable across renders), so a value read directly from the render
+that first mounted the effect would go stale the moment the user navigates to a different route without
+that effect re-running — the ref exists precisely so the listener always sees the CURRENT route's
+exemption, not the one captured when the effect last ran.
+
+Proved by a test that fires `emitSessionExpired()` while `/invite/:token` is mounted with an
+authenticated session, and — since `/login` is a lazy route, so a real bug's navigation would not
+actually change `router.state.location.pathname` until that dynamic import resolves, making a
+synchronous post-event check pass either way and a `setTimeout`-then-check just a different guess at
+"how long is long enough" (see #92/#96/#105's recurring pattern above, and item 2 of this same review)
+— by spying directly on `router.navigate`, which `useNavigate()`'s returned function calls
+SYNCHRONOUSLY on every invocation regardless of how long the resulting transition takes to settle. Red
+before the fix (`expected "navigate" to not be called at all, but actually been called 1 times`,
+carrying `/login?next=%2Finvite%2Fgood-token`), green after.
+
+### Lesson
+
+A fix that adds a new call site for an existing, already-reviewed mechanism can silently reactivate a
+policy question a *previous, unrelated* fix already settled — because the new call site's diff never
+touches the file that encodes the exemption, nothing in the change itself points a reviewer there. The
+generalizable check: before wiring a new trigger into an existing global event/gate, grep every consumer
+of that event for the words the codebase already uses for "this route opts out" (`exempt`, `handle`,
+`survivesSignOut`, and equivalents) — not just "does this event already fire correctly today," but "does
+every listener already agree with every documented exemption, under every trigger that can now reach
+it, not only the ones that could reach it when the listener was written."

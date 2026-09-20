@@ -19,6 +19,7 @@ import { errorBody, ownerMe, ownerSession } from '@/test/fixtures';
 import { holdCookieLock } from '@/test/locks';
 import { server } from '@/test/msw';
 import { http } from '@/test/openapiHttp';
+import { assertStaysAt } from '@/test/poll';
 import { renderApp } from '@/test/renderApp';
 
 const anonymous = { status: 'anonymous' as const };
@@ -324,21 +325,19 @@ describe('Task 10 fix round 1', () => {
     // behind the still-held lock and then run once the first call's hold ends. What actually stops
     // it is `if (login.isPending) return;` at the top of `onSubmit` (Challenge #98, corrected),
     // which is why the assertion below is taken both DURING the hold and AFTER release -- the first
-    // alone cannot distinguish "queued" from "never queued".
+    // alone cannot distinguish "queued" from "never queued". Final fix wave item 2: `assertStaysAt`
+    // polls rather than sleeping once and looking -- a fixed margin is a guess at "long enough" for
+    // exactly the class of bug (a duplicated write) this test exists to catch.
     await user.click(button);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(requests).toBe(1);
+    await assertStaysAt(() => requests, 1);
 
     releaseLogin?.();
     await waitFor(() => expect(useSessionStore.getState().me?.email).toBe('ravi@shop.in'));
     // If the second click's `mutateAsync` had been queued behind the lock (the pre-fix behaviour),
-    // it would fire its own POST once the first call's hold ends -- give it time to, then check it
-    // did not: this is the assertion the reviewer's `requestsAfterRelease = 2` demonstration exposed
-    // as missing. Verified red by temporarily removing the `isPending` guard from LoginPage.tsx.
-    const requestsAfterRelease = requests;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(requests).toBe(requestsAfterRelease);
-    expect(requests).toBe(1);
+    // it would fire its own POST once the first call's hold ends -- this is the assertion the
+    // reviewer's `requestsAfterRelease = 2` demonstration exposed as missing. Verified red by
+    // temporarily removing the `isPending` guard from LoginPage.tsx.
+    await assertStaysAt(() => requests, 1);
   });
 
   // Item 3 (Minor, but the reason it matters is bigger than the finding): a prior review swapped

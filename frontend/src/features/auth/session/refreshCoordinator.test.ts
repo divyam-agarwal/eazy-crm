@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ownerSession } from '@/test/fixtures';
 import { holdCookieLock } from '@/test/locks';
+import { assertStaysAt } from '@/test/poll';
 import { createInMemoryLocks, type LockProvider } from './lockProvider';
 import { REFRESH_FORBIDDEN_MESSAGE, type RefreshCallResult } from './refreshCall';
 import { createRefreshCoordinator } from './refreshCoordinator';
@@ -83,10 +84,11 @@ describe('refresh coordinator', () => {
     });
 
     const refreshPromise = c.refresh('token-1');
-    // Real time, not a fake timer: only a call genuinely queued behind the externally-held
-    // REFRESH_LOCK can fail to have run by then (see start.test.ts's identical reasoning).
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(deps.callRefresh).not.toHaveBeenCalled();
+    // Final fix wave item 2: poll rather than sleep-once-and-look (@/test/poll's own comment) — a
+    // fixed margin here is a guess at "long enough" for a call genuinely queued behind the
+    // externally-held REFRESH_LOCK to have stayed queued (see start.test.ts's identical reasoning
+    // for why real time, not a fake timer, is what matters).
+    await assertStaysAt(() => deps.callRefresh.mock.calls.length, 0);
 
     hold.release();
     await expect(refreshPromise).resolves.toBe('refreshed');

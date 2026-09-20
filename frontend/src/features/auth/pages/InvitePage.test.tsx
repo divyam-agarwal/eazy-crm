@@ -1,11 +1,13 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { delay, HttpResponse, http as mswHttp } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { emitSessionExpired } from '@/features/auth/session/sessionEvents';
 import { useSessionStore } from '@/session/sessionStore';
 import { errorBody, inviteeSession, ownerMe } from '@/test/fixtures';
 import { holdCookieLock } from '@/test/locks';
 import { server } from '@/test/msw';
 import { http } from '@/test/openapiHttp';
+import { assertStaysAt } from '@/test/poll';
 import { renderApp } from '@/test/renderApp';
 
 const preview = { businessName: 'Ravi Traders', email: 'asha@shop.in', role: 'SALES_EXEC' };
@@ -74,6 +76,38 @@ describe('InvitePage', () => {
     await user.click(screen.getByRole('button', { name: 'Sign out and accept' }));
 
     expect(await screen.findByLabelText('Choose a password')).toBeInTheDocument();
+  });
+
+  // Final fix wave, item 1: R23/F0-10 exempt this route from RootLayout's global gates so a sign-out
+  // never loses the invite link — RootLayout's OWN `signing-out` swap already respects that exemption
+  // (`exempt`, derived from `survivesSignOut(m.handle)`), but its separate `onSessionExpired` listener
+  // did not consult it and navigated unconditionally. Real trigger, no forgery needed: a colleague is
+  // on this page signed in, another tab on the same shared counter phone completes an ordinary
+  // sign-out, the resulting broadcast reaches `subscribeToAuthChannel`'s `logout` branch (`me` is
+  // truthy, so it does not no-op), which (since I8) calls `emitSessionExpired()` — the exact event
+  // this test fires directly, the same way the `RootLayout` suite in app.test.tsx does.
+  //
+  // Structural, not timing-based: `/login` is a lazy route, so if the buggy code DID navigate, the
+  // memory router's `location.pathname` would not actually change until that dynamic import
+  // resolves — a synchronous check right after firing the event would pass whether or not the bug is
+  // present, and a `setTimeout`-then-check would just be a different guess at "long enough" (exactly
+  // what item 2 of this same review flags elsewhere). Instead, spy directly on `router.navigate` —
+  // the method `useNavigate()`'s returned function calls SYNCHRONOUSLY on every invocation
+  // (`react-router/lib/hooks.js`'s `useNavigateStable`), regardless of how long the resulting
+  // transition takes to settle — so "was it called at all" is knowable immediately, with no margin.
+  it('does not redirect away from /invite/:token when session-expired fires while signed in (R23/F0-10)', async () => {
+    server.use(validPreview);
+    const { router } = renderApp('/invite/good-token', { session: { status: 'authenticated', me: ownerMe, accessToken: 't' } });
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    expect(
+      await screen.findByText(paragraph("This invitation is for asha@shop.in to join Ravi Traders. You're signed in as ravi@shop.in.")),
+    ).toBeInTheDocument();
+
+    act(() => emitSessionExpired());
+
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Go to my workspace' })).toBeInTheDocument();
   });
 
   it('after a lost accept response, a 404 suggests signing in instead of the invalid state', async () => {
@@ -240,18 +274,16 @@ describe('InvitePage', () => {
     // holds does NOT prevent this on its own -- it serializes, it does not deduplicate (Challenge
     // #98, corrected): a queued second `mutateAsync` would still reach the network once the first
     // call's lock hold ends. What actually stops it is `if (accept.isPending) return;` in
-    // `onSubmit`, so the assertion is taken both during the hold and after release.
+    // `onSubmit`, so the assertion is taken both during the hold and after release. Final fix wave
+    // item 2: `assertStaysAt` polls rather than sleeping once and looking -- see its own comment.
     await user.click(button);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(requests).toBe(1);
+    await assertStaysAt(() => requests, 1);
 
     releaseAccept?.();
     await waitFor(() => expect(useSessionStore.getState().status).toBe('authenticated'));
     // If the second click's `mutateAsync` had been queued behind the lock (the pre-fix behaviour),
-    // it would fire its own POST once the first call's hold ends -- give it time to, then check it
-    // did not.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(requests).toBe(1);
+    // it would fire its own POST once the first call's hold ends.
+    await assertStaysAt(() => requests, 1);
   });
 
   // Fix round 1 (item 2, a11y/R80): a cold preview failure (the FIRST time the error branch renders,

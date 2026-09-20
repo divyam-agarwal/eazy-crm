@@ -6,6 +6,7 @@ import { errorBody, ownerSession } from '@/test/fixtures';
 import { holdCookieLock } from '@/test/locks';
 import { server } from '@/test/msw';
 import { http } from '@/test/openapiHttp';
+import { assertStaysAt } from '@/test/poll';
 import { renderApp } from '@/test/renderApp';
 
 const anonymous = { status: 'anonymous' as const };
@@ -238,18 +239,16 @@ describe('pending state and FormAlert attempt wiring', () => {
     // NOT prevent this on its own -- it serializes, it does not deduplicate (Challenge #98,
     // corrected): a queued second `mutateAsync` would still reach the network once the first call's
     // lock hold ends. What actually stops it is `if (signup.isPending) return;` in `onSubmit`, so
-    // the assertion is taken both during the hold and after release.
+    // the assertion is taken both during the hold and after release. Final fix wave item 2:
+    // `assertStaysAt` polls rather than sleeping once and looking -- see its own comment.
     await user.click(button);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(requests).toBe(1);
+    await assertStaysAt(() => requests, 1);
 
     releaseSignup?.();
     await waitFor(() => expect(useSessionStore.getState().status).toBe('authenticated'));
     // If the second click's `mutateAsync` had been queued behind the lock (the pre-fix behaviour),
-    // it would fire its own POST once the first call's hold ends -- give it time to, then check it
-    // did not.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(requests).toBe(1);
+    // it would fire its own POST once the first call's hold ends.
+    await assertStaysAt(() => requests, 1);
   });
 
   // R65/R78: guards `attempt={submitCount}` against being neutered into a constant. Verified by

@@ -30,14 +30,14 @@ fallback instructions from its own report.
   `FrontendWorkflowTest`'s six CI-guard assertions (Task 16)). Count is the sum of every
   `build/test-results/test/*.xml` `tests="…"` attribute across both Gradle modules, not a claim.
 - **Frontend: 303 tests, 33 files, all green** (`pnpm test:coverage`). **Updated by the final fix wave
-  (2026-09-20, see `final-fix-report.md`): 306 tests, 33 files** — three new tests, each added to close
-  a gate the whole-branch review proved could not fail (P15's coordinator lock, the resubmit guard,
-  and the budget script's zero-files check).
+  (2026-09-20, see `final-fix-report.md`): 307 tests, 33 files** — four new tests, each added to close
+  a gate the whole-branch review proved could not fail (P15's coordinator lock, the resubmit guard, the
+  budget script's zero-files check, and RootLayout's invite-route exemption from `onSessionExpired`).
 - **Coverage floor (Task 17 Step 1), set from this exact measured run, each floored to a whole
   percent:** Statements 97 (measured 97.41%), Branches 92 (92.51%), Functions 96 (96.81%), Lines 98
   (98.44%). Proven to bite: temporarily setting `lines: 100` in `vite.config.ts` produced `ERROR:
   Coverage for lines (98.44%) does not meet global threshold (100%)`; restored, reran green. **After
-  the final fix wave: 97.43% / 92.6% / 96.81% / 98.45% — still clears the same floor**, unchanged.
+  the final fix wave: 97.45% / 92.64% / 96.82% / 98.46% — still clears the same floor**, unchanged.
 - **E2E: 11/11 PASS** (`pnpm e2e`, two real backends on :18080/:18081, two `vite preview` instances on
   :41731/:41741 — deliberately not Vite's default :4173, see `e2e/playwright.config.ts`'s own comment)
   — `cross-tab-logout` (3), `guards` (axe + CSP) (2), `invite-accept`, `invite-invalid`,
@@ -52,8 +52,8 @@ fallback instructions from its own report.
   `lazy:` rather than the plain component-mode router (P9-adjacent decision, not separately numbered).
   **Updated by the final fix wave (I1, I7 — see `final-fix-report.md`):** I7 moved `cn` out of the
   entry chunk (`RouteSkeleton` no longer needs it), and I1 added the two previously-unmeasured lazy
-  routes. Re-measured: **entry 133.8 KB** (-10.8 KB) · `/login` 171.7 KB · `/signup` 176.2 KB ·
-  `/invite/:token` 175.2 KB · `/` 146.8 KB (new) · `*` 134.0 KB (new) — all under budget;
+  routes. Re-measured: **entry 133.8 KB** (-10.8 KB) · `/login` 171.8 KB · `/signup` 176.2 KB ·
+  `/invite/:token` 175.2 KB · `/` 146.8 KB (new) · `*` 134.1 KB (new) — all under budget;
   `budget-baseline.json` updated via `pnpm budget --update`.
 - `pnpm lint`, `pnpm typecheck`, `pnpm gen:api && git diff --exit-code -- src/api/schema.d.ts` (no
   drift) all clean.
@@ -187,6 +187,13 @@ on the `f0b-frontend` branch. Headline findings:**
   to the enforcement Task 9 built.
 - `establishSession` is called from three pages (`LoginPage`, `SignupPage`, `InvitePage`) rather than
   from inside each mutation itself, so a fourth caller could forget it.
+- **I7's `cn`-out-of-entry win (this same fix wave) has no regression test of its own.** Re-importing
+  `Skeleton`/`cn` into anything statically reachable from `router.tsx` would cost ~13 KB gz back and
+  **would not trip `pnpm budget`**, since every route has 23–55 KB of headroom to absorb it silently.
+  The right fix is structural — an ESLint rule barring `cn`/`components/ui/*` imports from
+  router-reachable files (same shape as the Radix-`Select`-via-`react-remove-scroll` lint rule, R83/
+  R86), or an explicit "these packages must not appear in the entry chunk" assertion alongside
+  `check-budget.mjs` — and is better made by whoever owns F1's lint-zone work than bolted on here.
 
 **Deployment gaps recorded for SP2 (final fix wave) — there is no deployment layer in this repo, so
 these are recorded, not fixed, and SP2 (`docs/ROADMAP.md`'s "SP2 — AWS foundation, dev environment")
