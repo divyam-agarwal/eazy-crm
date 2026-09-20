@@ -2,6 +2,12 @@
 
 ## 2026-09-20 — START HERE: F0b is built on branch `f0b-frontend`; next is F1
 
+**The 107 controller rulings made during F0b's build** — several load-bearing for F1 and visible nowhere
+else — are preserved in
+[`docs/superpowers/2026-09-20-f0b-ruling-record.md`](./2026-09-20-f0b-ruling-record.md), since the
+working directory they came from (`.superpowers/sdd/2026-09-16-f0b-frontend-foundation/`) is gitignored
+and does not survive the slice.
+
 **State.** F0b (the frontend itself — scaffold, API client, session lifecycle, login/signup/invite
 pages, app shell, coverage floor, CI) is **built and verified in the worktree**
 `.claude/worktrees/f0b-frontend`, branch **`f0b-frontend`**, head `77104bf` before this session's docs
