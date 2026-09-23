@@ -2819,6 +2819,13 @@ paths:
         required: false
         schema:
           type: boolean
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 0
       - description: Zero-based page index (0..N)
         in: query
         name: page
@@ -2851,6 +2858,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponsePriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3326,6 +3340,13 @@ paths:
         required: false
         schema:
           type: boolean
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 0
       - description: Zero-based page index (0..N)
         in: query
         name: page
@@ -3358,6 +3379,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
