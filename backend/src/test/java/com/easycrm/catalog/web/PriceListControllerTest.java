@@ -1,6 +1,6 @@
 package com.easycrm.catalog.web;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.easycrm.platform.tenancy.TenantContext;
@@ -44,5 +44,47 @@ class PriceListControllerTest extends IntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void searchMatchesNameSubstring() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createPriceList(auth, "Monsoon 2026");
+        // Matches nothing. Without this row, a single-row tenant would make totalElements == 1
+        // true whether or not the q predicate exists at all.
+        createPriceList(auth, "Winter 2026");
+
+        mvc.perform(get("/api/v1/price-lists?q=monsoon").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].name").value("Monsoon 2026"));
+    }
+
+    @Test
+    void searchReturnsEmptyWhenNothingMatches() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createPriceList(auth, "Monsoon 2026");
+
+        mvc.perform(get("/api/v1/price-lists?q=zzzznomatch").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void rejectsAnUnknownSortFieldWith422() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+
+        mvc.perform(get("/api/v1/price-lists?sort=active,asc").header("Authorization", auth))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.sort").value("SORT_INVALID"));
+    }
+
+    private void createPriceList(String auth, String name) throws Exception {
+        String body = "{\"name\":\"%s\"}".formatted(name);
+        mvc.perform(post("/api/v1/price-lists")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
     }
 }

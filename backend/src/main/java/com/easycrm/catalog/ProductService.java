@@ -7,9 +7,11 @@ import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import com.easycrm.platform.web.PageResponse;
+import com.easycrm.platform.web.SortAllowlist;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductService {
+
+    /** Sort fields a client may name. Anything else is a 422, not a 500 from JPA (F1-3). */
+    private static final Set<String> SORTABLE = Set.of("name", "sku", "createdAt", "updatedAt");
 
     // Compared with compareTo (not equals): BigDecimal("18") != BigDecimal("18.0") under equals.
     private static final BigDecimal[] ALLOWED_GST_RATES = {
@@ -52,9 +57,10 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ProductResponse> list(Boolean active, Pageable pageable) {
-        var page = (active == null) ? products.findAll(pageable) : products.findByActive(active, pageable);
-        return PageResponse.of(page.map(ProductResponse::of));
+    public PageResponse<ProductResponse> list(Boolean active, String q, Pageable pageable) {
+        SortAllowlist.require(pageable, SORTABLE);
+        return PageResponse.of(products.findAll(ProductSpecifications.filter(active, q), pageable)
+                .map(ProductResponse::of));
     }
 
     @Transactional

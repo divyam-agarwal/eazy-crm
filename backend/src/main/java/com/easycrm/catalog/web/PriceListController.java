@@ -5,15 +5,18 @@ import com.easycrm.catalog.web.dto.PriceListRequest;
 import com.easycrm.catalog.web.dto.PriceListResponse;
 import com.easycrm.platform.web.PageResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import java.util.UUID;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/price-lists")
+@Validated
 public class PriceListController {
 
     private final PriceListService service;
@@ -34,8 +37,10 @@ public class PriceListController {
 
     @GetMapping
     public PageResponse<PriceListResponse> list(
-            @RequestParam(required = false) Boolean active, @ParameterObject Pageable pageable) {
-        return service.list(active, pageable);
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) @Size(max = 100) String q,
+            @ParameterObject Pageable pageable) {
+        return service.list(active, q, pageable);
     }
 
     @PutMapping("/{id}")

@@ -5,6 +5,8 @@ import com.easycrm.catalog.web.dto.PriceListResponse;
 import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.web.PageResponse;
+import com.easycrm.platform.web.SortAllowlist;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PriceListService {
+
+    /** Sort fields a client may name. Anything else is a 422, not a 500 from JPA (F1-3). */
+    private static final Set<String> SORTABLE = Set.of("name", "createdAt", "updatedAt");
 
     private final PriceListRepository priceLists;
 
@@ -33,9 +38,11 @@ public class PriceListService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<PriceListResponse> list(Boolean active, Pageable pageable) {
-        var page = (active == null) ? priceLists.findAll(pageable) : priceLists.findByActive(active, pageable);
-        return PageResponse.of(page.map(PriceListResponse::of));
+    public PageResponse<PriceListResponse> list(Boolean active, String q, Pageable pageable) {
+        SortAllowlist.require(pageable, SORTABLE);
+        return PageResponse.of(priceLists
+                .findAll(PriceListSpecifications.filter(active, q), pageable)
+                .map(PriceListResponse::of));
     }
 
     @Transactional
