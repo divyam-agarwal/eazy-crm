@@ -4930,7 +4930,7 @@ components:
         name:
           type: string
           maxLength: 255
-          minLength: 0
+          minLength: 1
         phone:
           type: string
           maxLength: 20

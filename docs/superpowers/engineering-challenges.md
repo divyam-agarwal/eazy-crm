@@ -7446,3 +7446,29 @@ versions — the safe pattern is to assert directly on the filtered collection (
 rather than chaining `.length()` or `[0]` after it, and to verify any unfamiliar JsonPath expression
 against a two-line standalone reproduction before trusting it inside a full Spring context, where a
 wrong result reads as "my implementation is wrong" long before it reads as "my assertion is wrong."
+
+### Follow-up (fix round 1)
+
+Review flagged a third, quieter information-loss issue in the same task's generated
+`docs/api/openapi.yaml`: `ContactRequest.name` combines `@NotBlank` with `@Size(max = 255)` — the
+first field in this codebase to carry both on one property — and springdoc emitted `minLength: 0`
+for it instead of the `minLength: 1` a bare `@NotBlank` alone produces elsewhere (e.g.
+`CustomerRequest.businessName`). Runtime enforcement was never affected (`@NotBlank` still rejects
+blank values regardless of what the schema says), but the generated contract silently understated its
+own constraint — exactly the kind of gap a client-side-validation generator reading this schema alone
+would inherit.
+
+Fixed by stating the lower bound explicitly: `@NotBlank @Size(min = 1, max = 255) String name`. This
+restored `minLength: 1` in the regenerated schema with no other field's constraints shifting as a side
+effect (confirmed by re-diffing the full `ContactRequest` schema block, not just the `name` property).
+`@Size(min = 1)` is not a weakening of `@NotBlank`: `@NotBlank` remains strictly stronger, since it
+also rejects whitespace-only strings that `min = 1` alone would accept.
+
+**Lesson, extended:** when combining `@NotBlank` with `@Size` on the same field, always give `@Size`
+an explicit `min`, even though Bean Validation itself doesn't need it (`@NotBlank` already covers
+runtime correctness) — springdoc's schema derivation apparently prefers `@Size.min()` over inferring a
+floor from a co-located `@NotBlank`, so leaving `min` implicit silently drops the documented lower
+bound the moment a `max` is added to a previously bare `@NotBlank` field. If a future field needs this
+pattern and a springdoc customizer isn't worth adding for one property, the one-line
+`@Size(min = 1, max = N)` spelling is the cheaper fix and should be treated as the default whenever
+`@NotBlank` and `@Size` land on the same field together.
