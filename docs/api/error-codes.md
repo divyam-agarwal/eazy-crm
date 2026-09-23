@@ -37,3 +37,4 @@ Every error uses one envelope: `{"error":{"code","message","fields"?,"fieldCodes
 | `STATE_CODE_INVALID` | `stateCode` | `StateCode.requireValid` | not a GST state code (also raised for a GSTIN whose first two characters are not one) |
 | `STATE_CODE_GSTIN_MISMATCH` | `stateCode` | `AuthService.signup` | seller state code differs from the GSTIN's prefix |
 | `SLUG_TAKEN` | `slug` | `AuthService.signup` | workspace slug already exists |
+| `SORT_INVALID` | `sort` | `SortAllowlist.require` | a `sort` field the endpoint does not allow |
