@@ -7,6 +7,7 @@ import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.error.ValidationException;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +33,10 @@ public class PriceListItemService {
         validateXor(req);
         validateRange(req);
         items.findByPriceListIdAndProductId(priceListId, req.productId()).ifPresent(i -> {
-            throw new ConflictException("this product is already priced in this list");
+            throw new ConflictException(
+                    "this product is already priced in this list",
+                    Map.of("productId", "this product is already priced in this list"),
+                    Map.of("productId", "PRODUCT_DUPLICATE"));
         });
         PriceListItem saved =
                 items.save(new PriceListItem(priceListId, req.productId(), req.overrideRate(), req.discountPct()));
@@ -60,18 +64,21 @@ public class PriceListItemService {
         boolean hasRate = req.overrideRate() != null;
         boolean hasDiscount = req.discountPct() != null;
         if (hasRate == hasDiscount) { // both set OR both null
-            throw new ValidationException("overrideRate", "exactly one of overrideRate or discountPct must be set");
+            throw new ValidationException(
+                    "overrideRate", "exactly one of overrideRate or discountPct must be set", "RATE_RULE_XOR");
         }
     }
 
     private void validateRange(PriceListItemRequest req) {
         if (req.overrideRate() != null && req.overrideRate().compareTo(BigDecimal.ZERO) < 0) {
-            throw new ValidationException("overrideRate", "override rate must not be negative");
+            throw new ValidationException(
+                    "overrideRate", "override rate must not be negative", "OVERRIDE_RATE_NEGATIVE");
         }
         if (req.discountPct() != null
                 && (req.discountPct().compareTo(BigDecimal.ZERO) < 0
                         || req.discountPct().compareTo(new BigDecimal("100")) > 0)) {
-            throw new ValidationException("discountPct", "discount percent must be between 0 and 100");
+            throw new ValidationException(
+                    "discountPct", "discount percent must be between 0 and 100", "DISCOUNT_PCT_RANGE");
         }
     }
 

@@ -174,4 +174,70 @@ class PriceListItemControllerTest extends IntegrationTest {
                         .header("Authorization", auth))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void neitherRateNorDiscountCarriesTheXorCode() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + f.productId() + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.overrideRate").value("RATE_RULE_XOR"));
+    }
+
+    @Test
+    void bothRateAndDiscountCarriesTheSameXorCode() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + f.productId()
+                                + "\",\"overrideRate\":\"10\",\"discountPct\":\"5\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.overrideRate").value("RATE_RULE_XOR"));
+    }
+
+    @Test
+    void discountOutOfRangeCarriesItsOwnCode() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + f.productId() + "\",\"discountPct\":\"101\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.discountPct").value("DISCOUNT_PCT_RANGE"));
+    }
+
+    @Test
+    void negativeOverrideRateCarriesItsOwnCode() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + f.productId() + "\",\"overrideRate\":\"-1\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.overrideRate").value("OVERRIDE_RATE_NEGATIVE"));
+    }
+
+    @Test
+    void duplicateProductInListCarriesAFieldAndACode() throws Exception {
+        Fixture f = seed();
+        String auth = "Bearer " + tokens.owner(f.tenant());
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + f.productId() + "\",\"overrideRate\":\"10\"}"))
+                .andExpect(status().isCreated());
+        mvc.perform(post("/api/v1/price-lists/" + f.priceListId() + "/items")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + f.productId() + "\",\"overrideRate\":\"12\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.fieldCodes.productId").value("PRODUCT_DUPLICATE"));
+    }
 }

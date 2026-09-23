@@ -44,7 +44,10 @@ public class ProductService {
     public ProductResponse create(ProductCreateRequest req) {
         validate(req.hsnCode(), req.gstRate(), req.baseRate());
         products.findBySku(req.sku()).ifPresent(p -> {
-            throw new ConflictException("product with this SKU already exists");
+            throw new ConflictException(
+                    "product with this SKU already exists",
+                    Map.of("sku", "product with this SKU already exists"),
+                    Map.of("sku", "SKU_DUPLICATE"));
         });
         Product saved = products.save(
                 new Product(req.sku(), req.name(), req.hsnCode(), req.uom(), req.gstRate(), req.baseRate()));
@@ -91,16 +94,20 @@ public class ProductService {
 
     private void validate(String hsnCode, BigDecimal gstRate, BigDecimal baseRate) {
         Map<String, String> errors = new LinkedHashMap<>();
+        Map<String, String> codes = new LinkedHashMap<>();
         if (hsnCode != null && !hsnCode.isBlank() && !hsnCode.matches("\\d{4}|\\d{6}|\\d{8}")) {
             errors.put("hsnCode", "HSN code must be 4, 6, or 8 digits");
+            codes.put("hsnCode", "HSN_CODE_INVALID");
         }
         if (gstRate != null && !isAllowedRate(gstRate)) {
             errors.put("gstRate", "GST rate must be one of 0, 0.25, 3, 5, 12, 18, 28");
+            codes.put("gstRate", "GST_RATE_INVALID");
         }
         if (baseRate != null && baseRate.compareTo(BigDecimal.ZERO) < 0) {
             errors.put("baseRate", "base rate must not be negative");
+            codes.put("baseRate", "BASE_RATE_NEGATIVE");
         }
-        if (!errors.isEmpty()) throw new ValidationException(errors);
+        if (!errors.isEmpty()) throw new ValidationException(errors, codes);
     }
 
     private boolean isAllowedRate(BigDecimal rate) {

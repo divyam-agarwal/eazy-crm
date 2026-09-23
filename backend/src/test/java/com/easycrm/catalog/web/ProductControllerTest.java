@@ -66,7 +66,44 @@ class ProductControllerTest extends IntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(create))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error.fields.gstRate").exists());
+                .andExpect(jsonPath("$.error.fields.gstRate").exists())
+                .andExpect(jsonPath("$.error.fieldCodes.gstRate").value("GST_RATE_INVALID"));
+    }
+
+    @Test
+    void multiFieldValidationCarriesACodePerField() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String body = """
+            {"sku":"SKU-1","name":"Bolt","hsnCode":"12","uom":"PCS",
+             "gstRate":"7","baseRate":"-1"}""";
+
+        // All three rules fail at once: ProductService.validate accumulates into one map, so a
+        // per-field codes map is the only shape that can describe this response.
+        mvc.perform(post("/api/v1/products")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.hsnCode").value("HSN_CODE_INVALID"))
+                .andExpect(jsonPath("$.error.fieldCodes.gstRate").value("GST_RATE_INVALID"))
+                .andExpect(jsonPath("$.error.fieldCodes.baseRate").value("BASE_RATE_NEGATIVE"));
+    }
+
+    @Test
+    void duplicateSkuConflictCarriesAFieldAndACode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createProduct(auth, "SKU-DUP", "Bolt");
+
+        String body = """
+            {"sku":"SKU-DUP","name":"Other","hsnCode":"7318","uom":"PCS",
+             "gstRate":"18","baseRate":"1"}""";
+
+        mvc.perform(post("/api/v1/products")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.fieldCodes.sku").value("SKU_DUPLICATE"));
     }
 
     @Test

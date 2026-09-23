@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
+import com.jayway.jsonpath.JsonPath;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,23 @@ class PriceListControllerTest extends IntegrationTest {
                         .header("Authorization", auth)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.fieldCodes.name").value("NAME_DUPLICATE"));
+    }
+
+    @Test
+    void renameToAnExistingNameCarriesTheSameCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createPriceList(auth, "Dealer");
+        String otherId = createPriceListReturningId(auth, "Retail");
+
+        String body = "{\"name\":\"Dealer\"}";
+        mvc.perform(put("/api/v1/price-lists/" + otherId)
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.fieldCodes.name").value("NAME_DUPLICATE"));
     }
 
     @Test
@@ -95,11 +112,19 @@ class PriceListControllerTest extends IntegrationTest {
     }
 
     private void createPriceList(String auth, String name) throws Exception {
+        createPriceListReturningId(auth, name);
+    }
+
+    private String createPriceListReturningId(String auth, String name) throws Exception {
         String body = "{\"name\":\"%s\"}".formatted(name);
-        mvc.perform(post("/api/v1/price-lists")
+        String response = mvc.perform(post("/api/v1/price-lists")
                         .header("Authorization", auth)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return JsonPath.read(response, "$.id");
     }
 }

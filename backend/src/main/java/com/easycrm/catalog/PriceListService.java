@@ -6,6 +6,7 @@ import com.easycrm.platform.error.ConflictException;
 import com.easycrm.platform.error.NotFoundException;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.platform.web.SortAllowlist;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
@@ -27,7 +28,10 @@ public class PriceListService {
     @Transactional
     public PriceListResponse create(PriceListRequest req) {
         priceLists.findByName(req.name()).ifPresent(p -> {
-            throw new ConflictException("a price list with this name already exists");
+            throw new ConflictException(
+                    "a price list with this name already exists",
+                    Map.of("name", "a price list with this name already exists"),
+                    Map.of("name", "NAME_DUPLICATE"));
         });
         return PriceListResponse.of(priceLists.save(new PriceList(req.name())));
     }
@@ -48,7 +52,12 @@ public class PriceListService {
     @Transactional
     public PriceListResponse rename(UUID id, PriceListRequest req) {
         priceLists.findByName(req.name()).ifPresent(p -> {
-            if (!p.getId().equals(id)) throw new ConflictException("a price list with this name already exists");
+            if (!p.getId().equals(id)) {
+                throw new ConflictException(
+                        "a price list with this name already exists",
+                        Map.of("name", "a price list with this name already exists"),
+                        Map.of("name", "NAME_DUPLICATE"));
+            }
         });
         PriceList p = find(id);
         p.rename(req.name());
