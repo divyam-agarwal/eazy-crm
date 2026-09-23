@@ -10,6 +10,7 @@ import com.easycrm.platform.gst.Gstin;
 import com.easycrm.platform.gst.StateCode;
 import com.easycrm.platform.web.PageResponse;
 import com.easycrm.platform.web.SortAllowlist;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
@@ -39,7 +40,10 @@ public class CustomerService {
         assignableUsers.require(req.assignedTo());
         if (r.gstin() != null) {
             customers.findByGstin(r.gstin()).ifPresent(c -> {
-                throw new ConflictException("customer with this GSTIN already exists");
+                throw new ConflictException(
+                        "customer with this GSTIN already exists",
+                        Map.of("gstin", "customer with this GSTIN already exists"),
+                        Map.of("gstin", "GSTIN_DUPLICATE"));
             });
         }
         Customer saved = customers.save(new Customer(
@@ -121,12 +125,14 @@ public class CustomerService {
             if (req.stateCode() != null
                     && !req.stateCode().isBlank()
                     && !req.stateCode().equals(derived)) {
-                throw new ValidationException("stateCode", "must match the GSTIN state code");
+                throw new ValidationException(
+                        "stateCode", "must match the GSTIN state code", "STATE_CODE_GSTIN_MISMATCH");
             }
             return new Resolved(g.value(), derived);
         }
         if (req.stateCode() == null || req.stateCode().isBlank()) {
-            throw new ValidationException("stateCode", "state code is required when GSTIN is absent");
+            throw new ValidationException(
+                    "stateCode", "state code is required when GSTIN is absent", "STATE_CODE_REQUIRED");
         }
         StateCode.requireValid(req.stateCode());
         return new Resolved(null, req.stateCode());

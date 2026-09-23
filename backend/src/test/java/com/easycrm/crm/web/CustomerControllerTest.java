@@ -231,6 +231,74 @@ class CustomerControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.size").value(100));
     }
 
+    @Test
+    void stateCodeDivergingFromGstinCarriesTheSharedMismatchCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String body = """
+            {"businessName":"Shri Ram Traders","gstin":"27AAPFU0939F1ZV",
+             "stateCode":"29","source":"MANUAL"}""";
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                // Reused, not a new code: AuthService.signup already emits this for the same
+                // meaning, and one meaning must not acquire two codes (error-codes.md rule 1).
+                .andExpect(jsonPath("$.error.fieldCodes.stateCode").value("STATE_CODE_GSTIN_MISMATCH"));
+    }
+
+    @Test
+    void missingStateCodeWithoutGstinCarriesItsOwnCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String body = """
+            {"businessName":"Gupta Hardware","source":"MANUAL"}""";
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.stateCode").value("STATE_CODE_REQUIRED"));
+    }
+
+    @Test
+    void duplicateGstinConflictCarriesAFieldAndACode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createCustomer(auth, "Shri Ram Traders", "27AAPFU0939F1ZV");
+
+        String body = """
+            {"businessName":"Another Firm","gstin":"27AAPFU0939F1ZV","source":"MANUAL"}""";
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                // A 409 with prose only cannot be attached to a form field at all: the frontend
+                // has nothing to key a message or a focus target on.
+                .andExpect(jsonPath("$.error.fieldCodes.gstin").value("GSTIN_DUPLICATE"));
+    }
+
+    /**
+     * Ruling R10: assignedTo is a customer-form field too, and AssignableUsers.require was
+     * throwing with no code (it lives in iam, shared with EnquiryService and FollowUpService,
+     * so it was missed by the crm/catalog sweep this task otherwise covers).
+     */
+    @Test
+    void nonExistentAssigneeCarriesItsOwnCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String body = """
+            {"businessName":"Gupta Hardware","stateCode":"27","assignedTo":"%s","source":"MANUAL"}""".formatted(UUID.randomUUID());
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.assignedTo").value("ASSIGNEE_INVALID"));
+    }
+
     /** Returns the created customer's id. */
     private String createCustomer(String auth, String businessName, String gstin) throws Exception {
         String gstinJson = gstin == null ? "null" : "\"" + gstin + "\"";

@@ -35,6 +35,9 @@ Every error uses one envelope: `{"error":{"code","message","fields"?,"fieldCodes
 | `GSTIN_CHARSET` | `gstin` | `Gstin.parse` | a character outside 0-9 A-Z |
 | `GSTIN_CHECKSUM` | `gstin` | `Gstin.parse` | check digit does not match |
 | `STATE_CODE_INVALID` | `stateCode` | `StateCode.requireValid` | not a GST state code (also raised for a GSTIN whose first two characters are not one) |
-| `STATE_CODE_GSTIN_MISMATCH` | `stateCode` | `AuthService.signup` | seller state code differs from the GSTIN's prefix |
+| `STATE_CODE_GSTIN_MISMATCH` | `stateCode` | `AuthService.signup`, `CustomerService.resolveGstinAndState` | seller state code differs from the GSTIN's prefix |
+| `STATE_CODE_REQUIRED` | `stateCode` | `CustomerService.resolveGstinAndState` | no GSTIN supplied and no state code to fall back on |
+| `GSTIN_DUPLICATE` | `gstin` | `CustomerService.create` | another customer in this tenant already has this GSTIN |
 | `SLUG_TAKEN` | `slug` | `AuthService.signup` | workspace slug already exists |
 | `SORT_INVALID` | `sort` | `SortAllowlist.require` | a `sort` field the endpoint does not allow |
+| `ASSIGNEE_INVALID` | `assignedTo` | `AssignableUsers.require` | assignee is not an active user of this tenant (checked by `CustomerService`, `EnquiryService`, `ActivityService`, `FollowUpService`) |

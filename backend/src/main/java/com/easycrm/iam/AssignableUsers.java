@@ -26,6 +26,6 @@ public class AssignableUsers {
         if (userId == null) return;
         users.findById(userId)
                 .filter(u -> u.getStatus() == UserStatus.ACTIVE)
-                .orElseThrow(() -> new ValidationException("assignedTo", "must be an active user"));
+                .orElseThrow(() -> new ValidationException("assignedTo", "must be an active user", "ASSIGNEE_INVALID"));
     }
 }
