@@ -2,6 +2,18 @@
 
 ## 2026-09-24 — START HERE: F1a (master data backend prep) is built and review-clean; NOT merged, NOT pushed; next is F1b
 
+**The 26 controller rulings made while this slice ran** — several of them corrections to defects in the
+spec and plan themselves — are preserved at
+[`2026-09-24-f1a-ruling-record.md`](./2026-09-24-f1a-ruling-record.md), because the SDD workspace they
+were written in is git-ignored and does not survive the slice. Read **R14** before trusting any commit
+message on this branch about why the search OR is a single predicate: the stated mechanism in `d7c5fe3`
+is wrong, and challenge #113 is the correction.
+
+**Counts below say 751; the final figure after the whole-branch review's fix wave is 759** (724 root + 35
+platform-primitives), across 21 commits through `7fcffc6`. The fix wave added the default sort the spec
+required but nothing implemented, restored lost negative-429 coverage, and gave `PUT` customer the
+duplicate-GSTIN field attribution `create` already had.
+
 **State.** F1a — [`docs/superpowers/specs/2026-09-23-f1-master-data-design.md`](specs/2026-09-23-f1-master-data-design.md)
 Part 1, [`docs/superpowers/plans/2026-09-24-f1a-backend-master-data-prep.md`](plans/2026-09-24-f1a-backend-master-data-prep.md) —
 is **built and review-clean on branch `worktree-f1a-backend-prep`**, base `e8a1f76`, 18 commits through
