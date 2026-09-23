@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,9 @@ public class ProductService {
 
     /** Sort fields a client may name. Anything else is a 422, not a 500 from JPA (F1-3). */
     private static final Set<String> SORTABLE = Set.of("name", "sku", "createdAt", "updatedAt");
+
+    /** Applied when the client sends no `sort` at all, so paging is stable (spec §1.2). */
+    private static final Sort DEFAULT_SORT = Sort.by("name").ascending();
 
     // Compared with compareTo (not equals): BigDecimal("18") != BigDecimal("18.0") under equals.
     private static final BigDecimal[] ALLOWED_GST_RATES = {
@@ -62,7 +66,8 @@ public class ProductService {
     @Transactional(readOnly = true)
     public PageResponse<ProductResponse> list(Boolean active, String q, Pageable pageable) {
         SortAllowlist.require(pageable, SORTABLE);
-        return PageResponse.of(products.findAll(ProductSpecifications.filter(active, q), pageable)
+        Pageable effective = SortAllowlist.withDefault(pageable, DEFAULT_SORT);
+        return PageResponse.of(products.findAll(ProductSpecifications.filter(active, q), effective)
                 .map(ProductResponse::of));
     }
 

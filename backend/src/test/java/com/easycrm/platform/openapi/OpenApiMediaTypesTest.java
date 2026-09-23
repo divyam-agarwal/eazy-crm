@@ -11,6 +11,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.server.PathContainer;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -275,6 +278,86 @@ class OpenApiMediaTypesTest {
         assertTrue(
                 violations.isEmpty(),
                 violations.size() + " operations violate documents400 == (hasRequestBody || hasConstrainedParameter): "
+                        + violations);
+    }
+
+    /**
+     * The path patterns {@code RateLimitProperties} binds from {@code easycrm.rate-limit.policies}
+     * in production — read from the same {@code application.yml} Spring Boot loads (on the test
+     * classpath, since {@code src/main/resources} is part of the shared main output), not
+     * hand-copied here. A hand-copied list would silently stop matching this test's intent the
+     * day a policy's {@code path} changed in configuration without anyone touching this file.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<PathPattern> rateLimitPolicyPatterns() throws Exception {
+        try (var in = OpenApiMediaTypesTest.class.getClassLoader().getResourceAsStream("application.yml")) {
+            assertNotNull(in, "application.yml not found on the test classpath");
+            Map<String, Object> doc = new Yaml().load(in);
+            Map<String, Object> easycrm = (Map<String, Object>) doc.get("easycrm");
+            Map<String, Object> rateLimit = (Map<String, Object>) easycrm.get("rate-limit");
+            List<Map<String, Object>> policies = (List<Map<String, Object>>) rateLimit.get("policies");
+            return policies.stream()
+                    .map(p -> (String) p.get("path"))
+                    .map(PathPatternParser.defaultInstance::parse)
+                    .toList();
+        }
+    }
+
+    private static boolean anyPolicyMatches(List<PathPattern> patterns, String pathTemplate) {
+        return patterns.stream().anyMatch(p -> p.matches(PathContainer.parsePath(pathTemplate)));
+    }
+
+    /**
+     * The negative half of rate-limit coverage. A previous test (replaced by {@link
+     * #everyOperationDocuments400IffItCanProduceOne()}'s sibling for 400) asserted 429 only on
+     * {@code /api/v1/auth/**} and never checked that routes NO policy matches stay undocumented —
+     * so a regression making {@code ErrorResponsesCustomizer} add 429 to every operation
+     * unconditionally would have shipped silently. This recomputes {@code documents429 == (a
+     * rate-limit policy matches this path)} for every operation in the document, the same way
+     * {@link #everyOperationDocuments400IffItCanProduceOne()} recomputes the 400 half — using the
+     * exact matcher ({@code PathPattern}) and the exact policy paths ({@code
+     * RateLimitProperties.policyFor}'s source configuration) {@code ErrorResponsesCustomizer}
+     * itself uses, rather than a hand-picked witness route.
+     */
+    @Test
+    void everyOperationDocuments429IffARateLimitPolicyMatches() throws Exception {
+        List<PathPattern> patterns = rateLimitPolicyPatterns();
+        assertFalse(patterns.isEmpty(), "no rate-limit policies found in application.yml (non-vacuity)");
+
+        List<Object[]> operations = allOperations();
+        assertFalse(operations.isEmpty(), "walked zero operations (non-vacuity)");
+
+        List<String> violations = new ArrayList<>();
+        boolean sawOperationExpecting429 = false;
+        boolean sawOperationExpectingNo429 = false;
+
+        for (Object[] entry : operations) {
+            String path = (String) entry[0];
+            String method = (String) entry[1];
+            @SuppressWarnings("unchecked")
+            Map<String, Object> op = (Map<String, Object>) entry[2];
+            String route = method.toUpperCase() + " " + path;
+
+            boolean expected429 = anyPolicyMatches(patterns, path);
+            if (expected429) sawOperationExpecting429 = true;
+            else sawOperationExpectingNo429 = true;
+
+            @SuppressWarnings("unchecked")
+            var responses = (Map<String, Object>) op.get("responses");
+            boolean documents429 = responses != null && responses.containsKey("429");
+
+            if (documents429 != expected429) {
+                violations.add(route + ": documents429=" + documents429 + " but rateLimitPolicyMatches=" + expected429);
+            }
+        }
+
+        assertTrue(sawOperationExpecting429, "no operation matched by a rate-limit policy was seen (non-vacuity)");
+        assertTrue(
+                sawOperationExpectingNo429,
+                "no operation left unmatched by every rate-limit policy was seen (non-vacuity)");
+        assertTrue(
+                violations.isEmpty(),
+                violations.size() + " operations violate documents429 == (a rate-limit policy matches this path): "
                         + violations);
     }
 

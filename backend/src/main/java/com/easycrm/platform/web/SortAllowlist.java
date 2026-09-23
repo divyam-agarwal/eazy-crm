@@ -2,6 +2,7 @@ package com.easycrm.platform.web;
 
 import com.easycrm.platform.error.ValidationException;
 import java.util.Set;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
@@ -23,5 +24,18 @@ public final class SortAllowlist {
                 throw new ValidationException("sort", "unsupported sort field: " + order.getProperty(), "SORT_INVALID");
             }
         }
+    }
+
+    /**
+     * An unsorted {@code Pageable} (the client sent no {@code sort} parameter) emits no {@code
+     * ORDER BY} at all, so Postgres is free to return rows in a different order on every page —
+     * a row can be returned twice, or skipped, as a user pages through a list (spec §1.2). This
+     * fills in the endpoint's default sort in that case only; a client-supplied sort — already
+     * checked by {@link #require} — is left exactly as given.
+     */
+    public static Pageable withDefault(Pageable pageable, Sort defaultSort) {
+        return pageable.getSort().isSorted()
+                ? pageable
+                : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), defaultSort);
     }
 }

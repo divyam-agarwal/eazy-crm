@@ -55,4 +55,22 @@ class SortAllowlistTest {
                 () -> SortAllowlist.require(PageRequest.of(0, 20, Sort.by("secretColumn")), ALLOWED));
         assertEquals("sort", e.getFields().keySet().iterator().next());
     }
+
+    @Test
+    void withDefaultFillsInTheSortWhenThePageableIsUnsorted() {
+        var withDefault = SortAllowlist.withDefault(
+                PageRequest.of(1, 20), Sort.by("businessName").ascending());
+        assertEquals(Sort.by("businessName").ascending(), withDefault.getSort());
+        // Page number and size must survive unchanged -- only the missing sort is filled in.
+        assertEquals(1, withDefault.getPageNumber());
+        assertEquals(20, withDefault.getPageSize());
+    }
+
+    @Test
+    void withDefaultLeavesAnExplicitSortAlone() {
+        var explicit = PageRequest.of(0, 20, Sort.by("createdAt").descending());
+        assertEquals(
+                explicit,
+                SortAllowlist.withDefault(explicit, Sort.by("businessName").ascending()));
+    }
 }

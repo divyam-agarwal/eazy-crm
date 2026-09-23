@@ -7650,3 +7650,60 @@ line's severity), a test asserting only that coarse signal is vulnerable to exac
 covers nothing" failure this task's own mutation nearly fell into — the fix is always to assert on the
 most specific artifact the correct path is uniquely responsible for producing (here, the envelope
 shape), not the most convenient one to check.
+
+---
+
+## Challenge 116 — A missing-`ORDER BY` regression test passed even with the fix removed, because a small unwritten-to table replays insertion order by luck
+
+**Phase:** Review fix wave (final whole-branch review, Fix 1 — the default sort promised by spec
+§1.2 and by V36's own header comment was never wired up)
+
+### The problem
+
+The fix adds a fallback `Sort` in each list service so an unsorted `Pageable` still gets an
+`ORDER BY`, closing a real defect: without it, Postgres is free to return rows in whatever order a
+given scan happens to produce, and OFFSET/LIMIT paging over that non-guaranteed order can return a
+row on two consecutive pages or skip one between them. The obvious regression test — seed 25 rows
+(two pages at the default page size of 20), fetch page 0 and page 1 with no `sort` parameter, assert
+the two id sets are disjoint and complete — is exactly what the review demanded, plus the standard
+"prove it bites" step: temporarily strip the fix back out and confirm the test goes red. It did not.
+Churning every seeded row between the two fetches (deactivate then reactivate, an UPDATE on each row)
+didn't move the needle either — the mutated code still passed all three stability tests.
+
+### Why it's hard
+
+The instability the fix closes is a genuine, well-documented Postgres behaviour (OFFSET/LIMIT with no
+`ORDER BY` gives no cross-call ordering guarantee), but reproducing it on demand inside a single test
+method is a different problem from knowing it exists. A freshly seeded, small table scanned twice in
+the same process with no *structural* change to the underlying heap between the two scans has no
+reason to actually return a different order the second time — Postgres doesn't reshuffle rows for
+sport, it returns whatever a deterministic scan of an unchanged relation produces, and for a table this
+size that is, overwhelmingly, insertion order. An in-place UPDATE (HOT update, same page, same slot)
+doesn't disturb that either. So the naive regression test was measuring "did the fix accidentally
+survive an environment where physical layout happens to equal logical (business-name) order" rather
+than "does the code request a defined order at all" — it would have shipped as a permanently-green test
+that could never distinguish the fixed code from the broken code, which is worse than no test, because
+it looks like coverage.
+
+### The solution
+
+Added a `VACUUM FULL <table>` (via a raw owner-role JDBC connection the integration-test base class
+already exposes for DDL) between the page-0 and page-1 fetch. `VACUUM FULL` physically rewrites the
+table, which is close to what a real deployment's autovacuum does on its own schedule, just forced to
+happen exactly between the two reads instead of at some unpredictable later time. With that in place,
+reverting the fix reliably reproduced the real bug: the same customer/product/price-list id showed up
+on both pages. Restoring the fix made the test pass again, with the physical rewrite still forced in
+between — proving the `ORDER BY` is what makes the result correct, not the table's incidental layout.
+
+### Lesson
+
+A "does removing the fix turn this test red" check is only as good as the perturbation it applies
+between cause and effect. For a *missing-guarantee* bug (no `ORDER BY`, no lock, no idempotency key —
+anything whose failure mode is "nothing stops X from happening," not "something actively causes X"),
+the naive version of the regression test often can't observe the failure on a quiet, single-threaded,
+freshly-seeded fixture, because the absent guarantee's failure mode requires something *else* to change
+underneath it — concurrent writes, autovacuum, a query planner re-evaluating, time passing — and the
+test needs to force that "something else" to happen deliberately, on a timescale the test controls,
+or it will pass for the wrong reason indefinitely. The instinct to try harder before reporting "could
+not make it fail" earned a strictly more honest, and more valuable, permanent regression test than the
+first attempt.

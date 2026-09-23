@@ -36,6 +36,11 @@ CREATE INDEX idx_price_list_name        ON price_list (tenant_id, name);
 -- Search support. lower(...) matches the LOWER(col) LIKE LOWER(...) predicate the Specifications
 -- build; a trigram index on the raw column would not be used by that expression.
 --
+-- The needle side of that predicate is lowercased in the JVM with Locale.ROOT, not by Postgres --
+-- they agree for the data this product handles, but Locale.ROOT and Postgres's lower() (itself
+-- locale/collation-dependent) can diverge on a handful of Unicode cases, dotted-I/dotless-i among
+-- them.
+--
 -- None of these five lead with tenant_id, unlike every other index in this schema -- GIN +
 -- gin_trgm_ops cannot combine with a leading plain column the way btree does, not without the
 -- btree_gin extension, which this migration deliberately does not introduce. RLS stays correct

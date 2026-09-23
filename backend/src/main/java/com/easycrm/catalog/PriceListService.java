@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,9 @@ public class PriceListService {
 
     /** Sort fields a client may name. Anything else is a 422, not a 500 from JPA (F1-3). */
     private static final Set<String> SORTABLE = Set.of("name", "createdAt", "updatedAt");
+
+    /** Applied when the client sends no `sort` at all, so paging is stable (spec §1.2). */
+    private static final Sort DEFAULT_SORT = Sort.by("name").ascending();
 
     private final PriceListRepository priceLists;
 
@@ -44,8 +48,9 @@ public class PriceListService {
     @Transactional(readOnly = true)
     public PageResponse<PriceListResponse> list(Boolean active, String q, Pageable pageable) {
         SortAllowlist.require(pageable, SORTABLE);
+        Pageable effective = SortAllowlist.withDefault(pageable, DEFAULT_SORT);
         return PageResponse.of(priceLists
-                .findAll(PriceListSpecifications.filter(active, q), pageable)
+                .findAll(PriceListSpecifications.filter(active, q), effective)
                 .map(PriceListResponse::of));
     }
 

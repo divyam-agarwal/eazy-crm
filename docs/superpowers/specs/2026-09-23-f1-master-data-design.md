@@ -457,7 +457,26 @@ versions on responses plus If-Match plumbing — is a contract-wide decision tha
 slice rather than being smuggled into F1a. The cost of deferring is that F2 builds on the same DTOs,
 which makes the eventual change larger; that trade was made knowingly.
 
-### 5.2 Inherited, unchanged by F1
+### 5.2 At-most-one-primary-contact is enforced in application code, not the schema
+
+The "one primary contact per customer" rule is enforced inside a transaction, in application code
+(F1a Task 8). There is no partial unique index on `contact` over `(tenant_id, customer_id) WHERE
+is_primary`, so two concurrent creates that both set `isPrimary: true` for the same customer can
+each pass the in-transaction check and commit — leaving two primary contacts, with nothing in the
+database to detect it afterward.
+
+This is a different failure mode from 5.1's last-write-wins: 5.1 is a stale-read field *overwrite*
+(the row still satisfies every invariant afterward, just not with the value the losing writer
+expected); this is an invariant the row set as a whole can end up *violating* outright, with no
+constraint anywhere to catch it.
+
+**Accepted for F1.** The fix — a partial unique index on `(tenant_id, customer_id) WHERE
+is_primary` — needs care over demote/promote flush ordering (an update that moves the primary flag
+from one contact to another must not transiently violate the index mid-transaction, e.g. by
+demoting the old primary and flushing before promoting the new one), and was deliberately not taken
+in this slice.
+
+### 5.3 Inherited, unchanged by F1
 
 - The `--ring` and `--input` non-text contrast failures (R102, R62), invisible to axe.
 - R64's three untested Devanagari clipping cases, deferred with Hindi.

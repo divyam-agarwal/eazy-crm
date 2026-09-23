@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,9 @@ public class CustomerService {
 
     /** Sort fields a client may name. Anything else is a 422, not a 500 from JPA (F1-3). */
     private static final Set<String> SORTABLE = Set.of("businessName", "createdAt", "updatedAt");
+
+    /** Applied when the client sends no `sort` at all, so paging is stable (spec §1.2). */
+    private static final Sort DEFAULT_SORT = Sort.by("businessName").ascending();
 
     private final CustomerRepository customers;
     private final CustomerVisibility customerVisibility;
@@ -67,8 +71,9 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public PageResponse<CustomerResponse> list(Boolean active, String q, Pageable pageable) {
         SortAllowlist.require(pageable, SORTABLE);
+        Pageable effective = SortAllowlist.withDefault(pageable, DEFAULT_SORT);
         return PageResponse.of(customerVisibility
-                .page(CustomerSpecifications.filter(active, q), pageable)
+                .page(CustomerSpecifications.filter(active, q), effective)
                 .map(CustomerResponse::of));
     }
 
@@ -76,6 +81,16 @@ public class CustomerService {
     public CustomerResponse update(UUID id, CustomerRequest req) {
         Resolved r = resolveGstinAndState(req);
         assignableUsers.require(req.assignedTo());
+        if (r.gstin() != null) {
+            customers.findByGstin(r.gstin()).ifPresent(c -> {
+                if (!c.getId().equals(id)) {
+                    throw new ConflictException(
+                            "customer with this GSTIN already exists",
+                            Map.of("gstin", "customer with this GSTIN already exists"),
+                            Map.of("gstin", "GSTIN_DUPLICATE"));
+                }
+            });
+        }
         Customer c = find(id);
         c.update(
                 req.businessName(),
