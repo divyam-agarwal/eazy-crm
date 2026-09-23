@@ -189,6 +189,20 @@ class CustomerControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.content[0].businessName").value("Shri Ram Traders"));
     }
 
+    /** F1a introduced the first @Size on a @RequestParam in this codebase; without a handler for
+     *  the ConstraintViolationException @Validated throws, this would fall through to Spring's
+     *  default ProblemDetail body instead of this API's {"error":{...}} envelope. */
+    @Test
+    void overLongQReturns400WithTheStandardEnvelope() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String tooLong = "a".repeat(101);
+
+        mvc.perform(get("/api/v1/customers").param("q", tooLong).header("Authorization", auth))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldCodes.q").value("SIZE"));
+    }
+
     @Test
     void rejectsAnUnknownSortFieldWith422() throws Exception {
         String auth = "Bearer " + tokens.owner(UUID.randomUUID());
