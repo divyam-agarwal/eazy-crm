@@ -38,9 +38,13 @@ that put F0a before F0b.
 - **Optimistic concurrency.** See §5.1.
 - **Toasts.** See §3.4.
 - **The import wizard and owner analytics**, both deferred at D-d for lack of a backend.
-- **H5's `assigned_to` indexes.** Pre-existing, and the roadmap's discipline is that the load baseline
-  (item 12) decides them on evidence rather than by elimination. F1a adds only the indexes its own new
-  queries require.
+- **H5's remaining half.** The roadmap's H5 entry is **stale on its first half**: `V33__assigned_to_indexes.sql`
+  already ships `idx_customer_assigned` and `idx_enquiry_assigned`. What remains true is that no index
+  supports a status-only order-list filter — `sales_order` carries only `(tenant_id, id)` and
+  `(tenant_id, customer_id)`. That is out of scope here: it belongs to order-list work, and the load
+  baseline (item 12) decides it on evidence. F1a adds only the indexes its own new queries require
+  (§1.1), following the house pattern V33 states in its own comment: *the slice adding the query adds
+  the index.*
 
 ### 0.2 Decisions
 
@@ -50,7 +54,7 @@ Referenced from here on as **F1-n**. Plan decisions get their own P-numbers at p
 |---|---|
 | **F1-1** | Two slices, F1a then F1b, merged separately. |
 | **F1-2** | `q` search on the three paged list endpoints: case-insensitive **substring**, backed by `pg_trgm` GIN indexes. |
-| **F1-3** | Per-endpoint sort allowlist; unknown field → 400 `SORT_INVALID`, not the 500 it throws today. Page size capped at 100. |
+| **F1-3** | Per-endpoint sort allowlist; unknown field → **422** `SORT_INVALID`, not the 500 it throws today. Page size capped at 100. |
 | **F1-4** | Stable `fieldCodes` on every master-data validation and conflict error, enforced by a build-failing test. |
 | **F1-5** | `PUT` for price-list items, taking rate fields only — `productId` is immutable after create. |
 | **F1-6** | Contact validation mirrors the client's rules; setting a contact primary demotes its siblings in the same transaction. |
@@ -89,9 +93,13 @@ Substring rather than prefix because business names here are routinely searched 
 user looking for "Shri Ram Traders" types "ram". Prefix-only matching would fail the common case, not
 an edge one.
 
-**`pg_trgm`.** A leading-wildcard `ILIKE '%ram%'` cannot use a btree index, so each of these queries
-would seq-scan. F1a adds `CREATE EXTENSION IF NOT EXISTS pg_trgm` and GIN trigram indexes on the
-searched columns. This is a new extension dependency: available on RDS, present in the Testcontainers
+**Indexes — two kinds, both new.** There is no index today on `customer.business_name`,
+`product.name`, `product.sku` or `price_list.name`, so F1a adds:
+
+1. **btree** on `(tenant_id, <sort column>)` to support §1.2's default `ORDER BY`, which would
+   otherwise sort every tenant's rows in memory on every list request.
+2. **GIN trigram** on the searched columns, because a leading-wildcard `ILIKE '%ram%'` cannot use a
+   btree index and would seq-scan — which requires `CREATE EXTENSION IF NOT EXISTS pg_trgm`. This is a new extension dependency: available on RDS, present in the Testcontainers
 image, and visible to squawk in the migration. It is justified here — unlike H5's indexes — because
 F1a introduces the exact query that needs it, in the same change.
 
@@ -112,8 +120,17 @@ every paged list**.
 
 F1a gives each paged endpoint an explicit allowlist and an explicit default sort — customers by
 `businessName`, products by `name`, price lists by `name`, all ascending — so paging is stable. An unrecognised sort
-field yields **400** with field `sort` and code `SORT_INVALID`. Page size is capped at **100**;
-today it is effectively unbounded.
+field yields **422** with field `sort` and code `SORT_INVALID`. Page size is capped at **100**; today
+it is effectively unbounded.
+
+**Why 422 and not the 400 that plain HTTP reasoning suggests** — a deliberate departure, declared here
+rather than left as a code comment (R30). An unknown `sort` property *binds successfully*: Spring
+produces a valid `Sort`, and the failure surfaces later from JPA, so none of the existing 400
+machinery (`MethodArgumentNotValidException`) is on this path. Reaching 400 would mean a new exception
+type in `platform-primitives` plus a handler branch, for one family of call sites. Throwing the
+existing `ValidationException` reuses the envelope, the `fieldCodes` path and the frontend's mapping —
+which treats 400, 409 and 422 identically for field errors — at the cost of a status code that is
+defensible rather than ideal.
 
 ### 1.3 `fieldCodes`
 
@@ -124,7 +141,7 @@ exactly the errors these forms produce:
 
 | Service | Rule | Code |
 |---|---|---|
-| `crm/CustomerService` | stateCode diverges from the GSTIN's state | `STATE_CODE_MISMATCH` |
+| `crm/CustomerService` | stateCode diverges from the GSTIN's state | `STATE_CODE_GSTIN_MISMATCH` — **reused**, not new: `docs/api/error-codes.md` already defines it for `AuthService.signup`'s identical meaning, and one meaning must not acquire two codes |
 | | stateCode required when GSTIN absent | `STATE_CODE_REQUIRED` |
 | | duplicate GSTIN (409) | `GSTIN_DUPLICATE` |
 | `catalog/ProductService` | `hsnCode` not 4/6/8 digits | `HSN_CODE_INVALID` |
