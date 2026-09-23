@@ -7299,3 +7299,23 @@ once it does. The fix generalizes past this one test: whenever a guard's "eviden
 window" are two different spans of source (constructor args vs. the whole enclosing method), check the
 capture window is wide enough for every call *shape* actually present, not just the shape the guard's
 author happened to write the example against.
+
+### Follow-up (fix round 1)
+
+Review caught that this lesson had not been fully applied to the guard's own helper:
+`codesFor` — the exact function this problem is about — had no direct test of its own. The three
+mutations in the task report proved it could return empty once, by hand, but nothing made that
+permanent; a future "simplification" of `codesFor` that always returned a code would have left all
+tests green forever, silently, which is the same failure class this whole guard exists to catch, one
+level up. Fixed by adding four direct unit tests of `codesFor` over synthetic inputs — both shapes,
+both directions (no-code / has-code) — calling the (still `private`) helper directly from within the
+same test class. Also added a sixth guarded file (`SortAllowlist`, `SORT_INVALID`, predating Tasks
+5/6 and simply missed the first time), tightened `SCREAMING_SNAKE` to require at least one
+underscore-separated group (`[A-Z][A-Z0-9]*(_[A-Z0-9]+)+`, closing a gap where a bare two-letter
+literal like `"OK"` would have read as a code), and anchored `everyCodeThrownIsRegistered` to the
+registry's actual table rows (`^| \`CODE\` |`) instead of a bare `contains("` + code + `")` — the
+Rules prose in `error-codes.md` itself backtick-quotes `CONFLICT`, `NOT_FOUND`, `SIZE`, `PATTERN`,
+`EMAIL`, and even the literal string `SCREAMING_SNAKE`, any of which the unanchored check would have
+accepted as "registered" if a thrown code ever coincided with one. None of this changes the Solution
+above — the two-shape split and the last-literal tightening stand as designed — it closes a gap
+one layer up: the guard's own core extraction function was, itself, an unguarded rule.
