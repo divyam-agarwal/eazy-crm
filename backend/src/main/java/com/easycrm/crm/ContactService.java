@@ -22,6 +22,9 @@ public class ContactService {
     @Transactional
     public ContactResponse add(UUID customerId, ContactRequest req) {
         requireCustomer(customerId);
+        if (Boolean.TRUE.equals(req.isPrimary())) {
+            demoteOtherPrimaries(customerId, null);
+        }
         Contact saved = contacts.save(new Contact(
                 customerId,
                 req.name(),
@@ -44,6 +47,9 @@ public class ContactService {
     @Transactional
     public ContactResponse update(UUID customerId, UUID contactId, ContactRequest req) {
         Contact c = find(customerId, contactId);
+        if (Boolean.TRUE.equals(req.isPrimary())) {
+            demoteOtherPrimaries(customerId, contactId);
+        }
         c.update(
                 req.name(),
                 req.phone(),
@@ -70,5 +76,20 @@ public class ContactService {
             throw new NotFoundException("contact not found");
         }
         return c;
+    }
+
+    /**
+     * At most one primary contact per customer. Scoped to this customer only: a tenant-wide demotion
+     * would quietly unset another customer's primary contact.
+     *
+     * <p>Runs inside the caller's @Transactional, so the demotion and the promotion commit together
+     * or not at all — a half-applied promotion would leave zero primaries.
+     */
+    private void demoteOtherPrimaries(UUID customerId, UUID exceptContactId) {
+        for (Contact existing : contacts.findByCustomerIdAndPrimaryTrue(customerId)) {
+            if (!existing.getId().equals(exceptContactId)) {
+                existing.demote();
+            }
+        }
     }
 }

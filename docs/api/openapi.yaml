@@ -4918,17 +4918,27 @@ components:
       properties:
         designation:
           type: string
+          maxLength: 128
+          minLength: 0
         email:
           type: string
+          format: email
+          maxLength: 255
+          minLength: 0
         isPrimary:
           type: boolean
         name:
           type: string
-          minLength: 1
+          maxLength: 255
+          minLength: 0
         phone:
           type: string
+          maxLength: 20
+          minLength: 0
         whatsappNumber:
           type: string
+          maxLength: 20
+          minLength: 0
       required:
       - name
     ContactResponse:

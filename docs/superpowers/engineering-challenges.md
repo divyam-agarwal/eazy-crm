@@ -7378,3 +7378,71 @@ necessary but not sufficient; it says nothing about what the *stored* row looks 
 selectively-applied write. Whenever a task both validates two values and persists them, the
 regression test needs to assert on the field that update did *not* ask to change, in addition to the
 field it did — that is the only way to catch a mutator that quietly leaves the old value behind.
+
+---
+
+## Challenge 112 — A brief's own test code for primary-contact demotion was broken by two independent, non-obvious library gotchas
+
+**Phase:** Implementation (F1a Task 9 — contact validation and primary-contact demotion)
+
+### The problem
+
+Task 9's brief specified the failing tests verbatim, including the repository method name
+`findByCustomerIdAndIsPrimaryTrue` and JsonPath assertions like
+`jsonPath("$[?(@.isPrimary == true)].length()").value(1)` and
+`jsonPath("$[?(@.isPrimary == true)][0].name").value("Suresh")`. Both looked like standard,
+copy-pasteable Spring Data / MockMvc idioms. Neither worked, for two unrelated reasons:
+
+1. `Contact`'s boolean field is `primary` (JavaBean getter `isPrimary()`). Spring Data's
+   derived-query parser resolves method name segments against the JPA entity's own property
+   metadata, not against getter spelling, so `findByCustomerIdAndIsPrimaryTrue` fails at context
+   startup with `PropertyReferenceException: No property 'isPrimary' found for type 'Contact'` — a
+   hard failure for the *whole test class* (`IllegalStateException` from context caching), not just
+   the demotion tests, which made the first symptom look like a mass regression rather than one bad
+   method name.
+2. With json-path 2.10.0's default provider, appending a function like `.length()` after an
+   indefinite filter path (`[?(...)]`) does **not** aggregate over the matched elements — it applies
+   the function to *each* matched element individually and wraps the per-element results in a list.
+   For two matching 8-property `Contact` JSON objects, `$[?(@.isPrimary == true)].length()` evaluates
+   to `[8, 8]` (each object's own key count), not `2` (the match count); for one match it evaluates to
+   `[8]`, not `1`. Similarly, indexing after a filter (`[?(...)][0].name`) evaluates to `[]` regardless
+   of how many elements match — chaining `[0]` onto an indefinite path doesn't resolve in this
+   provider. Verified by exercising `com.jayway.jsonpath.JsonPath.read(...)` directly, outside Spring,
+   against the exact dependency version and provider (`json-smart`) this project uses on
+   `testRuntimeClasspath`.
+
+Both defects were "unrelated" to the feature under test in the strict sense (neither is a bug in
+`ContactService`'s demotion logic), but both manifested as assertion/context failures that looked at
+first glance like implementation bugs, and a literal-minded implementation of the brief would either
+never compile (repository) or never go green even with correct demotion logic (JsonPath).
+
+### The solution
+
+1. Renamed the repository method to `findByCustomerIdAndPrimaryTrue`, matching the entity's actual
+   property name, and documented why in a Javadoc note on the method (the exact
+   `PropertyReferenceException` message, so a future reader hitting the same typo recognizes it
+   immediately instead of re-diagnosing from scratch).
+2. Replaced the filter+function idiom with two idioms that don't suffer the same defect: a Hamcrest
+   matcher applied directly to the filtered array itself (`jsonPath("$[?(@.isPrimary == true)]",
+   hasSize(1))`, no `.length()`), and a filter path ending in a property name without a trailing index
+   (`jsonPath("$[?(@.isPrimary == true)].name").value("Suresh")`) — Spring's
+   `JsonPathExpectationsHelper` transparently unwraps a single-element result list when the expected
+   value isn't itself a list, so this reads and behaves like a scalar comparison for the "exactly one
+   primary" case while still failing loudly (a multi-element list, not a scalar) when demotion hasn't
+   run yet.
+
+### Lesson
+
+A task brief's literal test code is a claim, not a guarantee, even when it comes with an explicit
+"these two should already pass, don't fix them" instruction — that instruction is itself evidence the
+author ran *something* resembling these tests, but not necessarily this exact dependency version and
+provider. When a freshly-appended test's *class* starts failing entirely (`IllegalStateException` /
+context-load failure) rather than the specific assertion you expect, suspect a bean-creation-time
+problem (a bad derived-query method name) before suspecting the business logic — Spring Data
+validates derived queries against the real entity metamodel, not the getter name, so any field with a
+boolean `isX()` getter is a trap for `findByXTrue()`-style method names. Separately, `[?(filter)]`
+composed with a trailing function or index is a well-known json-path sharp edge across providers and
+versions — the safe pattern is to assert directly on the filtered collection (`hasSize`, `contains`)
+rather than chaining `.length()` or `[0]` after it, and to verify any unfamiliar JsonPath expression
+against a two-line standalone reproduction before trusting it inside a full Spring context, where a
+wrong result reads as "my implementation is wrong" long before it reads as "my assertion is wrong."
