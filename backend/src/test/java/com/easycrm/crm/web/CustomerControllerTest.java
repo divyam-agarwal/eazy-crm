@@ -122,10 +122,14 @@ class CustomerControllerTest extends IntegrationTest {
         UUID tenant = UUID.randomUUID();
         String auth = "Bearer " + tokens.owner(tenant);
         createCustomer(auth, "Shri Ram Traders", "27AAPFU0939F1ZV");
+        // Matches neither by name nor gstin. Without this row, a single-row tenant would make
+        // totalElements == 1 true whether or not the gstin predicate exists at all.
+        createCustomer(auth, "Gupta Hardware", null);
 
         mvc.perform(get("/api/v1/customers?q=AAPFU").header("Authorization", auth))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].businessName").value("Shri Ram Traders"));
     }
 
     @Test
@@ -152,16 +156,37 @@ class CustomerControllerTest extends IntegrationTest {
     @Test
     void searchComposesWithTheActiveFilter() throws Exception {
         String auth = "Bearer " + tokens.owner(UUID.randomUUID());
-        String id = createCustomer(auth, "Shri Ram Traders", null);
-        mvc.perform(post("/api/v1/customers/" + id + "/deactivate").header("Authorization", auth))
+        // Matches "ram" AND is inactive: visible only under active=false&q=ram.
+        String matchingInactive = createCustomer(auth, "Shri Ram Traders", null);
+        mvc.perform(post("/api/v1/customers/" + matchingInactive + "/deactivate")
+                        .header("Authorization", auth))
+                .andExpect(status().isOk());
+        // Matches "ram" AND stays active: visible only under active=true&q=ram. Without this row,
+        // "active=false&q=ram" returning 1 would be reachable by the q predicate alone, with the
+        // active predicate silently ignored.
+        createCustomer(auth, "Ramji Traders", null);
+        // Active but does NOT match "ram": if q were ignored, active=true&q=ram would wrongly
+        // return 2 instead of 1.
+        createCustomer(auth, "Gupta Hardware", null);
+        // Inactive but does NOT match "ram": if q were ignored, active=false&q=ram would wrongly
+        // return 2 instead of 1.
+        String nonMatchingInactive = createCustomer(auth, "Kumar Enterprises", null);
+        mvc.perform(post("/api/v1/customers/" + nonMatchingInactive + "/deactivate")
+                        .header("Authorization", auth))
                 .andExpect(status().isOk());
 
+        // Neither the active filter alone (active=true -> {Ramji, Gupta} = 2) nor the q filter
+        // alone (q=ram, ignoring active -> {Shri Ram, Ramji} = 2) reproduces this count of 1.
         mvc.perform(get("/api/v1/customers?q=ram&active=true").header("Authorization", auth))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalElements").value(0));
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].businessName").value("Ramji Traders"));
+        // Neither the active filter alone (active=false -> {Shri Ram, Kumar} = 2) nor the q filter
+        // alone (q=ram, ignoring active -> {Shri Ram, Ramji} = 2) reproduces this count of 1.
         mvc.perform(get("/api/v1/customers?q=ram&active=false").header("Authorization", auth))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].businessName").value("Shri Ram Traders"));
     }
 
     @Test
