@@ -120,6 +120,28 @@ pass:**
   **nothing**. The only verification this branch has is local `./gradlew clean check`, run repeatedly and
   reported above; CI will not see any of it until it is merged (or a PR is opened against `main`).
 
+**TRIPWIRE — read this before enabling parallel test execution.** The three
+`pagingIsStableAcrossPagesWithNoExplicitSort` tests (in `CustomerControllerTest`, `ProductControllerTest`
+and `PriceListControllerTest`) each run **`VACUUM FULL`** on their table between the two page fetches.
+That is deliberate and it is load-bearing: without a physical rewrite the bug those tests exist to catch
+is *invisible*, because a small freshly-seeded table replays insertion order whether or not the query
+carries an `ORDER BY` — the naive mutation of removing the default sort stayed green, and only
+`VACUUM FULL` made it reliably red (see challenge #116).
+
+The cost is that `VACUUM FULL` takes an **ACCESS EXCLUSIVE** lock and rewrites the table, and
+`IntegrationTest` shares ONE static singleton Postgres container across every `@SpringBootTest` in the
+JVM. This is safe today **only** because nothing in this build enables parallel tests — there is no
+`maxParallelForks` and no `junit.jupiter.execution.parallel` configuration, so the suite runs
+sequentially, the tables hold 25 rows, and the lock is held for milliseconds.
+
+**If anyone turns on parallel test execution, this will bite**: any other test class touching
+`customer`, `product` or `price_list` concurrently will block on that exclusive lock and fail or hang for
+reasons that look nothing like its own subject. The fix at that point is not to delete the tests but to
+replace the perturbation — force physical reordering with ordinary row-level DML (delete and reinsert the
+seeded rows in a different order), or assert directly that the generated SQL carries an `ORDER BY` via a
+statement listener. Both were judged better but were not worth another fix-and-review cycle while the
+hazard is inert.
+
 ## 2026-09-20 — START HERE: F0b is merged and pushed; next is F1
 
 **The 107 controller rulings made during F0b's build** — several load-bearing for F1 and visible nowhere
