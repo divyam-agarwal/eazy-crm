@@ -168,6 +168,21 @@ class ProductControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.error.fieldCodes.sort").value("SORT_INVALID"));
     }
 
+    /** The generated OpenAPI schema documents a maxLength on q regardless of whether the
+     *  controller carries @Validated (springdoc reads the @Size annotation directly), so that
+     *  schema alone cannot prove the constraint is enforced at runtime. Only an actual request
+     *  can. */
+    @Test
+    void overLongQReturns400WithTheStandardEnvelope() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String tooLong = "a".repeat(101);
+
+        mvc.perform(get("/api/v1/products").param("q", tooLong).header("Authorization", auth))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldCodes.q").value("SIZE"));
+    }
+
     /** Returns the created product's id. */
     private String createProduct(String auth, String sku, String name) throws Exception {
         String body = """

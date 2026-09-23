@@ -7195,7 +7195,8 @@ Replaced the three sampled witnesses with one universal, derived assertion:
 named subset) and, for each one, recomputes `hasRequestBody || hasConstrainedParameter` by reading the
 same signal `ErrorResponsesCustomizer.hasConstrainedParameter`/`isConstrained` reads — a parameter
 schema's `maxLength`, `minLength` or `pattern` — then asserts the document's actual `400` presence
-equals that computed expectation, for all ~48 operations at once. The definition is deliberately copied
+equals that computed expectation, for all 78 operations (across 60 paths; 33 expecting a 400, 45 not) at
+once. The definition is deliberately copied
 from the customizer rather than reinvented, with a comment saying so explicitly: if the test's notion of
 "constrained" ever drifts from the producer's, that drift is the bug, not something to reconcile by
 picking a different definition. Kept two non-vacuity assertions (the walk saw at least one operation
@@ -7222,7 +7223,7 @@ sooner or later, and sampling three witnesses only delays the next collision. Th
 instinct — repoint the witness, document why in a comment — is a reasonable one-time patch but does not
 generalize: the correct fix, whenever the walker can express it, is to derive the negative (and
 positive) evidence from the same property the production code enforces, checked across every instance,
-rather than hardcoding any instance at all. That form is strictly stronger (it checks ~48 operations
+rather than hardcoding any instance at all. That form is strictly stronger (it checks all 78 operations
 instead of 3) and immune to route churn (no future parameter addition anywhere in the API can
 invalidate it by changing what it happens to sample) — the only way to break it is for the snapshot and
 the customizer to actually disagree, which is exactly the bug class worth catching. When a universal
