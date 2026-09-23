@@ -91,7 +91,7 @@ class OpenApiMediaTypesTest {
      * take a {@code @Valid} request body (signup, login, invitation accept) — GET /me, GET
      * signup/status, POST refresh, POST logout and GET the invitation preview take no body and cannot
      * produce a bean-validation 400 (review finding B1, F0b Task 1 fix round 1;
-     * {@link #errorResponsesAreScopedToWhereTheyCanOccur()} is the general-purpose negative check).
+     * {@link #everyOperationDocuments400IffItCanProduceOne()} is the general-purpose scoping check).
      */
     @Test
     @SuppressWarnings("unchecked")
@@ -165,50 +165,117 @@ class OpenApiMediaTypesTest {
         return (Map<String, Object>) path.get("get");
     }
 
+    /** Every (path, method, operation-map) the document declares. */
+    @SuppressWarnings("unchecked")
+    private static List<Object[]> allOperations() throws Exception {
+        List<Object[]> out = new ArrayList<>();
+        for (var pathEntry : paths().entrySet()) {
+            for (var opEntry : ((Map<String, Object>) pathEntry.getValue()).entrySet()) {
+                if (!(opEntry.getValue() instanceof Map<?, ?> opMap)) continue;
+                out.add(new Object[] {pathEntry.getKey(), opEntry.getKey(), opMap});
+            }
+        }
+        return out;
+    }
+
     /**
-     * The negative half of {@link #authOperationsDocument400And429WithRetryAfter}: ErrorResponsesCustomizer
-     * must NOT add 400 or 429 where they cannot occur (review finding B1, F0b Task 1 fix round 1). Without
-     * this test, CI cannot see that class of error at all -- the positive test above only inspects
-     * /api/v1/auth/**, where both a request body and a rate-limit policy happen to be true for every
-     * operation, so a customizer that added both unconditionally to every operation in the document would
-     * still pass it.
+     * Mirrors {@code ErrorResponsesCustomizer.hasConstrainedParameter}/{@code isConstrained} exactly:
+     * a parameter is "constrained" iff its schema carries {@code maxLength}, {@code minLength} or
+     * {@code pattern} — the same three keys the producer checks. If this definition ever drifts from
+     * the customizer's, that drift is itself the bug this test exists to surface, not something to
+     * paper over here.
+     */
+    @SuppressWarnings("unchecked")
+    private static boolean hasConstrainedParameter(Map<String, Object> op) {
+        Object params = op.get("parameters");
+        if (!(params instanceof List<?> list)) return false;
+        for (Object p : list) {
+            if (!(p instanceof Map<?, ?> param)) continue;
+            Object schema = param.get("schema");
+            if (!(schema instanceof Map<?, ?> schemaMap)) continue;
+            if (schemaMap.get("maxLength") != null
+                    || schemaMap.get("minLength") != null
+                    || schemaMap.get("pattern") != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Operations grandfathered out of {@link #everyOperationDocuments400IffItCanProduceOne()}.
+     * Empty: as of this test's introduction (F1a Task 4 fix round 1, R17), the universal walk found
+     * zero pre-existing divergences between {@code ErrorResponsesCustomizer}'s own gating condition
+     * and what the committed snapshot documents. Any future entry here must name the operation and
+     * the reason, in the style {@code OpenApiRequiredFieldsTest.LEGACY_UNANNOTATED} already uses for
+     * this file's sibling baseline.
+     */
+    private static final Set<String> LEGACY_400_SCOPING_EXEMPT = Set.of();
+
+    /**
+     * The negative half of {@link #authOperationsDocument429AndBodyBearingOnesDocument400}:
+     * {@code ErrorResponsesCustomizer} must NOT add 400 where it cannot occur (review finding B1, F0b
+     * Task 1 fix round 1), and MUST add it everywhere it can — checked as one invariant across every
+     * operation in the document, not sampled on a few hand-picked routes.
      *
-     * <p>{@code GET /api/v1/orders} is both body-less (no request payload on a list GET) and
-     * parameter-less in the validated sense ({@code status} and {@code customerId} carry no size/pattern
-     * constraint), and outside every configured rate-limit policy (RateLimitProperties covers only
-     * /public/q/* and /api/v1/auth/**). It replaces {@code GET /api/v1/products} as the negative example
-     * here: F1a Task 4 gave that endpoint a {@code @Size}-constrained {@code q} query parameter too (as
-     * Task 3 already had for customers), so it now legitimately documents 400 via
-     * {@code ConstraintViolationException} even though it still has no request body -- see the assertion
-     * on it below, which is now a *positive* case for the same reason {@code POST /api/v1/customers} is: a
-     * real mechanism that customizer-scoping must not omit. {@code POST /api/v1/customers} isolates the
-     * body/rate-limit conditions from each other: it has a body (so 400 is expected) but is not
-     * rate-limited (so 429 must still be absent), proving the customizer's body and rate-limit gates are
-     * independent rather than one masking the other.
+     * <p>R17 (F1a Task 4 fix round 1): the previous version of this test named three concrete witness
+     * routes — one asserted to have neither a body nor a constrained parameter, the others asserted to
+     * have one. That is a maintenance trap with a finite supply: F1a Task 3 had already moved the
+     * "unconstrained" witness from {@code GET /api/v1/customers} to {@code GET /api/v1/products}
+     * (Task 3 gave customers a {@code q} parameter), and F1a Task 4 immediately invalidated the new
+     * witness too (Task 4 gave products its own {@code q}), forcing a second repoint to
+     * {@code GET /api/v1/orders} — with nothing in either breaking diff pointing back at this file.
+     * Every future task that legitimately adds a constrained parameter to whatever route currently
+     * serves as the witness breaks this test for a reason unrelated to what it changed.
+     *
+     * <p>The fix: derive the witness from the property instead of naming one. {@code
+     * ErrorResponsesCustomizer} documents 400 on an operation iff {@code operation.getRequestBody() !=
+     * null || hasConstrainedParameter(operation)} — this test recomputes that exact condition from the
+     * committed snapshot for every operation and asserts the document agrees, for all of them at once.
+     * No future parameter addition anywhere in the API can invalidate this test by changing what it
+     * happens to be sampling; the only way to break it is to make the snapshot and the customizer
+     * actually disagree, which is precisely the bug class this test exists to catch.
      */
     @Test
-    void errorResponsesAreScopedToWhereTheyCanOccur() throws Exception {
-        Map<?, ?> unconstrainedListResponses = (Map<?, ?>) get("/api/v1/orders").get("responses");
-        assertFalse(
-                unconstrainedListResponses.containsKey("400"),
-                "GET /api/v1/orders has no body and no constrained parameter; must not document 400");
-        assertFalse(
-                unconstrainedListResponses.containsKey("429"),
-                "GET /api/v1/orders is not under a rate-limit policy; must not document 429");
+    void everyOperationDocuments400IffItCanProduceOne() throws Exception {
+        List<Object[]> operations = allOperations();
+        assertFalse(operations.isEmpty(), "walked zero operations (non-vacuity)");
 
-        Map<?, ?> searchListResponses = (Map<?, ?>) get("/api/v1/products").get("responses");
+        List<String> violations = new ArrayList<>();
+        boolean sawOperationExpecting400 = false;
+        boolean sawOperationExpectingNo400 = false;
+
+        for (Object[] entry : operations) {
+            String path = (String) entry[0];
+            String method = (String) entry[1];
+            @SuppressWarnings("unchecked")
+            Map<String, Object> op = (Map<String, Object>) entry[2];
+            String route = method.toUpperCase() + " " + path;
+            if (LEGACY_400_SCOPING_EXEMPT.contains(route)) continue;
+
+            boolean hasBody = op.containsKey("requestBody");
+            boolean constrained = hasConstrainedParameter(op);
+            boolean expected400 = hasBody || constrained;
+            if (expected400) sawOperationExpecting400 = true;
+            else sawOperationExpectingNo400 = true;
+
+            @SuppressWarnings("unchecked")
+            var responses = (Map<String, Object>) op.get("responses");
+            boolean documents400 = responses != null && responses.containsKey("400");
+
+            if (documents400 != expected400) {
+                violations.add(route + ": documents400=" + documents400 + " but hasRequestBody=" + hasBody
+                        + " hasConstrainedParameter=" + constrained);
+            }
+        }
+
         assertTrue(
-                searchListResponses.containsKey("400"),
-                "GET /api/v1/products has a @Size-constrained q parameter; must document 400");
-        assertFalse(
-                searchListResponses.containsKey("429"),
-                "GET /api/v1/products is not under a rate-limit policy; must not document 429");
-
-        Map<?, ?> createResponses = (Map<?, ?>) post("/api/v1/customers").get("responses");
-        assertTrue(createResponses.containsKey("400"), "POST /api/v1/customers has a @Valid body; must document 400");
-        assertFalse(
-                createResponses.containsKey("429"),
-                "POST /api/v1/customers is not under a rate-limit policy; must not document 429");
+                sawOperationExpecting400, "no operation with a body or a constrained parameter was seen (non-vacuity)");
+        assertTrue(sawOperationExpectingNo400, "no bodyless, unconstrained operation was seen (non-vacuity)");
+        assertTrue(
+                violations.isEmpty(),
+                violations.size() + " operations violate documents400 == (hasRequestBody || hasConstrainedParameter): "
+                        + violations);
     }
 
     @Test

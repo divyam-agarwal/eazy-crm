@@ -7152,52 +7152,82 @@ it, not only the ones that could reach it when the listener was written.
 
 ### The problem
 
-`OpenApiMediaTypesTest.errorResponsesAreScopedToWhereTheyCanOccur` proves
+`OpenApiMediaTypesTest.errorResponsesAreScopedToWhereTheyCanOccur` proved
 `ErrorResponsesCustomizer` does not over-document 400/429 on routes that cannot produce them, by
-picking one concrete "definitely unconstrained" endpoint and asserting its generated spec has no `400`
-key. F1a Task 3 had already made this test point at `GET /api/v1/products` (replacing
-`GET /api/v1/customers`, which Task 3 itself had just given a `@Size`-constrained `q` parameter, making
-it *legitimately* document 400 and no longer usable as the negative example). Task 4 then gave
-`/api/v1/products` its own `@Size`-constrained `q` for the same reason — and the test failed, on a file
-nowhere near the four files the brief listed for this task:
+picking a few concrete "definitely unconstrained" or "definitely constrained" endpoints and asserting
+their generated spec agrees. F1a Task 3 had already made this test point at `GET /api/v1/products` as
+its negative ("no 400") witness (replacing `GET /api/v1/customers`, which Task 3 itself had just given
+a `@Size`-constrained `q` parameter, making it *legitimately* document 400 and no longer usable as the
+negative example). Task 4 then gave `/api/v1/products` its own `@Size`-constrained `q` for the same
+reason — and the test failed, on a file nowhere near the four files the brief listed for this task:
 `OpenApiMediaTypesTest > errorResponsesAreScopedToWhereTheyCanOccur() FAILED`, asserting `GET
 /api/v1/products has no body and no constrained parameter; must not document 400`, which was no longer
 true.
+
+A first fix round repointed the witness a second time, to `GET /api/v1/orders`, and stopped there. On
+review (R17) that fix was rejected as whack-a-mole: it treated the symptom (which route is currently
+safe to hardcode) rather than the structural cause (the test hardcodes a route at all). The supply of
+routes with zero constrained parameters is finite and shrinking as F1a/F1b/F2 add search and validation
+to more list endpoints — two repoints in two consecutive tasks was a trend, not a coincidence, and nothing
+stops a third.
 
 ### Why it's hard
 
 The test is correct and necessary — the positive-only check (`authOperationsDocument429...`) cannot
 distinguish a customizer that scopes correctly from one that adds 400/429 to every operation
-unconditionally, so a negative example is genuinely required. But "the negative example" is a concrete
-route, not an invariant, and nothing about that choice is visible from the diff of the feature that
-breaks it: Task 4's brief touched `ProductController`, `ProductService`, `ProductSpecifications`,
-`ProductRepository` and their tests — none of those files, or the brief that enumerated them, have any
-apparent connection to an OpenAPI test in `com.easycrm.platform.openapi`. The dependency is real (this
-test's choice of witness route is coupled to every other feature's choice of which routes to add
-constrained parameters to) but is encoded only in prose inside the test's own Javadoc, which a task
-brief scoped to "product and price-list search" would have no reason to open. `./gradlew check`, not
-code review, is what actually catches it — and only because this repo runs the full suite rather than a
-package-scoped subset.
+unconditionally, so *some* negative evidence is genuinely required. But sampling a handful of concrete
+routes as stand-ins for "the general rule holds" conflates two different things: the invariant
+(`documents400 == hasRequestBody || hasConstrainedParameter`, which is permanent) and the witnesses
+(which routes currently have which shape, which changes every time a feature adds a parameter). Nothing
+about that coupling is visible from the diff of the feature that breaks it: Task 4's brief touched
+`ProductController`, `ProductService`, `ProductSpecifications`, `ProductRepository` and their tests —
+none of those files, or the brief that enumerated them, have any apparent connection to an OpenAPI test
+in `com.easycrm.platform.openapi`. The dependency is real (the test's choice of witness route is
+coupled to every other feature's choice of which routes to add constrained parameters to) but was
+encoded only in prose inside the test's own Javadoc, which a task brief scoped to "product and
+price-list search" would have no reason to open. `./gradlew check`, not code review, is what actually
+catches it — and only because this repo runs the full suite rather than a package-scoped subset.
 
 ### Solution
 
-Swapped the witness route again, this time to `GET /api/v1/orders`: body-less, and its two params
-(`status`, an enum; `customerId`, a bare `UUID`) carry no size/pattern constraint, and F1a's scope
-(customers, products, price lists only) gives no reason to expect `orders` to gain a `q` parameter
-later. Updated both the assertions and the Javadoc paragraph explaining the swap, in the same style Task
-3's swap had used, so the next feature to touch `/api/v1/orders` inherits the same trail Task 4 followed
-from Task 3's comment straight to the fix.
+Replaced the three sampled witnesses with one universal, derived assertion:
+`everyOperationDocuments400IffItCanProduceOne` walks every operation in the committed snapshot (not a
+named subset) and, for each one, recomputes `hasRequestBody || hasConstrainedParameter` by reading the
+same signal `ErrorResponsesCustomizer.hasConstrainedParameter`/`isConstrained` reads — a parameter
+schema's `maxLength`, `minLength` or `pattern` — then asserts the document's actual `400` presence
+equals that computed expectation, for all ~48 operations at once. The definition is deliberately copied
+from the customizer rather than reinvented, with a comment saying so explicitly: if the test's notion of
+"constrained" ever drifts from the producer's, that drift is the bug, not something to reconcile by
+picking a different definition. Kept two non-vacuity assertions (the walk saw at least one operation
+that must document 400, and at least one that must not) so a broken or short-circuited walk cannot pass
+silently — the same discipline this repo's other OpenAPI walker tests already apply. Ran the universal
+form against the current snapshot with an empty grandfather allowlist first, specifically to check for
+pre-existing divergences on endpoints unrelated to F1a: none were found, so the empty
+`LEGACY_400_SCOPING_EXEMPT` stayed empty rather than being pre-populated defensively.
+
+Proved the new assertion actually bites by mutating the production code, not the test: temporarily
+narrowed `ErrorResponsesCustomizer.isConstrained` to check only `pattern` (dropping the `maxLength`/
+`minLength` legs), regenerated the committed snapshot with `updateOpenApiSnapshot`, and reran the test.
+It failed red, naming exactly the three `q`-bearing list operations as violations
+(`GET /api/v1/customers`, `GET /api/v1/price-lists`, `GET /api/v1/products`, each
+`documents400=false but hasRequestBody=false hasConstrainedParameter=true`), then reverted both the
+customizer and the regenerated snapshot and confirmed green again.
 
 ### Lesson
 
 A negative test that names a concrete "this one has no constraints" example is an early-warning system
 with a false-alarm rate proportional to how many future features can plausibly add a constraint to that
 exact route — every route in a growing CRUD API is a candidate for a `q`, a `status`, or a size limit
-sooner or later. Two mitigations, not mutually exclusive: (1) keep doing what this test already does —
-document *why* this route was chosen in a comment right next to the assertion, so the fix is a five-line
-diff instead of an investigation; (2) prefer, where the walker allows it, deriving the negative example
-programmatically (e.g. "some route with a Pageable-only list and no `@Valid`/`@Size` anywhere in its
-parameter list") over hardcoding one path string, so the invariant survives any single route changing
-shape. This repo took the cheaper option twice in a row and both times it cost one file outside the
-task's declared scope — cheap each time, but worth noting if a third feature ever needs `/api/v1/orders`
-to grow a search parameter."
+sooner or later, and sampling three witnesses only delays the next collision. The first fix round's
+instinct — repoint the witness, document why in a comment — is a reasonable one-time patch but does not
+generalize: the correct fix, whenever the walker can express it, is to derive the negative (and
+positive) evidence from the same property the production code enforces, checked across every instance,
+rather than hardcoding any instance at all. That form is strictly stronger (it checks ~48 operations
+instead of 3) and immune to route churn (no future parameter addition anywhere in the API can
+invalidate it by changing what it happens to sample) — the only way to break it is for the snapshot and
+the customizer to actually disagree, which is exactly the bug class worth catching. When a universal
+derived form surfaces pre-existing violations on unrelated code, the correct move is still not to
+mass-fix them inline (that buries the current change's diff) nor to weaken the assertion (that defeats
+the point) — it is to grandfather them explicitly, by name, with a reason, in the same
+`LEGACY_*`-baseline style this repo already uses (`OpenApiRequiredFieldsTest.LEGACY_UNANNOTATED`), and
+let a human rule on whether each one gets fixed now or tracked separately.
