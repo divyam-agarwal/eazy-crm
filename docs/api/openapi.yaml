@@ -154,7 +154,7 @@ paths:
       - activity-controller
   /api/v1/activities/{id}:
     patch:
-      operationId: update_5
+      operationId: update_6
       parameters:
       - in: path
         name: id
@@ -991,7 +991,7 @@ paths:
       - contact-controller
   /api/v1/customers/{customerId}/contacts/{contactId}:
     delete:
-      operationId: delete
+      operationId: delete_1
       parameters:
       - in: path
         name: customerId
@@ -1042,7 +1042,7 @@ paths:
       tags:
       - contact-controller
     put:
-      operationId: update_2
+      operationId: update_3
       parameters:
       - in: path
         name: customerId
@@ -1160,7 +1160,7 @@ paths:
       tags:
       - customer-controller
     put:
-      operationId: update_1
+      operationId: update_2
       parameters:
       - in: path
         name: id
@@ -1525,7 +1525,7 @@ paths:
       tags:
       - enquiry-controller
     patch:
-      operationId: update_4
+      operationId: update_5
       parameters:
       - in: path
         name: id
@@ -1971,7 +1971,7 @@ paths:
       tags:
       - follow-up-controller
     patch:
-      operationId: update_3
+      operationId: update_4
       parameters:
       - in: path
         name: id
@@ -3281,7 +3281,7 @@ paths:
       - price-list-item-controller
   /api/v1/price-lists/{priceListId}/items/{itemId}:
     delete:
-      operationId: delete_1
+      operationId: delete
       parameters:
       - in: path
         name: priceListId
@@ -3298,6 +3298,74 @@ paths:
       responses:
         "200":
           description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-item-controller
+    put:
+      operationId: update_1
+      parameters:
+      - in: path
+        name: priceListId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: itemId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceListItemUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceListItemResponse"
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -5625,6 +5693,15 @@ components:
         productId:
           type: string
           format: uuid
+    PriceListItemUpdateRequest:
+      type: object
+      properties:
+        discountPct:
+          type: string
+          format: decimal
+        overrideRate:
+          type: string
+          format: decimal
     PriceListRequest:
       type: object
       properties:

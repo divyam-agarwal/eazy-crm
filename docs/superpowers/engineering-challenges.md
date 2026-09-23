@@ -7319,3 +7319,62 @@ Rules prose in `error-codes.md` itself backtick-quotes `CONFLICT`, `NOT_FOUND`, 
 accepted as "registered" if a thrown code ever coincided with one. None of this changes the Solution
 above — the two-shape split and the last-literal tightening stand as designed — it closes a gap
 one layer up: the guard's own core extraction function was, itself, an unguarded rule.
+
+---
+
+## Challenge 111 — A partial-update mutator that only sets the field the request supplied would let a stored row silently violate the XOR it just satisfied
+
+**Phase:** Implementation (F1a Task 8 — `PUT` a price-list item's rate)
+
+### The problem
+
+`PriceListItem` carries the same `overrideRate` / `discountPct` XOR as Challenge 14, but Task 8
+introduces the first *update* path (`PriceListItemService.update`), and an update to an existing
+invariant-bearing row is a different hazard than validating a fresh insert. The obvious way to write
+a rate-only mutator is "set whichever field the caller sent":
+
+```java
+public void updateRates(BigDecimal overrideRate, BigDecimal discountPct) {
+    if (overrideRate != null) this.overrideRate = overrideRate;
+    if (discountPct != null) this.discountPct = discountPct;
+}
+```
+
+That reads as conservative — "don't touch what wasn't asked about" — but it is exactly backwards for
+an XOR pair. A row created with `overrideRate=10` that receives `PUT {"discountPct":12}` (a request
+that, on its own, satisfies the XOR) would end up with **both** fields populated, because the old
+`overrideRate` is never cleared. The request-level validation (`validateXor`) passes — it only ever
+sees the two incoming values — while the row it produces violates the very rule that validation
+exists to enforce. The bug is invisible at the API boundary: the response DTO would still render
+correctly for whichever field the client just set, and the stale field would only surface later, to a
+different caller reading the row back.
+
+### The solution
+
+`updateRates` sets **both** fields unconditionally from the two request values, not just the one that
+was non-null:
+
+```java
+public void updateRates(BigDecimal overrideRate, BigDecimal discountPct) {
+    this.overrideRate = overrideRate;
+    this.discountPct = discountPct;
+}
+```
+
+Because `validateXor` has already run against the same two values before `updateRates` is called, the
+pair is guaranteed to be "exactly one set" — so assigning both fields verbatim is what actually
+switching from one to the other requires: it clears the old field rather than leaving it stale. The
+test that pins this down, `switchesFromRateToDiscount`, asserts `$.overrideRate` **does not exist**
+in the response after a discount-only update — an assertion that a "set whichever field was sent"
+mutator would fail while every other assertion in the same test still passed, which is what makes this
+class of bug easy to miss without a test written specifically to catch it.
+
+### Lesson
+
+For any field pair under a mutual-exclusion invariant, a partial-update mutator must treat the update
+as "replace the whole invariant-bearing group," not "patch whichever member was mentioned" — the
+group, not the field, is the unit of assignment. Request-level validation of the *incoming* values is
+necessary but not sufficient; it says nothing about what the *stored* row looks like after a
+selectively-applied write. Whenever a task both validates two values and persists them, the
+regression test needs to assert on the field that update did *not* ask to change, in addition to the
+field it did — that is the only way to catch a mutator that quietly leaves the old value behind.
