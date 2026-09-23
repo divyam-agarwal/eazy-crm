@@ -127,6 +127,32 @@ class CustomerVisibilityTest extends IntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    /**
+     * A search predicate composes INSIDE the Specification handed to CustomerVisibility.page,
+     * so it must not become a way around assigned_to scoping. See task-3-report.md Step 8 for
+     * proof this assertion actually bites (bypassing CustomerVisibility turns it red).
+     */
+    @Test
+    void searchDoesNotSurfaceCustomersOutsideTheCallersVisibility() throws Exception {
+        UUID assignee = seedUser(UserStatus.ACTIVE);
+        String body = """
+                {"businessName":"Shri Ram Traders","stateCode":"27","source":"MANUAL","assignedTo":"%s"}""".formatted(assignee);
+        mvc.perform(post("/api/v1/customers")
+                        .header(AUTH, bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
+
+        // The owner can see it; a SALES_EXEC it is not assigned to must not, and adding a search
+        // predicate must not become a way around that.
+        mvc.perform(get("/api/v1/customers?q=ram").header(AUTH, bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/v1/customers?q=ram").header(AUTH, bearer(execAToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
     /** The active filter must still work after findByActive is deleted. */
     @Test
     void activeFilterStillWorksForAnOwner() throws Exception {
