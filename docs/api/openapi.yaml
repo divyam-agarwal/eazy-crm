@@ -741,6 +741,13 @@ paths:
         required: false
         schema:
           type: boolean
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 0
       - description: Zero-based page index (0..N)
         in: query
         name: page
