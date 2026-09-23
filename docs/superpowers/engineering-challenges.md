@@ -7232,3 +7232,70 @@ mass-fix them inline (that buries the current change's diff) nor to weaken the a
 the point) — it is to grandfather them explicitly, by name, with a reason, in the same
 `LEGACY_*`-baseline style this repo already uses (`OpenApiRequiredFieldsTest.LEGACY_UNANNOTATED`), and
 let a human rule on whether each one gets fixed now or tracked separately.
+
+## Challenge 110 — A source-inspection guard's own reference implementation would have failed red on the code it was meant to protect
+
+**Phase:** Implementation (F1a Task 7 — the `fieldCodes` regression guard)
+
+### The problem
+
+`MasterDataErrorCodesTest` is a source-inspection test (deliberately not ArchUnit, which cannot see
+constructor arguments): it regexes every `new ValidationException(...)`/`new ConflictException(...)`
+call in five master-data service files and asserts the argument text carries a quoted
+`SCREAMING_SNAKE` reason code. The reference implementation's `carriesACode` check was
+`args.contains("_") && args.matches("(?s).*\"[A-Z][A-Z0-9_]+\".*")`, checked directly against
+`m.group(2)` (the text between the constructor's parens).
+
+Running that exact check against the current (already-correct) codebase failed on the very first
+run, in `ProductService.validate`:
+`ProductService.java: new ValidationException(errors, codes) ==> expected: <true> but was: <false>`.
+`ProductService` builds two `Map<String,String>` locals (`errors`, `codes`) across several `if`
+blocks — each populating `codes.put("hsnCode", "HSN_CODE_INVALID")` etc. — then throws
+`new ValidationException(errors, codes)`. The codes are real and every one is registered, but none of
+them are *text inside the throw statement's parens*: the regex only ever sees the two bare variable
+names, so `args.contains("_")` and the quoted-literal check both correctly report "no code" — the
+guard would have gone red on the first genuine no-mutation run, on code it exists to protect.
+
+### Why it's hard
+
+Two of the five guarded files use different call shapes for the same protected outcome: `CustomerService`,
+`PriceListService`, `PriceListItemService`, and `AssignableUsers` throw with the code as a literal
+in the constructor call (`new ValidationException(field, message, "CODE")`); `ProductService` alone
+accumulates multiple fields' worth of errors and codes into two maps first, because it validates three
+independent fields in one call and a literal three-arg constructor can't express "N fields, N codes" in
+one throw. A regex over constructor-call text is blind to both what built the map arguments and where —
+by construction, since that's outside the parens it matches. The naive fix (also require the codes map
+to contain a code) is not answerable by regexing `args` alone; it requires looking *before* the throw
+statement in the same file for evidence the named map variable was actually populated.
+
+### Solution
+
+Split code detection into the two shapes actually present in this codebase. The **direct** shape
+(a literal in the call) is detected by taking the *last* quoted string literal anywhere in the
+constructor arguments and checking it looks like `SCREAMING_SNAKE` — last, not "any", so an
+all-caps message quoted earlier in the same call is never mistaken for a code (this is also the R2
+tightening: the brief's original `.matches(".*\"[A-Z][A-Z0-9_]+\".*")` would accept a code-shaped
+literal anywhere in the args, including a coincidentally all-caps *message*). The **accumulator**
+shape (no literal at all in the call) takes the final bare-identifier argument and searches the file
+text *before* the throw statement for `<thatIdentifier>.put(key, "CODE")`, treating any codes found
+there as this throw site's codes. Verified empirically, before relying on file-wide (not
+method-scoped) search being safe: grepped all five guarded files for any quoted string of 4+
+uppercase/underscore characters and confirmed every single one is a genuine registered error code —
+so there is currently no other `SCREAMING_SNAKE`-shaped literal that file-level search could
+misattribute. `everyCodeThrownIsRegistered` reuses the same two-shape extraction (rather than only
+scanning `m.group(2)` as the brief did), so accumulator-shape codes like `HSN_CODE_INVALID` are
+registry-checked too, not silently skipped the way the brief's version would have skipped them.
+
+### Lesson
+
+A source-inspection guard's own reference/example implementation is not proof it works — it has to be
+run against the real codebase before the "expected: PASS, green on first run" step is taken on faith,
+exactly like the "three mandatory mutations" step this task also required. Here the failure showed up
+immediately (a `contains("_")` and quoted-literal check just isn't expressive enough to describe "built
+across three `if` blocks into a map, then thrown"), but a subtler version of the same mismatch — a
+regex whose capture group scope doesn't span where the real evidence lives — could just as easily pass
+by accident on a codebase that happens not to exercise the gap yet, then go vacuously green forever
+once it does. The fix generalizes past this one test: whenever a guard's "evidence" and its "capture
+window" are two different spans of source (constructor args vs. the whole enclosing method), check the
+capture window is wide enough for every call *shape* actually present, not just the shape the guard's
+author happened to write the example against.
