@@ -7472,3 +7472,181 @@ bound the moment a `max` is added to a previously bare `@NotBlank` field. If a f
 pattern and a springdoc customizer isn't worth adding for one property, the one-line
 `@Size(min = 1, max = N)` spelling is the cheaper fix and should be treated as the default whenever
 `@NotBlank` and `@Size` land on the same field together.
+
+---
+
+## Challenge 113 — A plan's stated failure mechanism for a flattened `cb.or(...)` was wrong, and the correct one fails closed rather than open
+
+**Phase:** Implementation (F1a Task 3 — substring search on the customer list)
+
+### The problem
+
+`CustomerSpecifications.filter(active, q)` builds a name-or-gstin substring match as
+`cb.or(cb.like(lower(businessName), pattern), cb.like(lower(gstin), pattern))`, pushed into the same
+`List<Predicate> ps` that also carries the `active` filter, then combined as
+`cb.and(ps.toArray(...))`. The plan that specified this task claimed, in the task brief, in a code
+comment the implementer was told to write verbatim, and in the commit message of d7c5fe3, that
+flattening the OR into two separate `ps.add(...)` calls (one per `cb.like`) would turn
+`active=true AND (name OR gstin)` into `(active AND name) OR gstin` — "leaking deactivated rows." That
+claim is false, and the implementer's own test run proved it false on the first attempt: the
+regression test's flattening mutation failed via `active AND name AND gstin` evaluating to nothing
+useful for a name-only search, not via any deactivated row leaking through.
+
+### Why it's hard
+
+The claimed mechanism sounds plausible only if `cb.or`/`ps.add` were building free-form boolean text
+that a rewrite could reassociate under SQL operator precedence (`AND` binds tighter than `OR`, so a
+flattened `a AND b OR c` really would parse as `(a AND b) OR c` in raw SQL). But this is the JPA
+Criteria API, not string SQL: `cb.and(ps.toArray(...))` doesn't parse anything — it takes each already
+-built `Predicate` object in the array and ANDs them together explicitly, as an object tree, before any
+SQL is ever generated. There is no operator-precedence question available to get wrong. Flattening the
+OR does something different: it changes `ps` from `[active, (name OR gstin)]` to
+`[active, name, gstin]`, and `cb.and` on three elements still ANDs all three — degrading OR into AND,
+not degrading AND into OR. Since `gstin` is NULL on most rows and `LOWER(NULL) LIKE pattern` is never
+true in SQL, a flattened three-predicate AND requiring `gstin LIKE pattern` returns nothing for a
+name-only search that doesn't also happen to match a real gstin. The bug is real and the regression
+test correctly catches it — but a bug that makes a search return *nothing* is the opposite of the
+described risk of a search that returns *too much including deactivated rows*.
+
+### The solution
+
+Verified the actual mechanism by reading `cb.and(ps.toArray(...))` directly (an explicit predicate-tree
+API call, not text needing reparsing) and by reproducing the mutation: flattening the OR and rerunning
+the test fails via an unsatisfiable three-way AND, not via a leaked deactivated row. Recorded the
+correct mechanism as an inline comment directly above the `cb.or(...)` call in
+`CustomerSpecifications.java` (the line `git blame` actually sends a reader to), rather than trying to
+rewrite the false version out of history: d7c5fe3's commit message still carries the incorrect
+rationale, and rewriting a three-commits-back message would need an interactive rebase this environment
+doesn't support, for a prose fix not worth that risk. The code comment and this entry are now the
+canonical correction; d7c5fe3's message is not to be trusted.
+
+### Lesson
+
+"This flattening would leak rows" and "this flattening would hide rows" are opposite failure directions
+that both sound like plausible things to say about a broken boolean composition, and the difference
+between them hinges entirely on whether the underlying API builds an explicit object tree (JPA Criteria,
+here) or reparses text under an operator-precedence grammar (raw SQL, string-concatenated queries,
+hand-rolled boolean DSLs). Before writing "flattening X changes the semantics to Y" into a plan, a brief,
+a code comment, or a commit message, run the actual mutation and read the actual failure — a plausible-
+sounding mechanism that nobody ran is exactly the kind of claim that gets copied verbatim into three
+places (a comment, a test rationale, a commit body) before anyone notices it's backwards. Once a false
+mechanism is committed to history in a place that can't cheaply be rewritten, the fix is not to chase it
+through every copy but to plant the correct version at the one place future readers actually look
+(`git blame` on the line in question) and record the correction where it will outlive any one commit.
+
+---
+
+## Challenge 114 — Springdoc's advice-level `@ApiResponse` merges onto every operation, not only the ones that can throw the exception
+
+**Phase:** Implementation (F1a Task 3 — the first `@Size` on a `@RequestParam`)
+
+### The problem
+
+Adding `@Size(max = 100)` to the customer list's `q` parameter needed a new
+`@ExceptionHandler(ConstraintViolationException.class)` in `ApiExceptionHandler`, since Spring's
+built-in handling for a failed `@Validated` method-parameter constraint returns a bare
+`ProblemDetail`-shaped body, not this API's `{error:{code,message,fields,fieldCodes}}` envelope
+(Challenge 84/F0b established that envelope as universal). The obvious way to document the new 400 was
+the same way the other five handlers on `ApiExceptionHandler` already document theirs: an
+`@ApiResponse(responseCode = "400", ...)` annotation directly on the new handler method. That would have
+been wrong here, for the opposite reason Challenge 84 found a *different* exception's identical-looking
+annotation was silently dropped: springdoc's advice-scanning does not scope a handler's `@ApiResponse` to
+the operations that could actually throw that specific exception — for any exception type it isn't
+already committed to (which is everything except the one exception Spring's own MVC contract preempts,
+per Challenge 84), it merges the annotation onto **every** operation in the generated document. Adding
+it directly to the new `ConstraintViolationException` handler would have documented a 400 on roughly 30
+unrelated endpoints that have no `@Size`-constrained parameter and cannot throw this exception at all —
+corrupting their contracts in the same change that was supposed to add one accurate 400.
+
+### Why it's hard
+
+Challenge 84 already established that springdoc's advice-merging behaviour for `@ApiResponse` is not
+"annotation present therefore annotation appears, scoped correctly" — but the failure mode found there
+was under-application (silent drop) for one specific exception type. This task's risk was the mirror
+image: over-application (global merge, unscoped) for every *other* exception type, discovered before
+committing rather than after, only because the existing `ErrorResponsesCustomizer` bean was the reason
+to check springdoc's advice-merging semantics at all rather than trust the annotation's apparent
+locality. Nothing about the five existing per-exception `@ApiResponse`s on `ApiExceptionHandler` hints
+at this: `MethodArgumentNotValidException`'s handler is scoped correctly today only because
+`ErrorResponsesCustomizer` overrides springdoc's default behaviour for it too, not because advice-level
+annotations are naturally operation-scoped.
+
+### The solution
+
+Did not add an `@ApiResponse` to the new `ConstraintViolationException` handler at all. Instead,
+extended the existing `ErrorResponsesCustomizer` (a `GlobalOpenApiCustomizer` that runs after springdoc
+builds the operation graph and already knows, per-operation, which ones have a constrained parameter or
+a request body) to add the 400 documentation only to operations that `isConstrained`/`hasRequestBody`
+actually covers — the same scoped mechanism Challenge 84 built to close the *other* gap. One customizer
+now correctly handles both directions: it supplies documentation springdoc drops for one exception type,
+and it is the only place that adds 400/429 at all, so no handler-level `@ApiResponse` is ever in a
+position to either under- or over-apply.
+
+### Lesson
+
+Springdoc's advice-level `@ApiResponse` behaviour has two distinct failure modes depending on which
+exception it's attached to, and both are silent: for an exception Spring's own MVC contract already
+owns, the annotation is dropped everywhere (Challenge 84); for every other exception, it is merged
+everywhere, regardless of which operations can actually produce it. Neither failure mode announces
+itself — there is no warning for either the drop or the over-merge, and both look, from the annotation
+site, like an ordinary per-handler `@ApiResponse` identical to its siblings. Once a codebase has
+established a scoped `GlobalOpenApiCustomizer` as the actual source of truth for error-response
+documentation (as this one has, since Challenge 84), any *new* exception handler should route its
+documentation through that same customizer rather than through a fresh per-handler annotation — the
+annotation's correctness now depends on which exception type it names, and that dependency is not
+visible by reading the handler in isolation.
+
+---
+
+## Challenge 115 — Asserting a response's status code alone cannot detect that the constraint behind it has gone inert
+
+**Phase:** Implementation (F1a Task 4 — runtime `@Size` enforcement on product and price-list search)
+
+### The problem
+
+`CustomerControllerTest` already had a runtime test proving an over-long `q` is rejected at 400 with
+the app's standard error envelope; the equivalent tests for products and price lists existed only as
+OpenAPI-schema inspections (asserting the generated spec's `maxLength`), which cannot detect whether the
+constraint is actually enforced at request time — springdoc emits `maxLength` from the `@Size`
+annotation regardless of whether the controller also carries the `@Validated` needed to make Spring
+evaluate that constraint on a plain `@RequestParam`. Adding the missing runtime tests and proving them
+by deleting `@Validated` (the standard "does this test actually test the feature" mutation this repo
+requires) surfaced a sharper problem than the one being tested for: with `@Validated` removed, the
+response **status was still 400**. A status-only assertion (`.andExpect(status().isBadRequest())`)
+would have passed on the mutated, broken code exactly as it passes on the correct code — because Spring's
+built-in `HandlerMethodValidationException` machinery fires independently of `@Validated` for some
+constraint shapes and also produces a 400, just with an **empty body** instead of this API's envelope.
+
+### Why it's hard
+
+The mutation was written to prove "the runtime test catches what the OpenAPI schema test cannot" — and
+it does, but not for the reason expected going in. The assumption was that removing `@Validated` would
+make the constraint vanish entirely (some other status code, or no rejection at all), which a
+status-code assertion would have caught. Instead Spring has more than one independent path to a 400 for
+a malformed request parameter, and only one of those paths (the app's own `@Validated` +
+`ConstraintViolationException` + `ApiExceptionHandler` chain) produces the application's error envelope;
+the other produces a structurally different, effectively empty body under the same status code. A test
+that only inspects the status number cannot distinguish "the constraint fired correctly" from "some
+unrelated Spring machinery produced the same number by coincidence" — the two are indistinguishable at
+that level of assertion, and the mutation that was supposed to demonstrate the test's value came within
+one assertion choice of demonstrating the opposite.
+
+### The solution
+
+Both new runtime tests assert the full error envelope — `code`, `fieldCodes` containing `SIZE` for the
+right field — not just `status().isBadRequest()`. Run against the `@Validated`-deleted mutation, the
+envelope assertion fails (the body has no `error.fieldCodes` at all) while a bare status assertion would
+have passed, which is the empirical proof that envelope-level assertion is the only form of this test
+that measures the thing it claims to.
+
+### Lesson
+
+For any check whose real requirement is "the request was rejected *by this specific validation path,
+in this specific way*," the response status code is necessary evidence but not sufficient evidence,
+because a framework can reach the same status code through an entirely different, weaker mechanism that
+happens to share the number. This generalizes past HTTP: whenever multiple independent code paths can
+produce the same coarse-grained outward signal (a status code, an exit code, a boolean return, a log
+line's severity), a test asserting only that coarse signal is vulnerable to exactly the "looks covered,
+covers nothing" failure this task's own mutation nearly fell into — the fix is always to assert on the
+most specific artifact the correct path is uniquely responsible for producing (here, the envelope
+shape), not the most convenient one to check.
