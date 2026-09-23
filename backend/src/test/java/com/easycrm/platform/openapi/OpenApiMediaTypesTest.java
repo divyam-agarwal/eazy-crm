@@ -173,36 +173,36 @@ class OpenApiMediaTypesTest {
      * operation, so a customizer that added both unconditionally to every operation in the document would
      * still pass it.
      *
-     * <p>{@code GET /api/v1/products} is both body-less (no request payload on a list GET) and
-     * parameter-less in the validated sense (only {@code active}, a plain boolean with no size/pattern
+     * <p>{@code GET /api/v1/orders} is both body-less (no request payload on a list GET) and
+     * parameter-less in the validated sense ({@code status} and {@code customerId} carry no size/pattern
      * constraint), and outside every configured rate-limit policy (RateLimitProperties covers only
-     * /public/q/* and /api/v1/auth/**). It replaces {@code GET /api/v1/customers} as the negative example
-     * here: F1a gave that endpoint a {@code @Size}-constrained {@code q} query parameter, so it now
-     * legitimately documents 400 via {@code ConstraintViolationException} even though it still has no
-     * request body -- see the assertion on it below, which is now a *positive* case for the same reason
-     * {@code POST /api/v1/customers} is: a real mechanism that customizer-scoping must not omit. {@code
-     * POST /api/v1/customers} isolates the body/rate-limit conditions from each other: it has a body (so
-     * 400 is expected) but is not rate-limited (so 429 must still be absent), proving the customizer's
-     * body and rate-limit gates are independent rather than one masking the other.
+     * /public/q/* and /api/v1/auth/**). It replaces {@code GET /api/v1/products} as the negative example
+     * here: F1a Task 4 gave that endpoint a {@code @Size}-constrained {@code q} query parameter too (as
+     * Task 3 already had for customers), so it now legitimately documents 400 via
+     * {@code ConstraintViolationException} even though it still has no request body -- see the assertion
+     * on it below, which is now a *positive* case for the same reason {@code POST /api/v1/customers} is: a
+     * real mechanism that customizer-scoping must not omit. {@code POST /api/v1/customers} isolates the
+     * body/rate-limit conditions from each other: it has a body (so 400 is expected) but is not
+     * rate-limited (so 429 must still be absent), proving the customizer's body and rate-limit gates are
+     * independent rather than one masking the other.
      */
     @Test
     void errorResponsesAreScopedToWhereTheyCanOccur() throws Exception {
-        Map<?, ?> unconstrainedListResponses =
-                (Map<?, ?>) get("/api/v1/products").get("responses");
+        Map<?, ?> unconstrainedListResponses = (Map<?, ?>) get("/api/v1/orders").get("responses");
         assertFalse(
                 unconstrainedListResponses.containsKey("400"),
-                "GET /api/v1/products has no body and no constrained parameter; must not document 400");
+                "GET /api/v1/orders has no body and no constrained parameter; must not document 400");
         assertFalse(
                 unconstrainedListResponses.containsKey("429"),
-                "GET /api/v1/products is not under a rate-limit policy; must not document 429");
+                "GET /api/v1/orders is not under a rate-limit policy; must not document 429");
 
-        Map<?, ?> searchListResponses = (Map<?, ?>) get("/api/v1/customers").get("responses");
+        Map<?, ?> searchListResponses = (Map<?, ?>) get("/api/v1/products").get("responses");
         assertTrue(
                 searchListResponses.containsKey("400"),
-                "GET /api/v1/customers has a @Size-constrained q parameter; must document 400");
+                "GET /api/v1/products has a @Size-constrained q parameter; must document 400");
         assertFalse(
                 searchListResponses.containsKey("429"),
-                "GET /api/v1/customers is not under a rate-limit policy; must not document 429");
+                "GET /api/v1/products is not under a rate-limit policy; must not document 429");
 
         Map<?, ?> createResponses = (Map<?, ?>) post("/api/v1/customers").get("responses");
         assertTrue(createResponses.containsKey("400"), "POST /api/v1/customers has a @Valid body; must document 400");
