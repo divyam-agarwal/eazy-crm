@@ -7142,4 +7142,568 @@ generalizable check: before wiring a new trigger into an existing global event/g
 of that event for the words the codebase already uses for "this route opts out" (`exempt`, `handle`,
 `survivesSignOut`, and equivalents) — not just "does this event already fire correctly today," but "does
 every listener already agree with every documented exemption, under every trigger that can now reach
-it, not only the ones that could reach it when the listener was written."
+it, not only the ones that could reach it when the listener was written.
+
+---
+
+## Challenge 109 — A negative OpenAPI-documentation test named a concrete "unconstrained" endpoint, and the next feature to touch that endpoint broke an unrelated test
+
+**Phase:** Implementation (F1a Task 4 — product and price-list search)
+
+### The problem
+
+`OpenApiMediaTypesTest.errorResponsesAreScopedToWhereTheyCanOccur` proved
+`ErrorResponsesCustomizer` does not over-document 400/429 on routes that cannot produce them, by
+picking a few concrete "definitely unconstrained" or "definitely constrained" endpoints and asserting
+their generated spec agrees. F1a Task 3 had already made this test point at `GET /api/v1/products` as
+its negative ("no 400") witness (replacing `GET /api/v1/customers`, which Task 3 itself had just given
+a `@Size`-constrained `q` parameter, making it *legitimately* document 400 and no longer usable as the
+negative example). Task 4 then gave `/api/v1/products` its own `@Size`-constrained `q` for the same
+reason — and the test failed, on a file nowhere near the four files the brief listed for this task:
+`OpenApiMediaTypesTest > errorResponsesAreScopedToWhereTheyCanOccur() FAILED`, asserting `GET
+/api/v1/products has no body and no constrained parameter; must not document 400`, which was no longer
+true.
+
+A first fix round repointed the witness a second time, to `GET /api/v1/orders`, and stopped there. On
+review (R17) that fix was rejected as whack-a-mole: it treated the symptom (which route is currently
+safe to hardcode) rather than the structural cause (the test hardcodes a route at all). The supply of
+routes with zero constrained parameters is finite and shrinking as F1a/F1b/F2 add search and validation
+to more list endpoints — two repoints in two consecutive tasks was a trend, not a coincidence, and nothing
+stops a third.
+
+### Why it's hard
+
+The test is correct and necessary — the positive-only check (`authOperationsDocument429...`) cannot
+distinguish a customizer that scopes correctly from one that adds 400/429 to every operation
+unconditionally, so *some* negative evidence is genuinely required. But sampling a handful of concrete
+routes as stand-ins for "the general rule holds" conflates two different things: the invariant
+(`documents400 == hasRequestBody || hasConstrainedParameter`, which is permanent) and the witnesses
+(which routes currently have which shape, which changes every time a feature adds a parameter). Nothing
+about that coupling is visible from the diff of the feature that breaks it: Task 4's brief touched
+`ProductController`, `ProductService`, `ProductSpecifications`, `ProductRepository` and their tests —
+none of those files, or the brief that enumerated them, have any apparent connection to an OpenAPI test
+in `com.easycrm.platform.openapi`. The dependency is real (the test's choice of witness route is
+coupled to every other feature's choice of which routes to add constrained parameters to) but was
+encoded only in prose inside the test's own Javadoc, which a task brief scoped to "product and
+price-list search" would have no reason to open. `./gradlew check`, not code review, is what actually
+catches it — and only because this repo runs the full suite rather than a package-scoped subset.
+
+### Solution
+
+Replaced the three sampled witnesses with one universal, derived assertion:
+`everyOperationDocuments400IffItCanProduceOne` walks every operation in the committed snapshot (not a
+named subset) and, for each one, recomputes `hasRequestBody || hasConstrainedParameter` by reading the
+same signal `ErrorResponsesCustomizer.hasConstrainedParameter`/`isConstrained` reads — a parameter
+schema's `maxLength`, `minLength` or `pattern` — then asserts the document's actual `400` presence
+equals that computed expectation, for all 78 operations (across 60 paths; 33 expecting a 400, 45 not) at
+once. The definition is deliberately copied
+from the customizer rather than reinvented, with a comment saying so explicitly: if the test's notion of
+"constrained" ever drifts from the producer's, that drift is the bug, not something to reconcile by
+picking a different definition. Kept two non-vacuity assertions (the walk saw at least one operation
+that must document 400, and at least one that must not) so a broken or short-circuited walk cannot pass
+silently — the same discipline this repo's other OpenAPI walker tests already apply. Ran the universal
+form against the current snapshot with an empty grandfather allowlist first, specifically to check for
+pre-existing divergences on endpoints unrelated to F1a: none were found, so the empty
+`LEGACY_400_SCOPING_EXEMPT` stayed empty rather than being pre-populated defensively.
+
+Proved the new assertion actually bites by mutating the production code, not the test: temporarily
+narrowed `ErrorResponsesCustomizer.isConstrained` to check only `pattern` (dropping the `maxLength`/
+`minLength` legs), regenerated the committed snapshot with `updateOpenApiSnapshot`, and reran the test.
+It failed red, naming exactly the three `q`-bearing list operations as violations
+(`GET /api/v1/customers`, `GET /api/v1/price-lists`, `GET /api/v1/products`, each
+`documents400=false but hasRequestBody=false hasConstrainedParameter=true`), then reverted both the
+customizer and the regenerated snapshot and confirmed green again.
+
+### Lesson
+
+A negative test that names a concrete "this one has no constraints" example is an early-warning system
+with a false-alarm rate proportional to how many future features can plausibly add a constraint to that
+exact route — every route in a growing CRUD API is a candidate for a `q`, a `status`, or a size limit
+sooner or later, and sampling three witnesses only delays the next collision. The first fix round's
+instinct — repoint the witness, document why in a comment — is a reasonable one-time patch but does not
+generalize: the correct fix, whenever the walker can express it, is to derive the negative (and
+positive) evidence from the same property the production code enforces, checked across every instance,
+rather than hardcoding any instance at all. That form is strictly stronger (it checks all 78 operations
+instead of 3) and immune to route churn (no future parameter addition anywhere in the API can
+invalidate it by changing what it happens to sample) — the only way to break it is for the snapshot and
+the customizer to actually disagree, which is exactly the bug class worth catching. When a universal
+derived form surfaces pre-existing violations on unrelated code, the correct move is still not to
+mass-fix them inline (that buries the current change's diff) nor to weaken the assertion (that defeats
+the point) — it is to grandfather them explicitly, by name, with a reason, in the same
+`LEGACY_*`-baseline style this repo already uses (`OpenApiRequiredFieldsTest.LEGACY_UNANNOTATED`), and
+let a human rule on whether each one gets fixed now or tracked separately.
+
+## Challenge 110 — A source-inspection guard's own reference implementation would have failed red on the code it was meant to protect
+
+**Phase:** Implementation (F1a Task 7 — the `fieldCodes` regression guard)
+
+### The problem
+
+`MasterDataErrorCodesTest` is a source-inspection test (deliberately not ArchUnit, which cannot see
+constructor arguments): it regexes every `new ValidationException(...)`/`new ConflictException(...)`
+call in five master-data service files and asserts the argument text carries a quoted
+`SCREAMING_SNAKE` reason code. The reference implementation's `carriesACode` check was
+`args.contains("_") && args.matches("(?s).*\"[A-Z][A-Z0-9_]+\".*")`, checked directly against
+`m.group(2)` (the text between the constructor's parens).
+
+Running that exact check against the current (already-correct) codebase failed on the very first
+run, in `ProductService.validate`:
+`ProductService.java: new ValidationException(errors, codes) ==> expected: <true> but was: <false>`.
+`ProductService` builds two `Map<String,String>` locals (`errors`, `codes`) across several `if`
+blocks — each populating `codes.put("hsnCode", "HSN_CODE_INVALID")` etc. — then throws
+`new ValidationException(errors, codes)`. The codes are real and every one is registered, but none of
+them are *text inside the throw statement's parens*: the regex only ever sees the two bare variable
+names, so `args.contains("_")` and the quoted-literal check both correctly report "no code" — the
+guard would have gone red on the first genuine no-mutation run, on code it exists to protect.
+
+### Why it's hard
+
+Two of the five guarded files use different call shapes for the same protected outcome: `CustomerService`,
+`PriceListService`, `PriceListItemService`, and `AssignableUsers` throw with the code as a literal
+in the constructor call (`new ValidationException(field, message, "CODE")`); `ProductService` alone
+accumulates multiple fields' worth of errors and codes into two maps first, because it validates three
+independent fields in one call and a literal three-arg constructor can't express "N fields, N codes" in
+one throw. A regex over constructor-call text is blind to both what built the map arguments and where —
+by construction, since that's outside the parens it matches. The naive fix (also require the codes map
+to contain a code) is not answerable by regexing `args` alone; it requires looking *before* the throw
+statement in the same file for evidence the named map variable was actually populated.
+
+### Solution
+
+Split code detection into the two shapes actually present in this codebase. The **direct** shape
+(a literal in the call) is detected by taking the *last* quoted string literal anywhere in the
+constructor arguments and checking it looks like `SCREAMING_SNAKE` — last, not "any", so an
+all-caps message quoted earlier in the same call is never mistaken for a code (this is also the R2
+tightening: the brief's original `.matches(".*\"[A-Z][A-Z0-9_]+\".*")` would accept a code-shaped
+literal anywhere in the args, including a coincidentally all-caps *message*). The **accumulator**
+shape (no literal at all in the call) takes the final bare-identifier argument and searches the file
+text *before* the throw statement for `<thatIdentifier>.put(key, "CODE")`, treating any codes found
+there as this throw site's codes. Verified empirically, before relying on file-wide (not
+method-scoped) search being safe: grepped all five guarded files for any quoted string of 4+
+uppercase/underscore characters and confirmed every single one is a genuine registered error code —
+so there is currently no other `SCREAMING_SNAKE`-shaped literal that file-level search could
+misattribute. `everyCodeThrownIsRegistered` reuses the same two-shape extraction (rather than only
+scanning `m.group(2)` as the brief did), so accumulator-shape codes like `HSN_CODE_INVALID` are
+registry-checked too, not silently skipped the way the brief's version would have skipped them.
+
+### Lesson
+
+A source-inspection guard's own reference/example implementation is not proof it works — it has to be
+run against the real codebase before the "expected: PASS, green on first run" step is taken on faith,
+exactly like the "three mandatory mutations" step this task also required. Here the failure showed up
+immediately (a `contains("_")` and quoted-literal check just isn't expressive enough to describe "built
+across three `if` blocks into a map, then thrown"), but a subtler version of the same mismatch — a
+regex whose capture group scope doesn't span where the real evidence lives — could just as easily pass
+by accident on a codebase that happens not to exercise the gap yet, then go vacuously green forever
+once it does. The fix generalizes past this one test: whenever a guard's "evidence" and its "capture
+window" are two different spans of source (constructor args vs. the whole enclosing method), check the
+capture window is wide enough for every call *shape* actually present, not just the shape the guard's
+author happened to write the example against.
+
+### Follow-up (fix round 1)
+
+Review caught that this lesson had not been fully applied to the guard's own helper:
+`codesFor` — the exact function this problem is about — had no direct test of its own. The three
+mutations in the task report proved it could return empty once, by hand, but nothing made that
+permanent; a future "simplification" of `codesFor` that always returned a code would have left all
+tests green forever, silently, which is the same failure class this whole guard exists to catch, one
+level up. Fixed by adding four direct unit tests of `codesFor` over synthetic inputs — both shapes,
+both directions (no-code / has-code) — calling the (still `private`) helper directly from within the
+same test class. Also added a sixth guarded file (`SortAllowlist`, `SORT_INVALID`, predating Tasks
+5/6 and simply missed the first time), tightened `SCREAMING_SNAKE` to require at least one
+underscore-separated group (`[A-Z][A-Z0-9]*(_[A-Z0-9]+)+`, closing a gap where a bare two-letter
+literal like `"OK"` would have read as a code), and anchored `everyCodeThrownIsRegistered` to the
+registry's actual table rows (`^| \`CODE\` |`) instead of a bare `contains("` + code + `")` — the
+Rules prose in `error-codes.md` itself backtick-quotes `CONFLICT`, `NOT_FOUND`, `SIZE`, `PATTERN`,
+`EMAIL`, and even the literal string `SCREAMING_SNAKE`, any of which the unanchored check would have
+accepted as "registered" if a thrown code ever coincided with one. None of this changes the Solution
+above — the two-shape split and the last-literal tightening stand as designed — it closes a gap
+one layer up: the guard's own core extraction function was, itself, an unguarded rule.
+
+---
+
+## Challenge 111 — A partial-update mutator that only sets the field the request supplied would let a stored row silently violate the XOR it just satisfied
+
+**Phase:** Implementation (F1a Task 8 — `PUT` a price-list item's rate)
+
+### The problem
+
+`PriceListItem` carries the same `overrideRate` / `discountPct` XOR as Challenge 14, but Task 8
+introduces the first *update* path (`PriceListItemService.update`), and an update to an existing
+invariant-bearing row is a different hazard than validating a fresh insert. The obvious way to write
+a rate-only mutator is "set whichever field the caller sent":
+
+```java
+public void updateRates(BigDecimal overrideRate, BigDecimal discountPct) {
+    if (overrideRate != null) this.overrideRate = overrideRate;
+    if (discountPct != null) this.discountPct = discountPct;
+}
+```
+
+That reads as conservative — "don't touch what wasn't asked about" — but it is exactly backwards for
+an XOR pair. A row created with `overrideRate=10` that receives `PUT {"discountPct":12}` (a request
+that, on its own, satisfies the XOR) would end up with **both** fields populated, because the old
+`overrideRate` is never cleared. The request-level validation (`validateXor`) passes — it only ever
+sees the two incoming values — while the row it produces violates the very rule that validation
+exists to enforce. The bug is invisible at the API boundary: the response DTO would still render
+correctly for whichever field the client just set, and the stale field would only surface later, to a
+different caller reading the row back.
+
+### The solution
+
+`updateRates` sets **both** fields unconditionally from the two request values, not just the one that
+was non-null:
+
+```java
+public void updateRates(BigDecimal overrideRate, BigDecimal discountPct) {
+    this.overrideRate = overrideRate;
+    this.discountPct = discountPct;
+}
+```
+
+Because `validateXor` has already run against the same two values before `updateRates` is called, the
+pair is guaranteed to be "exactly one set" — so assigning both fields verbatim is what actually
+switching from one to the other requires: it clears the old field rather than leaving it stale. The
+test that pins this down, `switchesFromRateToDiscount`, asserts `$.overrideRate` **does not exist**
+in the response after a discount-only update — an assertion that a "set whichever field was sent"
+mutator would fail while every other assertion in the same test still passed, which is what makes this
+class of bug easy to miss without a test written specifically to catch it.
+
+### Lesson
+
+For any field pair under a mutual-exclusion invariant, a partial-update mutator must treat the update
+as "replace the whole invariant-bearing group," not "patch whichever member was mentioned" — the
+group, not the field, is the unit of assignment. Request-level validation of the *incoming* values is
+necessary but not sufficient; it says nothing about what the *stored* row looks like after a
+selectively-applied write. Whenever a task both validates two values and persists them, the
+regression test needs to assert on the field that update did *not* ask to change, in addition to the
+field it did — that is the only way to catch a mutator that quietly leaves the old value behind.
+
+---
+
+## Challenge 112 — A brief's own test code for primary-contact demotion was broken by two independent, non-obvious library gotchas
+
+**Phase:** Implementation (F1a Task 9 — contact validation and primary-contact demotion)
+
+### The problem
+
+Task 9's brief specified the failing tests verbatim, including the repository method name
+`findByCustomerIdAndIsPrimaryTrue` and JsonPath assertions like
+`jsonPath("$[?(@.isPrimary == true)].length()").value(1)` and
+`jsonPath("$[?(@.isPrimary == true)][0].name").value("Suresh")`. Both looked like standard,
+copy-pasteable Spring Data / MockMvc idioms. Neither worked, for two unrelated reasons:
+
+1. `Contact`'s boolean field is `primary` (JavaBean getter `isPrimary()`). Spring Data's
+   derived-query parser resolves method name segments against the JPA entity's own property
+   metadata, not against getter spelling, so `findByCustomerIdAndIsPrimaryTrue` fails at context
+   startup with `PropertyReferenceException: No property 'isPrimary' found for type 'Contact'` — a
+   hard failure for the *whole test class* (`IllegalStateException` from context caching), not just
+   the demotion tests, which made the first symptom look like a mass regression rather than one bad
+   method name.
+2. With json-path 2.10.0's default provider, appending a function like `.length()` after an
+   indefinite filter path (`[?(...)]`) does **not** aggregate over the matched elements — it applies
+   the function to *each* matched element individually and wraps the per-element results in a list.
+   For two matching 8-property `Contact` JSON objects, `$[?(@.isPrimary == true)].length()` evaluates
+   to `[8, 8]` (each object's own key count), not `2` (the match count); for one match it evaluates to
+   `[8]`, not `1`. Similarly, indexing after a filter (`[?(...)][0].name`) evaluates to `[]` regardless
+   of how many elements match — chaining `[0]` onto an indefinite path doesn't resolve in this
+   provider. Verified by exercising `com.jayway.jsonpath.JsonPath.read(...)` directly, outside Spring,
+   against the exact dependency version and provider (`json-smart`) this project uses on
+   `testRuntimeClasspath`.
+
+Both defects were "unrelated" to the feature under test in the strict sense (neither is a bug in
+`ContactService`'s demotion logic), but both manifested as assertion/context failures that looked at
+first glance like implementation bugs, and a literal-minded implementation of the brief would either
+never compile (repository) or never go green even with correct demotion logic (JsonPath).
+
+### The solution
+
+1. Renamed the repository method to `findByCustomerIdAndPrimaryTrue`, matching the entity's actual
+   property name, and documented why in a Javadoc note on the method (the exact
+   `PropertyReferenceException` message, so a future reader hitting the same typo recognizes it
+   immediately instead of re-diagnosing from scratch).
+2. Replaced the filter+function idiom with two idioms that don't suffer the same defect: a Hamcrest
+   matcher applied directly to the filtered array itself (`jsonPath("$[?(@.isPrimary == true)]",
+   hasSize(1))`, no `.length()`), and a filter path ending in a property name without a trailing index
+   (`jsonPath("$[?(@.isPrimary == true)].name").value("Suresh")`) — Spring's
+   `JsonPathExpectationsHelper` transparently unwraps a single-element result list when the expected
+   value isn't itself a list, so this reads and behaves like a scalar comparison for the "exactly one
+   primary" case while still failing loudly (a multi-element list, not a scalar) when demotion hasn't
+   run yet.
+
+### Lesson
+
+A task brief's literal test code is a claim, not a guarantee, even when it comes with an explicit
+"these two should already pass, don't fix them" instruction — that instruction is itself evidence the
+author ran *something* resembling these tests, but not necessarily this exact dependency version and
+provider. When a freshly-appended test's *class* starts failing entirely (`IllegalStateException` /
+context-load failure) rather than the specific assertion you expect, suspect a bean-creation-time
+problem (a bad derived-query method name) before suspecting the business logic — Spring Data
+validates derived queries against the real entity metamodel, not the getter name, so any field with a
+boolean `isX()` getter is a trap for `findByXTrue()`-style method names. Separately, `[?(filter)]`
+composed with a trailing function or index is a well-known json-path sharp edge across providers and
+versions — the safe pattern is to assert directly on the filtered collection (`hasSize`, `contains`)
+rather than chaining `.length()` or `[0]` after it, and to verify any unfamiliar JsonPath expression
+against a two-line standalone reproduction before trusting it inside a full Spring context, where a
+wrong result reads as "my implementation is wrong" long before it reads as "my assertion is wrong."
+
+### Follow-up (fix round 1)
+
+Review flagged a third, quieter information-loss issue in the same task's generated
+`docs/api/openapi.yaml`: `ContactRequest.name` combines `@NotBlank` with `@Size(max = 255)` — the
+first field in this codebase to carry both on one property — and springdoc emitted `minLength: 0`
+for it instead of the `minLength: 1` a bare `@NotBlank` alone produces elsewhere (e.g.
+`CustomerRequest.businessName`). Runtime enforcement was never affected (`@NotBlank` still rejects
+blank values regardless of what the schema says), but the generated contract silently understated its
+own constraint — exactly the kind of gap a client-side-validation generator reading this schema alone
+would inherit.
+
+Fixed by stating the lower bound explicitly: `@NotBlank @Size(min = 1, max = 255) String name`. This
+restored `minLength: 1` in the regenerated schema with no other field's constraints shifting as a side
+effect (confirmed by re-diffing the full `ContactRequest` schema block, not just the `name` property).
+`@Size(min = 1)` is not a weakening of `@NotBlank`: `@NotBlank` remains strictly stronger, since it
+also rejects whitespace-only strings that `min = 1` alone would accept.
+
+**Lesson, extended:** when combining `@NotBlank` with `@Size` on the same field, always give `@Size`
+an explicit `min`, even though Bean Validation itself doesn't need it (`@NotBlank` already covers
+runtime correctness) — springdoc's schema derivation apparently prefers `@Size.min()` over inferring a
+floor from a co-located `@NotBlank`, so leaving `min` implicit silently drops the documented lower
+bound the moment a `max` is added to a previously bare `@NotBlank` field. If a future field needs this
+pattern and a springdoc customizer isn't worth adding for one property, the one-line
+`@Size(min = 1, max = N)` spelling is the cheaper fix and should be treated as the default whenever
+`@NotBlank` and `@Size` land on the same field together.
+
+---
+
+## Challenge 113 — A plan's stated failure mechanism for a flattened `cb.or(...)` was wrong, and the correct one fails closed rather than open
+
+**Phase:** Implementation (F1a Task 3 — substring search on the customer list)
+
+### The problem
+
+`CustomerSpecifications.filter(active, q)` builds a name-or-gstin substring match as
+`cb.or(cb.like(lower(businessName), pattern), cb.like(lower(gstin), pattern))`, pushed into the same
+`List<Predicate> ps` that also carries the `active` filter, then combined as
+`cb.and(ps.toArray(...))`. The plan that specified this task claimed, in the task brief, in a code
+comment the implementer was told to write verbatim, and in the commit message of d7c5fe3, that
+flattening the OR into two separate `ps.add(...)` calls (one per `cb.like`) would turn
+`active=true AND (name OR gstin)` into `(active AND name) OR gstin` — "leaking deactivated rows." That
+claim is false, and the implementer's own test run proved it false on the first attempt: the
+regression test's flattening mutation failed via `active AND name AND gstin` evaluating to nothing
+useful for a name-only search, not via any deactivated row leaking through.
+
+### Why it's hard
+
+The claimed mechanism sounds plausible only if `cb.or`/`ps.add` were building free-form boolean text
+that a rewrite could reassociate under SQL operator precedence (`AND` binds tighter than `OR`, so a
+flattened `a AND b OR c` really would parse as `(a AND b) OR c` in raw SQL). But this is the JPA
+Criteria API, not string SQL: `cb.and(ps.toArray(...))` doesn't parse anything — it takes each already
+-built `Predicate` object in the array and ANDs them together explicitly, as an object tree, before any
+SQL is ever generated. There is no operator-precedence question available to get wrong. Flattening the
+OR does something different: it changes `ps` from `[active, (name OR gstin)]` to
+`[active, name, gstin]`, and `cb.and` on three elements still ANDs all three — degrading OR into AND,
+not degrading AND into OR. Since `gstin` is NULL on most rows and `LOWER(NULL) LIKE pattern` is never
+true in SQL, a flattened three-predicate AND requiring `gstin LIKE pattern` returns nothing for a
+name-only search that doesn't also happen to match a real gstin. The bug is real and the regression
+test correctly catches it — but a bug that makes a search return *nothing* is the opposite of the
+described risk of a search that returns *too much including deactivated rows*.
+
+### The solution
+
+Verified the actual mechanism by reading `cb.and(ps.toArray(...))` directly (an explicit predicate-tree
+API call, not text needing reparsing) and by reproducing the mutation: flattening the OR and rerunning
+the test fails via an unsatisfiable three-way AND, not via a leaked deactivated row. Recorded the
+correct mechanism as an inline comment directly above the `cb.or(...)` call in
+`CustomerSpecifications.java` (the line `git blame` actually sends a reader to), rather than trying to
+rewrite the false version out of history: d7c5fe3's commit message still carries the incorrect
+rationale, and rewriting a three-commits-back message would need an interactive rebase this environment
+doesn't support, for a prose fix not worth that risk. The code comment and this entry are now the
+canonical correction; d7c5fe3's message is not to be trusted.
+
+### Lesson
+
+"This flattening would leak rows" and "this flattening would hide rows" are opposite failure directions
+that both sound like plausible things to say about a broken boolean composition, and the difference
+between them hinges entirely on whether the underlying API builds an explicit object tree (JPA Criteria,
+here) or reparses text under an operator-precedence grammar (raw SQL, string-concatenated queries,
+hand-rolled boolean DSLs). Before writing "flattening X changes the semantics to Y" into a plan, a brief,
+a code comment, or a commit message, run the actual mutation and read the actual failure — a plausible-
+sounding mechanism that nobody ran is exactly the kind of claim that gets copied verbatim into three
+places (a comment, a test rationale, a commit body) before anyone notices it's backwards. Once a false
+mechanism is committed to history in a place that can't cheaply be rewritten, the fix is not to chase it
+through every copy but to plant the correct version at the one place future readers actually look
+(`git blame` on the line in question) and record the correction where it will outlive any one commit.
+
+---
+
+## Challenge 114 — Springdoc's advice-level `@ApiResponse` merges onto every operation, not only the ones that can throw the exception
+
+**Phase:** Implementation (F1a Task 3 — the first `@Size` on a `@RequestParam`)
+
+### The problem
+
+Adding `@Size(max = 100)` to the customer list's `q` parameter needed a new
+`@ExceptionHandler(ConstraintViolationException.class)` in `ApiExceptionHandler`, since Spring's
+built-in handling for a failed `@Validated` method-parameter constraint returns a bare
+`ProblemDetail`-shaped body, not this API's `{error:{code,message,fields,fieldCodes}}` envelope
+(Challenge 84/F0b established that envelope as universal). The obvious way to document the new 400 was
+the same way the other five handlers on `ApiExceptionHandler` already document theirs: an
+`@ApiResponse(responseCode = "400", ...)` annotation directly on the new handler method. That would have
+been wrong here, for the opposite reason Challenge 84 found a *different* exception's identical-looking
+annotation was silently dropped: springdoc's advice-scanning does not scope a handler's `@ApiResponse` to
+the operations that could actually throw that specific exception — for any exception type it isn't
+already committed to (which is everything except the one exception Spring's own MVC contract preempts,
+per Challenge 84), it merges the annotation onto **every** operation in the generated document. Adding
+it directly to the new `ConstraintViolationException` handler would have documented a 400 on roughly 30
+unrelated endpoints that have no `@Size`-constrained parameter and cannot throw this exception at all —
+corrupting their contracts in the same change that was supposed to add one accurate 400.
+
+### Why it's hard
+
+Challenge 84 already established that springdoc's advice-merging behaviour for `@ApiResponse` is not
+"annotation present therefore annotation appears, scoped correctly" — but the failure mode found there
+was under-application (silent drop) for one specific exception type. This task's risk was the mirror
+image: over-application (global merge, unscoped) for every *other* exception type, discovered before
+committing rather than after, only because the existing `ErrorResponsesCustomizer` bean was the reason
+to check springdoc's advice-merging semantics at all rather than trust the annotation's apparent
+locality. Nothing about the five existing per-exception `@ApiResponse`s on `ApiExceptionHandler` hints
+at this: `MethodArgumentNotValidException`'s handler is scoped correctly today only because
+`ErrorResponsesCustomizer` overrides springdoc's default behaviour for it too, not because advice-level
+annotations are naturally operation-scoped.
+
+### The solution
+
+Did not add an `@ApiResponse` to the new `ConstraintViolationException` handler at all. Instead,
+extended the existing `ErrorResponsesCustomizer` (a `GlobalOpenApiCustomizer` that runs after springdoc
+builds the operation graph and already knows, per-operation, which ones have a constrained parameter or
+a request body) to add the 400 documentation only to operations that `isConstrained`/`hasRequestBody`
+actually covers — the same scoped mechanism Challenge 84 built to close the *other* gap. One customizer
+now correctly handles both directions: it supplies documentation springdoc drops for one exception type,
+and it is the only place that adds 400/429 at all, so no handler-level `@ApiResponse` is ever in a
+position to either under- or over-apply.
+
+### Lesson
+
+Springdoc's advice-level `@ApiResponse` behaviour has two distinct failure modes depending on which
+exception it's attached to, and both are silent: for an exception Spring's own MVC contract already
+owns, the annotation is dropped everywhere (Challenge 84); for every other exception, it is merged
+everywhere, regardless of which operations can actually produce it. Neither failure mode announces
+itself — there is no warning for either the drop or the over-merge, and both look, from the annotation
+site, like an ordinary per-handler `@ApiResponse` identical to its siblings. Once a codebase has
+established a scoped `GlobalOpenApiCustomizer` as the actual source of truth for error-response
+documentation (as this one has, since Challenge 84), any *new* exception handler should route its
+documentation through that same customizer rather than through a fresh per-handler annotation — the
+annotation's correctness now depends on which exception type it names, and that dependency is not
+visible by reading the handler in isolation.
+
+---
+
+## Challenge 115 — Asserting a response's status code alone cannot detect that the constraint behind it has gone inert
+
+**Phase:** Implementation (F1a Task 4 — runtime `@Size` enforcement on product and price-list search)
+
+### The problem
+
+`CustomerControllerTest` already had a runtime test proving an over-long `q` is rejected at 400 with
+the app's standard error envelope; the equivalent tests for products and price lists existed only as
+OpenAPI-schema inspections (asserting the generated spec's `maxLength`), which cannot detect whether the
+constraint is actually enforced at request time — springdoc emits `maxLength` from the `@Size`
+annotation regardless of whether the controller also carries the `@Validated` needed to make Spring
+evaluate that constraint on a plain `@RequestParam`. Adding the missing runtime tests and proving them
+by deleting `@Validated` (the standard "does this test actually test the feature" mutation this repo
+requires) surfaced a sharper problem than the one being tested for: with `@Validated` removed, the
+response **status was still 400**. A status-only assertion (`.andExpect(status().isBadRequest())`)
+would have passed on the mutated, broken code exactly as it passes on the correct code — because Spring's
+built-in `HandlerMethodValidationException` machinery fires independently of `@Validated` for some
+constraint shapes and also produces a 400, just with an **empty body** instead of this API's envelope.
+
+### Why it's hard
+
+The mutation was written to prove "the runtime test catches what the OpenAPI schema test cannot" — and
+it does, but not for the reason expected going in. The assumption was that removing `@Validated` would
+make the constraint vanish entirely (some other status code, or no rejection at all), which a
+status-code assertion would have caught. Instead Spring has more than one independent path to a 400 for
+a malformed request parameter, and only one of those paths (the app's own `@Validated` +
+`ConstraintViolationException` + `ApiExceptionHandler` chain) produces the application's error envelope;
+the other produces a structurally different, effectively empty body under the same status code. A test
+that only inspects the status number cannot distinguish "the constraint fired correctly" from "some
+unrelated Spring machinery produced the same number by coincidence" — the two are indistinguishable at
+that level of assertion, and the mutation that was supposed to demonstrate the test's value came within
+one assertion choice of demonstrating the opposite.
+
+### The solution
+
+Both new runtime tests assert the full error envelope — `code`, `fieldCodes` containing `SIZE` for the
+right field — not just `status().isBadRequest()`. Run against the `@Validated`-deleted mutation, the
+envelope assertion fails (the body has no `error.fieldCodes` at all) while a bare status assertion would
+have passed, which is the empirical proof that envelope-level assertion is the only form of this test
+that measures the thing it claims to.
+
+### Lesson
+
+For any check whose real requirement is "the request was rejected *by this specific validation path,
+in this specific way*," the response status code is necessary evidence but not sufficient evidence,
+because a framework can reach the same status code through an entirely different, weaker mechanism that
+happens to share the number. This generalizes past HTTP: whenever multiple independent code paths can
+produce the same coarse-grained outward signal (a status code, an exit code, a boolean return, a log
+line's severity), a test asserting only that coarse signal is vulnerable to exactly the "looks covered,
+covers nothing" failure this task's own mutation nearly fell into — the fix is always to assert on the
+most specific artifact the correct path is uniquely responsible for producing (here, the envelope
+shape), not the most convenient one to check.
+
+---
+
+## Challenge 116 — A missing-`ORDER BY` regression test passed even with the fix removed, because a small unwritten-to table replays insertion order by luck
+
+**Phase:** Review fix wave (final whole-branch review, Fix 1 — the default sort promised by spec
+§1.2 and by V36's own header comment was never wired up)
+
+### The problem
+
+The fix adds a fallback `Sort` in each list service so an unsorted `Pageable` still gets an
+`ORDER BY`, closing a real defect: without it, Postgres is free to return rows in whatever order a
+given scan happens to produce, and OFFSET/LIMIT paging over that non-guaranteed order can return a
+row on two consecutive pages or skip one between them. The obvious regression test — seed 25 rows
+(two pages at the default page size of 20), fetch page 0 and page 1 with no `sort` parameter, assert
+the two id sets are disjoint and complete — is exactly what the review demanded, plus the standard
+"prove it bites" step: temporarily strip the fix back out and confirm the test goes red. It did not.
+Churning every seeded row between the two fetches (deactivate then reactivate, an UPDATE on each row)
+didn't move the needle either — the mutated code still passed all three stability tests.
+
+### Why it's hard
+
+The instability the fix closes is a genuine, well-documented Postgres behaviour (OFFSET/LIMIT with no
+`ORDER BY` gives no cross-call ordering guarantee), but reproducing it on demand inside a single test
+method is a different problem from knowing it exists. A freshly seeded, small table scanned twice in
+the same process with no *structural* change to the underlying heap between the two scans has no
+reason to actually return a different order the second time — Postgres doesn't reshuffle rows for
+sport, it returns whatever a deterministic scan of an unchanged relation produces, and for a table this
+size that is, overwhelmingly, insertion order. An in-place UPDATE (HOT update, same page, same slot)
+doesn't disturb that either. So the naive regression test was measuring "did the fix accidentally
+survive an environment where physical layout happens to equal logical (business-name) order" rather
+than "does the code request a defined order at all" — it would have shipped as a permanently-green test
+that could never distinguish the fixed code from the broken code, which is worse than no test, because
+it looks like coverage.
+
+### The solution
+
+Added a `VACUUM FULL <table>` (via a raw owner-role JDBC connection the integration-test base class
+already exposes for DDL) between the page-0 and page-1 fetch. `VACUUM FULL` physically rewrites the
+table, which is close to what a real deployment's autovacuum does on its own schedule, just forced to
+happen exactly between the two reads instead of at some unpredictable later time. With that in place,
+reverting the fix reliably reproduced the real bug: the same customer/product/price-list id showed up
+on both pages. Restoring the fix made the test pass again, with the physical rewrite still forced in
+between — proving the `ORDER BY` is what makes the result correct, not the table's incidental layout.
+
+### Lesson
+
+A "does removing the fix turn this test red" check is only as good as the perturbation it applies
+between cause and effect. For a *missing-guarantee* bug (no `ORDER BY`, no lock, no idempotency key —
+anything whose failure mode is "nothing stops X from happening," not "something actively causes X"),
+the naive version of the regression test often can't observe the failure on a quiet, single-threaded,
+freshly-seeded fixture, because the absent guarantee's failure mode requires something *else* to change
+underneath it — concurrent writes, autovacuum, a query planner re-evaluating, time passing — and the
+test needs to force that "something else" to happen deliberately, on a timescale the test controls,
+or it will pass for the wrong reason indefinitely. The instinct to try harder before reporting "could
+not make it fail" earned a strictly more honest, and more valuable, permanent regression test than the
+first attempt.

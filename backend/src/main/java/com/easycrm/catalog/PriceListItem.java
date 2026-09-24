@@ -53,4 +53,9 @@ public class PriceListItem extends TenantScopedEntity {
     public BigDecimal getDiscountPct() {
         return discountPct;
     }
+
+    public void updateRates(BigDecimal overrideRate, BigDecimal discountPct) {
+        this.overrideRate = overrideRate;
+        this.discountPct = discountPct;
+    }
 }

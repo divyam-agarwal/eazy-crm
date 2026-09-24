@@ -35,5 +35,18 @@ Every error uses one envelope: `{"error":{"code","message","fields"?,"fieldCodes
 | `GSTIN_CHARSET` | `gstin` | `Gstin.parse` | a character outside 0-9 A-Z |
 | `GSTIN_CHECKSUM` | `gstin` | `Gstin.parse` | check digit does not match |
 | `STATE_CODE_INVALID` | `stateCode` | `StateCode.requireValid` | not a GST state code (also raised for a GSTIN whose first two characters are not one) |
-| `STATE_CODE_GSTIN_MISMATCH` | `stateCode` | `AuthService.signup` | seller state code differs from the GSTIN's prefix |
+| `STATE_CODE_GSTIN_MISMATCH` | `stateCode` | `AuthService.signup`, `CustomerService.resolveGstinAndState` | seller state code differs from the GSTIN's prefix |
+| `STATE_CODE_REQUIRED` | `stateCode` | `CustomerService.resolveGstinAndState` | no GSTIN supplied and no state code to fall back on |
+| `GSTIN_DUPLICATE` | `gstin` | `CustomerService.create` | another customer in this tenant already has this GSTIN |
 | `SLUG_TAKEN` | `slug` | `AuthService.signup` | workspace slug already exists |
+| `SORT_INVALID` | `sort` | `SortAllowlist.require` | a `sort` field the endpoint does not allow |
+| `ASSIGNEE_INVALID` | `assignedTo` | `AssignableUsers.require` | assignee is not an active user of this tenant (checked by `CustomerService`, `EnquiryService`, `ActivityService`, `FollowUpService`) |
+| `HSN_CODE_INVALID` | `hsnCode` | `ProductService.validate` | not 4, 6, or 8 digits |
+| `GST_RATE_INVALID` | `gstRate` | `ProductService.validate` | not one of the allowed GST rates (0, 0.25, 3, 5, 12, 18, 28) |
+| `BASE_RATE_NEGATIVE` | `baseRate` | `ProductService.validate` | base rate is negative |
+| `SKU_DUPLICATE` | `sku` | `ProductService.create` | another product in this tenant already has this SKU |
+| `NAME_DUPLICATE` | `name` | `PriceListService.create`, `PriceListService.rename` | another price list in this tenant already has this name |
+| `RATE_RULE_XOR` | `overrideRate` | `PriceListItemService.validateXor` | neither or both of `overrideRate`/`discountPct` were set; exactly one is required |
+| `OVERRIDE_RATE_NEGATIVE` | `overrideRate` | `PriceListItemService.validateRange` | override rate is negative |
+| `DISCOUNT_PCT_RANGE` | `discountPct` | `PriceListItemService.validateRange` | discount percent is outside 0-100 |
+| `PRODUCT_DUPLICATE` | `productId` | `PriceListItemService.add` | this product is already priced in this price list |

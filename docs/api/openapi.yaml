@@ -117,8 +117,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -154,7 +154,7 @@ paths:
       - activity-controller
   /api/v1/activities/{id}:
     patch:
-      operationId: update_5
+      operationId: update_6
       parameters:
       - in: path
         name: id
@@ -180,8 +180,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -304,8 +304,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -372,8 +372,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -630,8 +630,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -741,6 +741,13 @@ paths:
         required: false
         schema:
           type: boolean
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 0
       - description: Zero-based page index (0..N)
         in: query
         name: page
@@ -773,6 +780,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseCustomerResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -826,8 +840,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -940,8 +954,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -977,7 +991,7 @@ paths:
       - contact-controller
   /api/v1/customers/{customerId}/contacts/{contactId}:
     delete:
-      operationId: delete
+      operationId: delete_1
       parameters:
       - in: path
         name: customerId
@@ -1028,7 +1042,7 @@ paths:
       tags:
       - contact-controller
     put:
-      operationId: update_2
+      operationId: update_3
       parameters:
       - in: path
         name: customerId
@@ -1060,8 +1074,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -1146,7 +1160,7 @@ paths:
       tags:
       - customer-controller
     put:
-      operationId: update_1
+      operationId: update_2
       parameters:
       - in: path
         name: id
@@ -1172,8 +1186,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -1425,8 +1439,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -1511,7 +1525,7 @@ paths:
       tags:
       - enquiry-controller
     patch:
-      operationId: update_4
+      operationId: update_5
       parameters:
       - in: path
         name: id
@@ -1537,8 +1551,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -1600,8 +1614,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -1663,8 +1677,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -1828,8 +1842,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -1957,7 +1971,7 @@ paths:
       tags:
       - follow-up-controller
     patch:
-      operationId: update_3
+      operationId: update_4
       parameters:
       - in: path
         name: id
@@ -1983,8 +1997,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -2046,8 +2060,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -2109,8 +2123,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -2209,8 +2223,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -2463,8 +2477,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -2661,8 +2675,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -2805,6 +2819,13 @@ paths:
         required: false
         schema:
           type: boolean
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 0
       - description: Zero-based page index (0..N)
         in: query
         name: page
@@ -2837,6 +2858,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponsePriceListResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -2890,8 +2918,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3002,8 +3030,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3216,8 +3244,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3253,7 +3281,7 @@ paths:
       - price-list-item-controller
   /api/v1/price-lists/{priceListId}/items/{itemId}:
     delete:
-      operationId: delete_1
+      operationId: delete
       parameters:
       - in: path
         name: priceListId
@@ -3303,6 +3331,74 @@ paths:
             inputs
       tags:
       - price-list-item-controller
+    put:
+      operationId: update_1
+      parameters:
+      - in: path
+        name: priceListId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: itemId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceListItemUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceListItemResponse"
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "missing, expired or invalid bearer token"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "authenticated, but the role does not permit this operation"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: "the resource does not exist, or belongs to another tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: the request conflicts with existing data
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: semantically invalid request; `fields` names the offending
+            inputs
+      tags:
+      - price-list-item-controller
   /api/v1/products:
     get:
       operationId: list_1
@@ -3312,6 +3408,13 @@ paths:
         required: false
         schema:
           type: boolean
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 0
       - description: Zero-based page index (0..N)
         in: query
         name: page
@@ -3344,6 +3447,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PageResponseProductResponse"
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3397,8 +3507,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3509,8 +3619,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3750,8 +3860,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3862,8 +3972,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -3924,8 +4034,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -4037,8 +4147,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -4500,8 +4610,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
-          description: bean-validation failure on the request body; fields/fieldCodes
-            name the offending inputs
+          description: bean-validation failure on the request body or a request parameter;
+            fields/fieldCodes name the offending inputs
         "401":
           content:
             application/json:
@@ -4808,17 +4918,27 @@ components:
       properties:
         designation:
           type: string
+          maxLength: 128
+          minLength: 0
         email:
           type: string
+          format: email
+          maxLength: 255
+          minLength: 0
         isPrimary:
           type: boolean
         name:
           type: string
+          maxLength: 255
           minLength: 1
         phone:
           type: string
+          maxLength: 20
+          minLength: 0
         whatsappNumber:
           type: string
+          maxLength: 20
+          minLength: 0
       required:
       - name
     ContactResponse:
@@ -5583,6 +5703,15 @@ components:
         productId:
           type: string
           format: uuid
+    PriceListItemUpdateRequest:
+      type: object
+      properties:
+        discountPct:
+          type: string
+          format: decimal
+        overrideRate:
+          type: string
+          format: decimal
     PriceListRequest:
       type: object
       properties:

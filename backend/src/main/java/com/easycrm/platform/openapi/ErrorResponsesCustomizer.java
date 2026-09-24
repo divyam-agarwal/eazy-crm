@@ -8,6 +8,7 @@ import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
+import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
@@ -36,8 +37,16 @@ import org.springframework.context.annotation.Configuration;
  * bodyless operations (e.g. a bare {@code DELETE}) and 429 on routes no configured policy ever
  * matches (e.g. {@code /api/v1/customers/**}); a contract asserting a mechanism that cannot happen
  * is worse than one that omits it (review finding B1, F0b Task 1 fix round 1). 400 is gated on
- * {@link Operation#getRequestBody()} being present — {@code ApiExceptionHandler}'s only 400 source
- * is bean validation on a {@code @Valid} body, so a body-less operation cannot produce one. 429 is
+ * {@link Operation#getRequestBody()} being present, or on the operation having a parameter whose
+ * schema carries a size/pattern constraint ({@code maxLength}, {@code minLength} or {@code
+ * pattern}) — {@code ApiExceptionHandler}'s two 400 sources are bean validation on a {@code
+ * @Valid} body ({@code MethodArgumentNotValidException}, which springdoc does not merge directly)
+ * and bean validation on a {@code @Validated}-checked {@code @RequestParam}/{@code @PathVariable}
+ * ({@code ConstraintViolationException}, which springdoc DOES merge directly onto every operation
+ * unless this customizer's {@code addIfAbsent} gets there first with the correctly-scoped entry —
+ * verified empirically: the handler for the latter carries no {@code @ApiResponse} for exactly
+ * this reason). An operation with neither a body nor a constrained parameter cannot produce
+ * either, so it gets no 400 entry. 429 is
  * gated by reusing {@link RateLimitProperties#policyFor(String)} — the same matcher {@code
  * RateLimitFilter} calls at request time — against the OpenAPI path template itself (e.g. {@code
  * /api/v1/customers/{customerId}}). That template is not a literal request path, but it maps
@@ -57,7 +66,8 @@ public class ErrorResponsesCustomizer {
     static final String API_ERROR_RESPONSE_REF = "#/components/schemas/ApiErrorResponse";
 
     private static final String BAD_REQUEST_DESCRIPTION =
-            "bean-validation failure on the request body; fields/fieldCodes name the offending inputs";
+            "bean-validation failure on the request body or a request parameter; fields/fieldCodes"
+                    + " name the offending inputs";
     private static final String RATE_LIMITED_DESCRIPTION = "rate limit exceeded; Retry-After names the wait in seconds";
 
     private final RateLimitProperties rateLimitProperties;
@@ -85,7 +95,7 @@ public class ErrorResponsesCustomizer {
                 boolean rateLimited =
                         rateLimitProperties.policyFor(pathTemplate).isPresent();
                 for (Operation operation : pathItem.readOperations()) {
-                    if (operation.getRequestBody() != null) {
+                    if (operation.getRequestBody() != null || hasConstrainedParameter(operation)) {
                         addIfAbsent(operation, "400", BAD_REQUEST_DESCRIPTION, false);
                     }
                     if (rateLimited) {
@@ -94,6 +104,21 @@ public class ErrorResponsesCustomizer {
                 }
             }
         };
+    }
+
+    /** True if any parameter's schema carries a size/pattern constraint that {@code @Validated}'s
+     *  AOP interceptor can reject with a {@code ConstraintViolationException} (e.g. {@code @Size}
+     *  on {@code CustomerController.list}'s {@code q}). Springdoc renders such a constraint as
+     *  {@code maxLength}/{@code minLength}/{@code pattern} on the parameter's schema. */
+    private boolean hasConstrainedParameter(Operation operation) {
+        if (operation.getParameters() == null) return false;
+        return operation.getParameters().stream().anyMatch(this::isConstrained);
+    }
+
+    private boolean isConstrained(Parameter parameter) {
+        Schema<?> schema = parameter.getSchema();
+        return schema != null
+                && (schema.getMaxLength() != null || schema.getMinLength() != null || schema.getPattern() != null);
     }
 
     private void addIfAbsent(Operation operation, String statusCode, String description, boolean withRetryAfter) {

@@ -1,4 +1,4 @@
-package com.easycrm.crm;
+package com.easycrm.catalog;
 
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
@@ -6,12 +6,12 @@ import java.util.List;
 import java.util.Locale;
 import org.springframework.data.jpa.domain.Specification;
 
-public final class CustomerSpecifications {
+public final class ProductSpecifications {
 
-    private CustomerSpecifications() {}
+    private ProductSpecifications() {}
 
     /** AND-composes whichever filters are non-null. Tenant scoping comes from RLS, not here. */
-    public static Specification<Customer> filter(Boolean active, String q) {
+    public static Specification<Product> filter(Boolean active, String q) {
         return (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             if (active != null) ps.add(cb.equal(root.get("active"), active));
@@ -22,11 +22,10 @@ public final class CustomerSpecifications {
                 String pattern = "%" + needle.toLowerCase(Locale.ROOT) + "%";
                 // Must stay ONE predicate: cb.and(ps.toArray(...)) ANDs every element in ps, so
                 // adding these two cb.like(...) calls separately would turn this OR into an AND.
-                // gstin is usually null, and LOWER(NULL) LIKE ... is never true, so a plain name
-                // search would then match nothing -- it fails closed, not open.
+                // A plain name search would then also require the sku to match, and return
+                // nothing -- it fails closed, not open.
                 ps.add(cb.or(
-                        cb.like(cb.lower(root.get("businessName")), pattern),
-                        cb.like(cb.lower(root.get("gstin")), pattern)));
+                        cb.like(cb.lower(root.get("name")), pattern), cb.like(cb.lower(root.get("sku")), pattern)));
             }
             return cb.and(ps.toArray(new Predicate[0])); // empty -> always-true conjunction
         };

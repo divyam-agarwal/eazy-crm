@@ -3,6 +3,9 @@ package com.easycrm.platform.error;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Path;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -97,6 +100,48 @@ public class ApiExceptionHandler {
             codes.put(fe.getField(), constraintCode(fe.getCode()));
         });
         return body(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "request is invalid", fields, codes);
+    }
+
+    /**
+     * A {@code @Size}/{@code @Pattern}/etc. on a {@code @RequestParam} or {@code @PathVariable}
+     * (as opposed to a {@code @Valid @RequestBody} field) is validated by the AOP method-validation
+     * interceptor {@code @Validated} enables on the class, which throws {@link
+     * ConstraintViolationException} directly -- Spring's MVC exception handling does not convert
+     * this to a 4xx on its own, so without this handler it falls through to a default {@code
+     * ProblemDetail} body instead of this API's envelope.
+     *
+     * <p>Deliberately no {@code @ApiResponse} here: unlike {@code MethodArgumentNotValidException},
+     * springdoc does NOT skip merging this exception type's advice-level {@code @ApiResponse} into
+     * every operation's response map -- verified empirically (see {@code ErrorResponsesCustomizer}),
+     * which would put a bogus 400 on every operation, including ones with no validated parameter at
+     * all. {@code ErrorResponsesCustomizer} documents this 400 already, scoped to operations that
+     * actually have one.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiErrorResponse> invalidParameter(ConstraintViolationException ex) {
+        Map<String, Object> fields = new HashMap<>();
+        Map<String, String> codes = new HashMap<>();
+        for (ConstraintViolation<?> violation : ex.getConstraintViolations()) {
+            String field = lastNode(violation.getPropertyPath());
+            fields.put(field, violation.getMessage());
+            codes.put(
+                    field,
+                    constraintCode(violation
+                            .getConstraintDescriptor()
+                            .getAnnotation()
+                            .annotationType()
+                            .getSimpleName()));
+        }
+        return body(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "request is invalid", fields, codes);
+    }
+
+    /** The property path is "methodName.paramName" (e.g. "list.q"); only the parameter name is client-facing. */
+    private static String lastNode(Path path) {
+        String last = null;
+        for (Path.Node node : path) {
+            last = node.getName();
+        }
+        return last;
     }
 
     /** "NotBlank" -> "NOT_BLANK". Bean Validation's constraint name is already stable per annotation. */

@@ -1,5 +1,159 @@
 # EasyCRM — Handoff
 
+## 2026-09-24 — START HERE: F1a (master data backend prep) is built and review-clean; NOT merged, NOT pushed; next is F1b
+
+**The 26 controller rulings made while this slice ran** — several of them corrections to defects in the
+spec and plan themselves — are preserved at
+[`2026-09-24-f1a-ruling-record.md`](./2026-09-24-f1a-ruling-record.md), because the SDD workspace they
+were written in is git-ignored and does not survive the slice. Read **R14** before trusting any commit
+message on this branch about why the search OR is a single predicate: the stated mechanism in `d7c5fe3`
+is wrong, and challenge #113 is the correction.
+
+**Counts below say 751; the final figure after the whole-branch review's fix wave is 759** (724 root + 35
+platform-primitives), across 21 commits through `7fcffc6`. The fix wave added the default sort the spec
+required but nothing implemented, restored lost negative-429 coverage, and gave `PUT` customer the
+duplicate-GSTIN field attribution `create` already had.
+
+**State.** F1a — [`docs/superpowers/specs/2026-09-23-f1-master-data-design.md`](specs/2026-09-23-f1-master-data-design.md)
+Part 1, [`docs/superpowers/plans/2026-09-24-f1a-backend-master-data-prep.md`](plans/2026-09-24-f1a-backend-master-data-prep.md) —
+is **built and review-clean on branch `worktree-f1a-backend-prep`**, base `e8a1f76`, 18 commits through
+`50ef3cf` plus this closing commit. **It is NOT merged into `main` and NOT pushed to `origin` — both are
+the owner's call, not made here.** `main`/`origin/main` remain at F0b's `6d7b970` (688 backend tests) until
+that decision is made. Do not treat anything below as live until it lands.
+
+**Measured test count: 751 backend tests, 0 failures** — `./gradlew clean check` → `BUILD SUCCESSFUL`,
+summed from `tests="…"` across every `build/test-results/test/*.xml` in **both** Gradle modules: 716 in
+the root project (162 result files) + 35 in `platform-primitives` (6 result files). Was 688 at this
+branch's base. `MasterDataSearchIndexTest` is confirmed present in the root module's results, so V36 is
+proven to apply from an empty Testcontainers database, not merely assumed to have run.
+
+**The contract.** `docs/api/openapi.yaml` was regenerated in four separate commits as the slice went
+(Tasks 3, 4, 8, 9), specifically so the suite never sat red on a stale `OpenApiSnapshotTest` between
+Task 3 and this one. The **cumulative** diff (`git diff e8a1f76..HEAD -- docs/api/openapi.yaml`) is
+**additive only**: a `q` query parameter (`maxLength: 100`) on the customers/products/price-lists list
+operations, a new `PUT /api/v1/price-lists/{priceListId}/items/{itemId}` operation plus its
+`PriceListItemUpdateRequest` schema, new `maxLength`/`minLength`/`format` constraints on
+`ContactRequest`'s five fields, and newly-documented `400` responses on the operations that can now
+produce one. Nothing was removed or renamed. **Known and accepted, not a defect:** springdoc renumbered
+several `operationId` values as pure cosmetic churn (new operations shift the auto-numbering of
+`update`/`delete` siblings alphabetically) — the generated frontend client keys on path+method, not
+`operationId`, so F1b is unaffected.
+
+**The recorded RED runs — six tasks broke code on purpose to prove their gates actually gate, not just
+pass:**
+- **Task 1:** pointed one of the five new trigram indexes at the raw column instead of `lower(col)` —
+  `MasterDataSearchIndexTest` went red, proving the test can tell "index exists" from "index matches the
+  predicate's shape" rather than just checking for five GIN indexes by name.
+- **Task 3:** flattened `CustomerSpecifications`' `cb.or(name, gstin)` into two separately-AND'd
+  predicates and, separately, dropped the `gstin` term entirely — both `searchComposesWithTheActiveFilter`
+  and `searchMatchesGstin` went red, then reverted. (The flattening's *actual* failure mode is corrected
+  below, under Inputs for F1b — the plan's original description of it was wrong.)
+- **Task 4:** repeated Task 3's two mutations against `ProductSpecifications` (dropped the `sku` term,
+  flattened the OR) — red, then reverted. Separately, deleted `@Validated` from `ProductController`/
+  `PriceListController`: the OpenAPI schema test stayed green exactly as predicted (springdoc emits
+  `maxLength` from `@Size` regardless of `@Validated`), while the new runtime envelope test went red —
+  but the response **status was still 400** the whole time (Spring's built-in
+  `HandlerMethodValidationException` fires independently), so a status-only assertion would have stayed
+  green throughout. Only asserting the full envelope caught the inert constraint (Challenge 115).
+- **Task 7:** the three mandated mutations on `MasterDataErrorCodesTest` — dropped a throw's third (code)
+  argument, renamed a registered code (`GSTIN_DUPLICATE`→`GSTIN_DUPE`) so it no longer matched the
+  registry, and pointed the guard's regex at a nonexistent exception name — each went red by name, then
+  reverted. A follow-up fix round rewrote the guard's own `codesFor` helper to return a constant
+  unconditionally, which went red on three tests added specifically to make that mutation catchable
+  (Challenge 110's follow-up — "guard the guard").
+- **Task 8:** created a price-list item under one price list, then `PUT` it through a *different* price
+  list's URL — the wrong-parent-ownership 404 test went red (`200` instead of `404`) before the ownership
+  check was wired in, then reverted green.
+- **Task 9:** pointed `demoteOtherPrimaries` at `findAll()` instead of the customer-scoped finder —
+  `demotionDoesNotReachAnotherCustomersContacts` went red (another customer's real primary contact was
+  silently un-primaried by an unrelated customer's contact update), then reverted green.
+
+**Inputs for F1b — read this before starting the frontend work:**
+
+- **The full set of hand-thrown error codes now available for `errors.fields` translation blocks**
+  (`docs/api/error-codes.md`; all are `fieldCodes` values, stable and never reused per Rule 1):
+  `GSTIN_REQUIRED`, `GSTIN_LENGTH`, `GSTIN_CHARSET`, `GSTIN_CHECKSUM`, `STATE_CODE_INVALID`,
+  `STATE_CODE_GSTIN_MISMATCH`, `STATE_CODE_REQUIRED`, `GSTIN_DUPLICATE`, `SLUG_TAKEN`, `SORT_INVALID`,
+  `ASSIGNEE_INVALID`, `HSN_CODE_INVALID`, `GST_RATE_INVALID`, `BASE_RATE_NEGATIVE`, `SKU_DUPLICATE`,
+  `NAME_DUPLICATE`, `RATE_RULE_XOR`, `OVERRIDE_RATE_NEGATIVE`, `DISCOUNT_PCT_RANGE`, `PRODUCT_DUPLICATE`.
+  On top of these, every `@NotBlank`/`@Size`/`@Pattern`/`@Email` bean-validation failure auto-generates
+  `NOT_BLANK`/`SIZE`/`PATTERN`/`EMAIL` (Rule 2) — those are not hand-thrown but are equally real
+  `fieldCodes` values a form will receive.
+- **Which `@Size` fields need a PER-FIELD translation key, not just the bare `errors.fields.SIZE`
+  fallback** (Rule 4: `SIZE`/`PATTERN` are parameterised and state no limit on their own) — every field
+  this slice put a `@Size` on: the `q` search parameter on the customers/products/price-lists lists
+  (`maxLength: 100`, field key `q`), and `ContactRequest`'s `name` (`@NotBlank @Size(min=1,max=255)`),
+  `designation` (`max=128`), `email` (`max=255`, plus a separate `EMAIL` code from `@Email`), `phone`
+  (`max=20`), and `whatsappNumber` (`max=20`). Each needs an `errors.fields.<field>.SIZE` key in
+  `frontend/src/locales/en/common.json` stating the real limit, or the user sees a generic "wrong length"
+  message with no number in it.
+- **The XOR code is keyed to `overrideRate`, not to the pair.** `RATE_RULE_XOR` always lands on
+  `overrideRate`'s `fieldCodes` entry, even when the request violates the rule by setting *both*
+  `overrideRate` and `discountPct`. A form that renders per-field inline errors will show nothing next to
+  `discountPct` in that case, even though it is equally implicated — worth a form-level (not
+  purely per-field) treatment of this one error, or an explicit mapping that also lights up `discountPct`.
+- **`q` does not escape LIKE wildcards.** A literal `%` or `_` typed into any of the three search boxes
+  is interpreted as a SQL wildcard, not a literal character — e.g. searching `50%` matches anything
+  containing `50` followed by any characters. This is deliberate: whether users should even be able to
+  type wildcards is a product decision, not a bug, and fixing it uniformly needs a `cb.like(expr, pattern,
+  escapeChar)` ESCAPE clause added identically across all three `*Specifications` classes. Deferred; flag
+  it if support asks about "search does something weird with percent signs."
+
+**Known deferred items and residual risk:**
+- **Last-write-wins on concurrent master-data edits is an accepted risk, recorded in the F1 spec** — no
+  `@Version`/optimistic-locking was added to `Customer`, `Product`, `PriceListItem`, or `Contact` in this
+  slice. Two users editing the same record concurrently silently overwrite each other; this was a
+  conscious scope decision, not an oversight, and is not F1a's or F1b's to fix without a separate design.
+- The LIKE-wildcard-escaping gap and the XOR field-attribution gap above are both real, both minor, and
+  both deferred as product/UX decisions rather than bugs — do not silently "fix" either inside F1b without
+  flagging the product call it implies.
+- `pg_trgm` privileges were a stopping point the original plan worried about (Postgres extension
+  installation typically needs superuser) and it turned out to be a non-issue: Testcontainers' Postgres
+  image runs its init connection as superuser, so `CREATE EXTENSION IF NOT EXISTS pg_trgm` in V36 applies
+  cleanly with no privilege escalation needed. Revisit this the moment a real (non-Testcontainers) staging
+  database exists — that stopping point still applies there.
+- H5 in `docs/ROADMAP.md` §1.5 was corrected this session: the `assigned_to` half was stale
+  (`V33__assigned_to_indexes.sql` already shipped both indexes); only the status-only order-list half of
+  H5 still stands.
+
+**Traps that cost time in this slice — avoid re-discovering them:**
+- `./gradlew check --tests X` is an invalid Gradle flag combination on this project's setup, and it
+  **errors** (not just "0 tests run") when the test filter matches nothing in the `:platform:platform-primitives`
+  module specifically — that module's `check` doesn't tolerate an empty filter the way the root
+  project's does. Run the unscoped `./gradlew clean check` instead of trying to scope by test class.
+- `"source":"WALK_IN"` is **not** a valid `CustomerSource` enum value (valid values: `INDIAMART`,
+  `WHATSAPP`, `PHONE`, `REFERRAL`, `MANUAL`, `IMPORT`). This exact bug recurred **three times** across
+  this slice's task briefs (Tasks 3, 5, 9 — every task that had a customer-creation fixture), each time
+  producing a spurious Jackson 400 instead of the intended test failure. Any new fixture that creates a
+  customer with a literal `source` string should double-check it against the real enum before trusting a
+  brief's example JSON.
+- **CI is post-merge only.** This repo's GitHub Actions triggers are `push: [main]` and `pull_request` —
+  a push to a feature branch (including everything this slice did on `worktree-f1a-backend-prep`) fires
+  **nothing**. The only verification this branch has is local `./gradlew clean check`, run repeatedly and
+  reported above; CI will not see any of it until it is merged (or a PR is opened against `main`).
+
+**TRIPWIRE — read this before enabling parallel test execution.** The three
+`pagingIsStableAcrossPagesWithNoExplicitSort` tests (in `CustomerControllerTest`, `ProductControllerTest`
+and `PriceListControllerTest`) each run **`VACUUM FULL`** on their table between the two page fetches.
+That is deliberate and it is load-bearing: without a physical rewrite the bug those tests exist to catch
+is *invisible*, because a small freshly-seeded table replays insertion order whether or not the query
+carries an `ORDER BY` — the naive mutation of removing the default sort stayed green, and only
+`VACUUM FULL` made it reliably red (see challenge #116).
+
+The cost is that `VACUUM FULL` takes an **ACCESS EXCLUSIVE** lock and rewrites the table, and
+`IntegrationTest` shares ONE static singleton Postgres container across every `@SpringBootTest` in the
+JVM. This is safe today **only** because nothing in this build enables parallel tests — there is no
+`maxParallelForks` and no `junit.jupiter.execution.parallel` configuration, so the suite runs
+sequentially, the tables hold 25 rows, and the lock is held for milliseconds.
+
+**If anyone turns on parallel test execution, this will bite**: any other test class touching
+`customer`, `product` or `price_list` concurrently will block on that exclusive lock and fail or hang for
+reasons that look nothing like its own subject. The fix at that point is not to delete the tests but to
+replace the perturbation — force physical reordering with ordinary row-level DML (delete and reinsert the
+seeded rows in a different order), or assert directly that the generated SQL carries an `ORDER BY` via a
+statement listener. Both were judged better but were not worth another fix-and-review cycle while the
+hazard is inert.
+
 ## 2026-09-20 — START HERE: F0b is merged and pushed; next is F1
 
 **The 107 controller rulings made during F0b's build** — several load-bearing for F1 and visible nowhere

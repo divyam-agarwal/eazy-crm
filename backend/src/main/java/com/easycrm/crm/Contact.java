@@ -60,6 +60,10 @@ public class Contact extends TenantScopedEntity {
         this.primary = primary;
     }
 
+    public void demote() {
+        this.primary = false;
+    }
+
     public UUID getCustomerId() {
         return customerId;
     }

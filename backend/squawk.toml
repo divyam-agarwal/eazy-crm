@@ -31,9 +31,18 @@
 #
 #   * require-concurrent-index-creation (29 of its 32 findings) asks for CREATE INDEX
 #     CONCURRENTLY, which Postgres forbids inside a transaction block. The rule stays ON:
-#     the three findings it keeps, on indexes over pre-existing tables, are the real hazard,
-#     and the honest fix for a future one is the executeInTransaction=false header plus a
-#     deliberate trade of whole-migration atomicity for a shorter write lock. That is a
+#     the findings it keeps, on indexes over pre-existing tables, are the real hazard --
+#     but "the real hazard" is conditional on there being a table to hazard against. This
+#     project has no live database anywhere (no dev, staging or prod -- docs/ROADMAP.md
+#     SS1.4): every migration to date runs for the first time at the SP2 cutover, against an
+#     empty database, where the ACCESS EXCLUSIVE lock a plain CREATE INDEX takes is
+#     instantaneous. For that case the fix is a per-statement inline
+#     `-- squawk-ignore require-concurrent-index-creation` comment, with its reason folded
+#     into the migration's header rather than repeated at every line (see V36). Once a table
+#     the index targets is populated and live -- after the cutover, or for any index added
+#     against a table this schema already has real rows in -- that exemption no longer
+#     applies, and the honest fix is the executeInTransaction=false header plus the
+#     deliberate trade of whole-migration atomicity for a shorter write lock. Both are a
 #     decision to make per migration, not a rule to switch off.
 assume_in_transaction = true
 

@@ -1,5 +1,7 @@
 package com.easycrm.crm.web;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -9,6 +11,11 @@ import com.easycrm.crm.CustomerSource;
 import com.easycrm.platform.tenancy.TenantContext;
 import com.easycrm.support.IntegrationTest;
 import com.easycrm.support.TestTokens;
+import com.jayway.jsonpath.JsonPath;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -99,5 +106,317 @@ class CustomerControllerTest extends IntegrationTest {
         String otherTenantAuth = "Bearer " + tokens.owner(UUID.randomUUID());
         mvc.perform(get("/api/v1/customers/" + saved.getId()).header("Authorization", otherTenantAuth))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void searchMatchesBusinessNameSubstringCaseInsensitively() throws Exception {
+        UUID tenant = UUID.randomUUID();
+        String auth = "Bearer " + tokens.owner(tenant);
+        createCustomer(auth, "Shri Ram Traders", "27AAPFU0939F1ZV");
+        createCustomer(auth, "Gupta Hardware", null);
+
+        // "ram" is in the MIDDLE of the name: a prefix-only implementation passes every other
+        // assertion in this test and fails only this one, which is why the needle is not "shri".
+        mvc.perform(get("/api/v1/customers?q=ram").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].businessName").value("Shri Ram Traders"));
+    }
+
+    @Test
+    void searchMatchesGstin() throws Exception {
+        UUID tenant = UUID.randomUUID();
+        String auth = "Bearer " + tokens.owner(tenant);
+        createCustomer(auth, "Shri Ram Traders", "27AAPFU0939F1ZV");
+        // Matches neither by name nor gstin. Without this row, a single-row tenant would make
+        // totalElements == 1 true whether or not the gstin predicate exists at all.
+        createCustomer(auth, "Gupta Hardware", null);
+
+        mvc.perform(get("/api/v1/customers?q=AAPFU").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].businessName").value("Shri Ram Traders"));
+    }
+
+    @Test
+    void searchReturnsEmptyRatherThanEverythingWhenNothingMatches() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createCustomer(auth, "Gupta Hardware", null);
+
+        // A predicate accidentally dropped from the conjunction shows all rows instead of none.
+        mvc.perform(get("/api/v1/customers?q=zzzznomatch").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void blankSearchIsTreatedAsAbsent() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createCustomer(auth, "Gupta Hardware", null);
+
+        mvc.perform(get("/api/v1/customers").param("q", "  ").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void searchComposesWithTheActiveFilter() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        // Matches "ram" AND is inactive: visible only under active=false&q=ram.
+        String matchingInactive = createCustomer(auth, "Shri Ram Traders", null);
+        mvc.perform(post("/api/v1/customers/" + matchingInactive + "/deactivate")
+                        .header("Authorization", auth))
+                .andExpect(status().isOk());
+        // Matches "ram" AND stays active: visible only under active=true&q=ram. Without this row,
+        // "active=false&q=ram" returning 1 would be reachable by the q predicate alone, with the
+        // active predicate silently ignored.
+        createCustomer(auth, "Ramji Traders", null);
+        // Active but does NOT match "ram": if q were ignored, active=true&q=ram would wrongly
+        // return 2 instead of 1.
+        createCustomer(auth, "Gupta Hardware", null);
+        // Inactive but does NOT match "ram": if q were ignored, active=false&q=ram would wrongly
+        // return 2 instead of 1.
+        String nonMatchingInactive = createCustomer(auth, "Kumar Enterprises", null);
+        mvc.perform(post("/api/v1/customers/" + nonMatchingInactive + "/deactivate")
+                        .header("Authorization", auth))
+                .andExpect(status().isOk());
+
+        // Neither the active filter alone (active=true -> {Ramji, Gupta} = 2) nor the q filter
+        // alone (q=ram, ignoring active -> {Shri Ram, Ramji} = 2) reproduces this count of 1.
+        mvc.perform(get("/api/v1/customers?q=ram&active=true").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].businessName").value("Ramji Traders"));
+        // Neither the active filter alone (active=false -> {Shri Ram, Kumar} = 2) nor the q filter
+        // alone (q=ram, ignoring active -> {Shri Ram, Ramji} = 2) reproduces this count of 1.
+        mvc.perform(get("/api/v1/customers?q=ram&active=false").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].businessName").value("Shri Ram Traders"));
+    }
+
+    /** F1a introduced the first @Size on a @RequestParam in this codebase; without a handler for
+     *  the ConstraintViolationException @Validated throws, this would fall through to Spring's
+     *  default ProblemDetail body instead of this API's {"error":{...}} envelope. */
+    @Test
+    void overLongQReturns400WithTheStandardEnvelope() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String tooLong = "a".repeat(101);
+
+        mvc.perform(get("/api/v1/customers").param("q", tooLong).header("Authorization", auth))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldCodes.q").value("SIZE"));
+    }
+
+    @Test
+    void rejectsAnUnknownSortFieldWith422() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+
+        mvc.perform(get("/api/v1/customers?sort=creditDays,asc").header("Authorization", auth))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.sort").value("SORT_INVALID"));
+    }
+
+    @Test
+    void acceptsAnAllowedSortField() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+
+        mvc.perform(get("/api/v1/customers?sort=businessName,asc").header("Authorization", auth))
+                .andExpect(status().isOk());
+    }
+
+    /** Task 2 caps page size via spring.data.web.pageable.max-page-size: 100 in application.yml --
+     *  YAML nesting alone enforces it, and a typo there would silently no-op the cap. */
+    @Test
+    void pageSizeIsCappedAtOneHundred() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+
+        mvc.perform(get("/api/v1/customers?size=1000").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(100));
+    }
+
+    @Test
+    void stateCodeDivergingFromGstinCarriesTheSharedMismatchCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String body = """
+            {"businessName":"Shri Ram Traders","gstin":"27AAPFU0939F1ZV",
+             "stateCode":"29","source":"MANUAL"}""";
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                // Reused, not a new code: AuthService.signup already emits this for the same
+                // meaning, and one meaning must not acquire two codes (error-codes.md rule 1).
+                .andExpect(jsonPath("$.error.fieldCodes.stateCode").value("STATE_CODE_GSTIN_MISMATCH"));
+    }
+
+    @Test
+    void missingStateCodeWithoutGstinCarriesItsOwnCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String body = """
+            {"businessName":"Gupta Hardware","source":"MANUAL"}""";
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.stateCode").value("STATE_CODE_REQUIRED"));
+    }
+
+    @Test
+    void duplicateGstinConflictCarriesAFieldAndACode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createCustomer(auth, "Shri Ram Traders", "27AAPFU0939F1ZV");
+
+        String body = """
+            {"businessName":"Another Firm","gstin":"27AAPFU0939F1ZV","source":"MANUAL"}""";
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                // A 409 with prose only cannot be attached to a form field at all: the frontend
+                // has nothing to key a message or a focus target on.
+                .andExpect(jsonPath("$.error.fieldCodes.gstin").value("GSTIN_DUPLICATE"));
+    }
+
+    /**
+     * PUT had no duplicate-GSTIN pre-check at all: editing a customer's GSTIN onto one another row
+     * already holds fell through to the {@code DataIntegrityViolationException} backstop in
+     * {@code ApiExceptionHandler}, a 409 with {@code fields = null} -- same envelope shape as
+     * create's, but no field to attach an inline error to. This mirrors {@code
+     * PriceListService.rename}'s shape: look up by the new value, and conflict only when the match
+     * is a DIFFERENT row.
+     */
+    @Test
+    void updateToAnotherCustomersGstinCarriesTheSameFieldCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        createCustomer(auth, "Shri Ram Traders", "27AAPFU0939F1ZV");
+        String otherId = createCustomer(auth, "Gupta Hardware", "27BBBBB1111B1ZN");
+
+        String body = """
+            {"businessName":"Gupta Hardware","gstin":"27AAPFU0939F1ZV","source":"MANUAL"}""";
+
+        mvc.perform(put("/api/v1/customers/" + otherId)
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.fieldCodes.gstin").value("GSTIN_DUPLICATE"));
+    }
+
+    /** Re-saving a customer with its own, unchanged GSTIN must not trip the duplicate check
+     *  against itself -- the lookup only conflicts on a DIFFERENT row's id. */
+    @Test
+    void updateKeepingItsOwnGstinSucceeds() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String id = createCustomer(auth, "Shri Ram Traders", "27AAPFU0939F1ZV");
+
+        String body = """
+            {"businessName":"Shri Ram Traders Pvt Ltd","gstin":"27AAPFU0939F1ZV","source":"MANUAL"}""";
+
+        mvc.perform(put("/api/v1/customers/" + id)
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.businessName").value("Shri Ram Traders Pvt Ltd"))
+                .andExpect(jsonPath("$.gstin").value("27AAPFU0939F1ZV"));
+    }
+
+    /**
+     * Ruling R10: assignedTo is a customer-form field too, and AssignableUsers.require was
+     * throwing with no code (it lives in iam, shared with EnquiryService and FollowUpService,
+     * so it was missed by the crm/catalog sweep this task otherwise covers).
+     */
+    @Test
+    void nonExistentAssigneeCarriesItsOwnCode() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        String body = """
+            {"businessName":"Gupta Hardware","stateCode":"27","assignedTo":"%s","source":"MANUAL"}""".formatted(UUID.randomUUID());
+
+        mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.fieldCodes.assignedTo").value("ASSIGNEE_INVALID"));
+    }
+
+    /**
+     * Spec §1.2's default sort exists so paging is stable: with no ORDER BY, Postgres is free to
+     * return rows in a different order between two separate queries, and OFFSET/LIMIT paging over
+     * an unstable order can return a row twice or skip it. 25 rows spans two pages at the
+     * configured default page size (20).
+     *
+     * <p>A plain heap scan on a small, freshly seeded, otherwise-untouched table tends to replay
+     * insertion order even with no ORDER BY, which would let this test pass for the wrong reason.
+     * Toggling every row's active flag between the two fetches, then {@code VACUUM FULL}ing the
+     * table (physically rewriting it, which a real deployment's autovacuum does too, just not on
+     * this schedule), forces an actual change in physical row order between the two page reads —
+     * confirmed by temporarily removing {@code SortAllowlist.withDefault} from
+     * {@code CustomerService.list}: with no default sort, this exact test fails with a row
+     * returned on both pages; with it, it passes.
+     */
+    @Test
+    void pagingIsStableAcrossPagesWithNoExplicitSort() throws Exception {
+        String auth = "Bearer " + tokens.owner(UUID.randomUUID());
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            ids.add(createCustomer(auth, "Stability Co %02d".formatted(i), null));
+        }
+        for (String id : ids) {
+            mvc.perform(post("/api/v1/customers/" + id + "/deactivate").header("Authorization", auth))
+                    .andExpect(status().isOk());
+            mvc.perform(post("/api/v1/customers/" + id + "/activate").header("Authorization", auth))
+                    .andExpect(status().isOk());
+        }
+
+        List<String> page0 = pageOfIds(auth, 0);
+        try (var conn = ownerConnection();
+                var st = conn.createStatement()) {
+            st.execute("VACUUM FULL customer");
+        }
+        List<String> page1 = pageOfIds(auth, 1);
+
+        Set<String> overlap = new HashSet<>(page0);
+        overlap.retainAll(page1);
+        assertTrue(overlap.isEmpty(), "same row returned on both page 0 and page 1: " + overlap);
+
+        Set<String> union = new HashSet<>(page0);
+        union.addAll(page1);
+        assertEquals(new HashSet<>(ids), union, "some seeded customer missing from page 0 + page 1");
+    }
+
+    private List<String> pageOfIds(String auth, int page) throws Exception {
+        String response = mvc.perform(get("/api/v1/customers?page=" + page).header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        List<String> ids = JsonPath.read(response, "$.content[*].id");
+        return ids;
+    }
+
+    /** Returns the created customer's id. */
+    private String createCustomer(String auth, String businessName, String gstin) throws Exception {
+        String gstinJson = gstin == null ? "null" : "\"" + gstin + "\"";
+        String body = """
+                {"businessName":"%s","gstin":%s,"stateCode":%s,"source":"MANUAL"}""".formatted(businessName, gstinJson, gstin == null ? "\"27\"" : "null");
+        String response = mvc.perform(post("/api/v1/customers")
+                        .header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return JsonPath.read(response, "$.id");
     }
 }

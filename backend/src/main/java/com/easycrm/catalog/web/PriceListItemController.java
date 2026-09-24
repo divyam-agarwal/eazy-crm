@@ -3,6 +3,7 @@ package com.easycrm.catalog.web;
 import com.easycrm.catalog.PriceListItemService;
 import com.easycrm.catalog.web.dto.PriceListItemRequest;
 import com.easycrm.catalog.web.dto.PriceListItemResponse;
+import com.easycrm.catalog.web.dto.PriceListItemUpdateRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -35,5 +36,13 @@ public class PriceListItemController {
     public ResponseEntity<Void> delete(@PathVariable UUID priceListId, @PathVariable UUID itemId) {
         service.delete(priceListId, itemId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{itemId}")
+    public PriceListItemResponse update(
+            @PathVariable UUID priceListId,
+            @PathVariable UUID itemId,
+            @Valid @RequestBody PriceListItemUpdateRequest req) {
+        return service.update(priceListId, itemId, req);
     }
 }
