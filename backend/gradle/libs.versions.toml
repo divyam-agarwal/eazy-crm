@@ -35,7 +35,7 @@ spotless = "8.10.2"
 # Verified against plugins.gradle.org/m2 on 2026-09-01: 6.5.11 is both the newest release
 # overall and still the known-good 6.x major line called out in the brief (no 7.x exists
 # yet upstream). Documented floor was 6.1.13 -- this is a verified-latest pick.
-spotbugs = "6.5.11"
+spotbugs = "6.5.12"
 # Pinned separately from the Spotless plugin: the formatter version decides the actual
 # output bytes, so bumping it reformats the tree. Treat a bump as its own commit.
 # Verified against repo1.maven.org/maven2 on 2026-09-01 (latest/release: 2.97.0).
